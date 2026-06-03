@@ -55,3 +55,37 @@ export async function POST(request: NextRequest) {
 
   return NextResponse.json(record);
 }
+
+export async function PATCH(request: NextRequest) {
+  const payload = await request.json().catch(() => null);
+  const code = String(payload?.code ?? "").replace(/\D/g, "").slice(0, 6);
+  const visitorId = String(payload?.visitorId ?? "").trim();
+  const status = String(payload?.status ?? "").trim() as Visitor["status"];
+  const allowedStatuses: Visitor["status"][] = ["pending", "verified", "checked-in", "checked-out", "expired", "cancelled"];
+
+  if (!allowedStatuses.includes(status)) {
+    return NextResponse.json({ error: "Choose a valid visitor status." }, { status: 400 });
+  }
+
+  const registry = visitorRegistry();
+  const existingEntry = code
+    ? registry.get(code)
+    : Array.from(registry.values()).find((record) => record.visitor.id === visitorId);
+
+  if (!existingEntry) {
+    return NextResponse.json({ error: "Visitor invitation was not found." }, { status: 404 });
+  }
+
+  const record: DemoVisitorRecord = {
+    ...existingEntry,
+    visitor: {
+      ...existingEntry.visitor,
+      status
+    },
+    savedAt: new Date().toISOString()
+  };
+
+  registry.set(record.visitor.code, record);
+
+  return NextResponse.json(record);
+}

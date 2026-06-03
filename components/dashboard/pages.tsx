@@ -41,7 +41,7 @@ import {
 import Link from "next/link";
 import jsQR from "jsqr";
 import QRCode from "qrcode";
-import { FormEvent, ReactNode, useEffect, useRef, useState } from "react";
+import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
@@ -2132,7 +2132,6 @@ export function InviteVisitorPage() {
           visitorName={visitorName || "Visitor"}
           status={status}
           phone={sharePhone}
-          estateName={estate?.name ?? "LBS View Estate"}
           residentAddress={`${residentUnitLabel(state, resident)}, ${estate?.address ?? "LBS View Estate"}`}
           visitDate={shareDate}
           arrivalTime={shareTime}
@@ -2143,9 +2142,28 @@ export function InviteVisitorPage() {
 }
 
 export function MyVisitorsPage() {
-  const { state } = useLocalEstateStore();
+  const { state, addVisitorRecord } = useLocalEstateStore();
   const resident = useCurrentResidentProfile(state);
-  const myVisitors = state.visitors.filter((visitor) => visitor.residentId === resident.id);
+  const myVisitors = useMemo(
+    () => state.visitors.filter((visitor) => visitor.residentId === resident.id),
+    [resident.id, state.visitors]
+  );
+  const visitorSyncKey = myVisitors.map((visitor) => `${visitor.code}:${visitor.status}`).join(",");
+
+  useEffect(() => {
+    if (getSupabaseBrowserClient() || !myVisitors.length) {
+      return;
+    }
+
+    const syncStatuses = () => {
+      void syncDemoVisitorStatuses(myVisitors, addVisitorRecord);
+    };
+    syncStatuses();
+    const interval = window.setInterval(syncStatuses, 5000);
+
+    return () => window.clearInterval(interval);
+  }, [addVisitorRecord, myVisitors, visitorSyncKey]);
+
   return (
     <>
       <PageHeader title="My visitors" description="Track expected visitors, checked-in guests, expired codes, and cancelled invitations." />
@@ -2455,11 +2473,10 @@ export function SecurityDashboard() {
 
   return (
     <>
-      <PageHeader title="Security dashboard" description="Verify visitor access codes, check digital IDs, and record gate entry or exit." />
+      <PageHeader title="Security dashboard" description="Verify access and record gate movement." />
       <VerifyVisitorPage compact />
       <div className="mt-6">
         <h2 className="text-lg font-semibold text-white">Today at the gate</h2>
-        <p className="mt-1 text-sm text-slate-400">Expected visitors, active check-ins, verified codes, and rejected or expired invitations.</p>
       </div>
       <div className="mt-4 grid gap-4 md:grid-cols-3">
         <StatCard label="Expected today" value={String(state.visitors.length)} helper="All gates" icon={<CalendarClock className="h-5 w-5" />} />
@@ -2579,7 +2596,7 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
     : state.residents;
 
   function findVisitorForCode(targetCode: string) {
-    return state.visitors.find((visitor) => visitor.code === targetCode) ?? (lookupVisitor?.code === targetCode ? lookupVisitor : undefined);
+    return lookupVisitor?.code === targetCode ? lookupVisitor : state.visitors.find((visitor) => visitor.code === targetCode);
   }
 
   useEffect(() => {
@@ -2683,6 +2700,10 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
       setMessage(gateLookupMessage(visitor));
     }
 
+    if (nextVisitor.status !== visitor.status && !getSupabaseBrowserClient()) {
+      void updateDemoVisitorRecordStatus(nextVisitor, nextVisitor.status);
+    }
+
     addVisitorRecord(nextVisitor);
     setLookupVisitor(nextVisitor);
     setLookupResident(resident);
@@ -2735,9 +2756,9 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
 
   return (
     <>
-      {!compact ? <PageHeader title="Verify visitor code" description="Security enters or scans a visitor code. Valid pending codes are verified automatically before check-in, checkout, or rejection." /> : null}
+      {!compact ? <PageHeader title="Verify visitor code" description="Scan or enter the 6-digit code." /> : null}
       <Card>
-        <CardHeader title="Code verification" description="Enter the 6-digit code. A valid pending code becomes verified automatically." />
+        <CardHeader title="Code verification" description="Scan QR or enter code." />
         <div className="flex flex-col gap-3 sm:flex-row">
           <div className="flex-1">
             <Field label="Access code">
@@ -2764,8 +2785,8 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
         </div>
         <QrScannerPanel
           active={scannerOpen}
-          title="Scan visitor QR"
-          helper="Point the camera at the visitor QR code. The code will be searched automatically."
+          title="Scan QR"
+          helper="Camera ready. Scanning QR code."
           onResult={handleVisitorQrScan}
           onClose={() => setScannerOpen(false)}
         />
@@ -2805,7 +2826,7 @@ function QrScannerPanel({
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const frameRef = useRef<number | null>(null);
-  const [message, setMessage] = useState("");
+  const [message, setMessage] = useState(helper);
 
   useEffect(() => {
     if (!active) {
@@ -2816,7 +2837,7 @@ function QrScannerPanel({
 
     async function startScanner() {
       if (!navigator.mediaDevices?.getUserMedia) {
-        setMessage("Camera access is not available in this browser. Enter the code manually.");
+        setMessage(helper);
         return;
       }
 
@@ -2836,7 +2857,7 @@ function QrScannerPanel({
         }
 
         const detector = window.BarcodeDetector ? new window.BarcodeDetector({ formats: ["qr_code"] }) : null;
-        setMessage(detector ? "Camera ready. Scanning QR code." : "Camera ready. Using compatible QR scanner for this browser.");
+        setMessage(helper);
 
         const scanFrame = async () => {
           if (cancelled) {
@@ -2859,7 +2880,7 @@ function QrScannerPanel({
 
         frameRef.current = window.requestAnimationFrame(scanFrame);
       } catch {
-        setMessage("Camera permission was not granted. Enter the code manually or allow camera access and try again.");
+        setMessage(helper);
       }
     }
 
@@ -2876,7 +2897,7 @@ function QrScannerPanel({
       streamRef.current = null;
       frameRef.current = null;
     };
-  }, [active, onClose, onResult]);
+  }, [active, helper, onClose, onResult]);
 
   if (!active) {
     return null;
@@ -2884,11 +2905,8 @@ function QrScannerPanel({
 
   return (
     <div className="mt-4 rounded-lg border border-smart/30 bg-black p-4 shadow-glow">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h3 className="text-base font-semibold text-white">{title}</h3>
-          <p className="mt-1 text-sm text-slate-300">{helper}</p>
-        </div>
+      <div className="flex items-center justify-between gap-3">
+        <h3 className="text-base font-semibold text-white">{title}</h3>
         <Button type="button" variant="ghost" className="min-h-9 px-3" onClick={onClose}>
           <X className="h-4 w-4" />
           Close
@@ -2989,6 +3007,31 @@ async function findDemoVisitorByCode(code: string) {
   }
 
   return payload as { visitor: Visitor; resident: Resident | null };
+}
+
+async function updateDemoVisitorRecordStatus(visitor: Visitor, status: Visitor["status"]) {
+  await fetch("/api/local/visitors", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      visitorId: visitor.id,
+      code: visitor.code,
+      status
+    })
+  }).catch(() => null);
+}
+
+async function syncDemoVisitorStatuses(visitorsList: Visitor[], onUpdate: (visitor: Visitor) => Visitor) {
+  await Promise.all(
+    visitorsList.map(async (visitor) => {
+      const result = await findDemoVisitorByCode(visitor.code);
+      if (result?.visitor && result.visitor.status !== visitor.status) {
+        onUpdate(result.visitor);
+      }
+    })
+  );
 }
 
 function visitorQrValueFor(visitor: Visitor) {
@@ -3710,7 +3753,6 @@ function VisitorCodeCard({
   visitorName,
   status,
   phone,
-  estateName,
   residentAddress,
   visitDate,
   arrivalTime
@@ -3720,18 +3762,17 @@ function VisitorCodeCard({
   visitorName: string;
   status: string;
   phone: string;
-  estateName: string;
   residentAddress: string;
   visitDate: string;
   arrivalTime: string;
 }) {
   const canShare = Boolean(code);
   const shareMessage = visitorShareMessage({
-    estateName,
     visitorName,
     code,
     residentAddress,
-    when: formatVisitDateTime(visitDate, arrivalTime)
+    visitDate,
+    arrivalTime
   });
 
   return (
@@ -3767,28 +3808,25 @@ function VisitorCodeCard({
 }
 
 function visitorShareMessage({
-  estateName,
   visitorName,
   code,
   residentAddress,
-  when
+  visitDate,
+  arrivalTime
 }: {
-  estateName: string;
   visitorName: string;
   code: string;
   residentAddress: string;
-  when: string;
+  visitDate: string;
+  arrivalTime: string;
 }) {
-  const appUrl = process.env.NEXT_PUBLIC_ESTATE_APP_URL || "https://corso.com.ng/estate";
-
   return [
-    estateName,
     `Hi ${visitorName}`,
-    `Your Access Code is: ${code}`,
-    `Address of Resident: ${residentAddress}`,
-    `When: ${when}`,
-    "",
-    `Powered by: ${appUrl}`
+    "Your one-time code is",
+    code,
+    `Address: ${residentAddress}`,
+    visitorAccessWindowLabel(visitDate, arrivalTime),
+    "Powered by www.corso.ng"
   ].join("\n");
 }
 
@@ -3817,14 +3855,18 @@ function normalizePhone(phone: string) {
   return digits;
 }
 
-function formatVisitDateTime(date: string, time: string) {
+function visitorAccessWindowLabel(date: string, time: string) {
   if (!date && !time) {
-    return "Not specified";
+    return "not specified";
   }
 
   if (!date) {
-    return time;
+    return `from ${time}`;
   }
+
+  const startTime = time || "00:00";
+  const startsAt = new Date(`${date}T${startTime}:00+01:00`);
+  const endsAt = new Date(startsAt.getTime() + VISITOR_CODE_VALIDITY_HOURS * 60 * 60 * 1000);
 
   const formattedDate = new Intl.DateTimeFormat("en-NG", {
     weekday: "short",
@@ -3832,9 +3874,15 @@ function formatVisitDateTime(date: string, time: string) {
     month: "short",
     day: "numeric",
     timeZone: LAGOS_TIME_ZONE
-  }).format(new Date(`${date}T00:00:00+01:00`));
+  }).format(startsAt);
+  const formattedEndTime = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: LAGOS_TIME_ZONE
+  }).format(endsAt);
 
-  return `${formattedDate}${time ? ` at ${time}` : ""}`;
+  return `on ${formattedDate} from ${startTime} to ${formattedEndTime}`;
 }
 
 function dateInputValue(date = new Date()) {

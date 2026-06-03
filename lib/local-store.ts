@@ -279,6 +279,20 @@ function paymentTotalForBill(paymentsList: Payment[], billId: string) {
     .reduce((sum, payment) => sum + payment.amount, 0);
 }
 
+async function updateDemoVisitorStatus(visitor: Visitor, status: Visitor["status"]) {
+  await fetch("/api/local/visitors", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      visitorId: visitor.id,
+      code: visitor.code,
+      status
+    })
+  }).catch(() => null);
+}
+
 function billStatusForPaymentTotal(bill: Bill, paidAmount: number): Bill["status"] {
   if (paidAmount >= bill.amount) {
     return "paid";
@@ -548,9 +562,13 @@ export function useLocalEstateStore() {
     });
     const visitor = state.visitors.find((item) => item.id === visitorId);
     if (visitor) {
-      void updateSupabaseVisitorStatus(visitor, status).catch(() => {
-        // Local status changes remain available on this device when online sync rejects the update.
-      });
+      if (getSupabaseBrowserClient()) {
+        void updateSupabaseVisitorStatus(visitor, status).catch(() => {
+          // Local status changes remain available on this device when online sync rejects the update.
+        });
+      } else {
+        void updateDemoVisitorStatus(visitor, status);
+      }
     }
   }
 
@@ -1102,10 +1120,7 @@ export function getResidentProperty(state: LocalEstateState, resident: Resident)
 
 export function residentUnitLabel(state: LocalEstateState, resident: Resident) {
   const unit = getResidentUnit(state, resident);
-  const property = getResidentProperty(state, resident);
-  const unitCode = unit?.unitCode ?? resident.houseNumber;
-
-  return property ? `${property.propertyCode} / ${unitCode}` : unitCode;
+  return unit?.unitCode ?? resident.houseNumber;
 }
 
 export function billPaidAmount(state: LocalEstateState, bill: Bill) {
