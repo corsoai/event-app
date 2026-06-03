@@ -1,4 +1,5 @@
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+import { auditLogs, properties, units } from "@/lib/demo-data";
 import type { Bill, Complaint, EmergencyAlert, EmergencyAlertStatus, Estate, Payment, Resident, UserRole, Visitor } from "@/lib/types";
 import { getVisitorExpiresAtIso } from "@/lib/visitor-window";
 import { DEFAULT_ESTATE_NAME, loginIdentifierToEmail, sortEstatesWithDefaultFirst } from "@/lib/utils";
@@ -166,6 +167,8 @@ export async function loadSupabaseEstateState() {
 
   return {
     estates: sortEstatesWithDefaultFirst(estateRows.map(mapEstate)),
+    properties,
+    units,
     residents: residentRows.map(mapResident),
     visitors: visitorRows.map(mapVisitor),
     visitorLogs: visitorLogRows.map(mapVisitorLog),
@@ -174,7 +177,8 @@ export async function loadSupabaseEstateState() {
     complaints: complaintRows.map(mapComplaint),
     emergencyAlerts: emergencyAlertRows.map(mapSupabaseEmergencyAlert),
     accessRequests: accessRequests.map(mapAccessRequest),
-    approvedUsers: accessRequests.filter((request) => request.status === "approved").map(mapApprovedUser)
+    approvedUsers: accessRequests.filter((request) => request.status === "approved").map(mapApprovedUser),
+    auditLogs
   } satisfies LocalEstateState;
 }
 

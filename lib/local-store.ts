@@ -1,7 +1,18 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { bills, complaints, emergencyAlerts, estates, payments, residents as demoResidents, visitors } from "@/lib/demo-data";
+import {
+  auditLogs,
+  bills,
+  complaints,
+  emergencyAlerts,
+  estates,
+  payments,
+  properties,
+  residents as demoResidents,
+  units,
+  visitors
+} from "@/lib/demo-data";
 import {
   approveSupabaseAccessRequest,
   loadSupabaseEstateState,
@@ -18,7 +29,23 @@ import {
   updateSupabaseVisitorStatus
 } from "@/lib/supabase/data";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import type { Bill, Complaint, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, Payment, Resident, UserRole, Visitor } from "@/lib/types";
+import type {
+  AuditLog,
+  Bill,
+  Complaint,
+  EmergencyAlert,
+  EmergencyAlertStatus,
+  EmergencyAlertType,
+  Estate,
+  Payment,
+  PaymentChannel,
+  PaymentProcessor,
+  Property,
+  Resident,
+  Unit,
+  UserRole,
+  Visitor
+} from "@/lib/types";
 import { loginIdentifierToEmail, makeAccessCode, normalizePhoneNumber, phoneAuthEmail, sortEstatesWithDefaultFirst } from "@/lib/utils";
 import { getVisitorExpiresAtIso } from "@/lib/visitor-window";
 
@@ -41,6 +68,8 @@ export type LocalVisitorLog = {
 
 export type LocalEstateState = {
   estates: Estate[];
+  properties: Property[];
+  units: Unit[];
   visitors: Visitor[];
   visitorLogs: LocalVisitorLog[];
   bills: Bill[];
@@ -50,6 +79,7 @@ export type LocalEstateState = {
   residents: Resident[];
   accessRequests: LocalAccessRequest[];
   approvedUsers: LocalApprovedUser[];
+  auditLogs: AuditLog[];
 };
 
 export type LocalAccessRequest = {
@@ -105,6 +135,9 @@ type PaymentInput = {
   billId: string;
   amount: number;
   reference: string;
+  channel?: PaymentChannel;
+  processor?: PaymentProcessor;
+  source?: Payment["source"];
 };
 
 type EmergencyAlertInput = {
@@ -119,6 +152,8 @@ type BillInput = {
   amount: number;
   dueDate: string;
   residentId: string;
+  category?: string;
+  unitId?: string;
 };
 
 type EstateInput = {
@@ -129,11 +164,17 @@ type EstateInput = {
   gateName: string;
 };
 
-type ResidentUpdateInput = Pick<Resident, "name" | "houseNumber" | "phone" | "email" | "type" | "status">;
+type ResidentUpdateInput = Pick<Resident, "name" | "houseNumber" | "phone" | "email" | "type" | "status"> & {
+  propertyId?: string;
+  unitId?: string;
+  moveInDate?: string;
+};
 
 function defaultState(): LocalEstateState {
   return {
     estates,
+    properties,
+    units,
     visitors,
     visitorLogs: [
       {
@@ -154,7 +195,8 @@ function defaultState(): LocalEstateState {
     emergencyAlerts,
     residents: demoResidents,
     accessRequests: [],
-    approvedUsers: []
+    approvedUsers: [],
+    auditLogs
   };
 }
 
@@ -227,6 +269,34 @@ function upsertEmergencyAlert(alerts: EmergencyAlert[], alert: EmergencyAlert) {
   return [alert, ...alerts.filter((item) => item.id !== alert.id)].sort(
     (a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime()
   );
+}
+
+function paymentTotalForBill(paymentsList: Payment[], billId: string) {
+  return paymentsList
+    .filter((payment) => payment.billId === billId && payment.status === "confirmed")
+    .reduce((sum, payment) => sum + payment.amount, 0);
+}
+
+function billStatusForPaymentTotal(bill: Bill, paidAmount: number): Bill["status"] {
+  if (paidAmount >= bill.amount) {
+    return "paid";
+  }
+
+  if (paidAmount > 0) {
+    return "partially paid";
+  }
+
+  return bill.status === "overdue" ? "overdue" : "unpaid";
+}
+
+function addAuditLog(current: LocalEstateState, log: Omit<AuditLog, "id" | "createdAt">) {
+  const auditLog: AuditLog = {
+    id: `audit-${Date.now()}-${current.auditLogs.length + 1}`,
+    createdAt: new Date().toISOString(),
+    ...log
+  };
+
+  return [auditLog, ...current.auditLogs];
 }
 
 function realtimeEmergencyAlertFromPayload(payload: { new?: Record<string, unknown> | null }) {
@@ -501,14 +571,51 @@ export function useLocalEstateStore() {
 
     const updatedResident: Resident = {
       ...currentResident,
-      ...input
+      ...input,
+      houseNumber: input.houseNumber || currentResident.houseNumber,
+      propertyId: input.propertyId ?? currentResident.propertyId,
+      unitId: input.unitId ?? currentResident.unitId,
+      moveInDate: input.moveInDate ?? currentResident.moveInDate
     };
 
     commit((current) => ({
       ...current,
       residents: current.residents.map((resident) =>
         resident.id === residentId ? updatedResident : resident
-      )
+      ),
+      units: current.units.map((unit) => {
+        if (unit.id === updatedResident.unitId) {
+          return {
+            ...unit,
+            propertyId: updatedResident.propertyId ?? unit.propertyId,
+            currentResidentId: updatedResident.id,
+            status: updatedResident.status === "moved out" ? "moved out" : "occupied",
+            moveInDate: updatedResident.moveInDate ?? unit.moveInDate
+          };
+        }
+
+        if (unit.currentResidentId === updatedResident.id) {
+          return {
+            ...unit,
+            currentResidentId: undefined,
+            status: unit.status === "moved out" ? "moved out" : "vacant"
+          };
+        }
+
+        return unit;
+      }),
+      auditLogs: addAuditLog(current, {
+        estateId: updatedResident.estateId,
+        actor: "Estate admin",
+        action: "updated resident unit assignment",
+        entityType: "resident",
+        entityId: updatedResident.id,
+        metadata: {
+          propertyId: updatedResident.propertyId ?? "",
+          unitId: updatedResident.unitId ?? "",
+          unitCode: updatedResident.houseNumber
+        }
+      })
     }));
 
     return updatedResident;
@@ -552,7 +659,7 @@ export function useLocalEstateStore() {
       notes: input.notes.trim(),
       createdAt: new Date().toISOString(),
       siren: input.siren,
-      locationLabel: input.locationLabel?.trim() || `${resident.houseNumber}, ${estate?.address ?? "LBS View Estate"}`
+      locationLabel: input.locationLabel?.trim() || `${residentUnitLabel(state, resident)}, ${estate?.address ?? "LBS View Estate"}`
     };
 
     commit((current) => ({
@@ -601,23 +708,61 @@ export function useLocalEstateStore() {
   function addPayment(input: PaymentInput) {
     const bill = state.bills.find((item) => item.id === input.billId) ?? state.bills[0];
     const resident = getCurrentResident(state);
+    const paymentResident = state.residents.find((item) => item.id === bill.residentId) ?? resident;
     const payment: Payment = {
       id: `pay-${Date.now()}`,
       billId: bill.id,
       residentId: bill.residentId || resident.id,
+      estateId: bill.estateId ?? paymentResident.estateId,
+      propertyId: bill.propertyId ?? paymentResident.propertyId,
+      unitId: bill.unitId ?? paymentResident.unitId,
       amount: input.amount,
       reference: input.reference,
+      processor: input.processor ?? "manual",
+      channel: input.channel ?? "bank_transfer",
       date: today(),
-      status: "pending"
+      status: input.source === "webhook" ? "confirmed" : "pending",
+      source: input.source ?? "resident",
+      confirmedAt: input.source === "webhook" ? new Date().toISOString() : undefined,
+      confirmedBy: input.source === "webhook" ? `${input.processor ?? "payment"} webhook` : undefined
     };
 
-    commit((current) => ({
-      ...current,
-      payments: [payment, ...current.payments],
-      bills: current.bills.map((item) =>
-        item.id === bill.id && item.status === "unpaid" ? { ...item, status: "partially paid" } : item
-      )
-    }));
+    commit((current) => {
+      const nextPayments = [payment, ...current.payments];
+
+      return {
+        ...current,
+        payments: nextPayments,
+        bills: current.bills.map((item) => {
+          if (item.id !== bill.id) {
+            return item;
+          }
+
+          const paidAmount = paymentTotalForBill(nextPayments, item.id);
+          return {
+            ...item,
+            paidAmount,
+            status: payment.status === "confirmed"
+              ? billStatusForPaymentTotal(item, paidAmount)
+              : item.status
+          };
+        }),
+        auditLogs: addAuditLog(current, {
+          estateId: payment.estateId ?? bill.estateId,
+          actor: payment.source === "webhook" ? `${payment.processor ?? "payment"} webhook` : "Resident upload",
+          action: payment.source === "webhook" ? "confirmed online payment" : "submitted manual payment proof",
+          entityType: "payment",
+          entityId: payment.id,
+          metadata: {
+            billId: payment.billId,
+            amount: payment.amount,
+            channel: payment.channel ?? "bank_transfer",
+            processor: payment.processor ?? "manual",
+            reference: payment.reference
+          }
+        })
+      };
+    });
     void saveSupabasePayment(payment);
 
     return payment;
@@ -630,42 +775,130 @@ export function useLocalEstateStore() {
         return current;
       }
 
+      const nextPayments = current.payments.map((item) =>
+        item.id === paymentId
+          ? {
+              ...item,
+              status: "confirmed" as const,
+              confirmedAt: item.confirmedAt ?? new Date().toISOString(),
+              confirmedBy: item.confirmedBy ?? "Estate admin"
+            }
+          : item
+      );
+
       return {
         ...current,
-        payments: current.payments.map((item) =>
-          item.id === paymentId ? { ...item, status: "confirmed" } : item
-        ),
-        bills: current.bills.map((item) =>
-          item.id === payment.billId ? { ...item, status: "paid" } : item
-        )
+        payments: nextPayments,
+        bills: current.bills.map((item) => {
+          if (item.id !== payment.billId) {
+            return item;
+          }
+
+          const paidAmount = paymentTotalForBill(nextPayments, item.id);
+          return {
+            ...item,
+            paidAmount,
+            status: billStatusForPaymentTotal(item, paidAmount)
+          };
+        }),
+        auditLogs: addAuditLog(current, {
+          estateId: payment.estateId ?? current.bills.find((item) => item.id === payment.billId)?.estateId ?? "lekki-gardens",
+          actor: "Estate admin",
+          action: "confirmed manual payment",
+          entityType: "payment",
+          entityId: payment.id,
+          metadata: {
+            billId: payment.billId,
+            amount: payment.amount,
+            channel: payment.channel ?? "bank_transfer",
+            reference: payment.reference
+          }
+        })
       };
     });
   }
 
   function markBillPaid(billId: string) {
-    commit((current) => ({
-      ...current,
-      bills: current.bills.map((item) =>
-        item.id === billId ? { ...item, status: "paid" } : item
-      )
-    }));
+    commit((current) => {
+      const bill = current.bills.find((item) => item.id === billId);
+      if (!bill) {
+        return current;
+      }
+
+      const payment: Payment = {
+        id: `pay-${Date.now()}`,
+        billId: bill.id,
+        residentId: bill.residentId,
+        estateId: bill.estateId,
+        propertyId: bill.propertyId,
+        unitId: bill.unitId,
+        amount: Math.max(0, bill.amount - (bill.paidAmount ?? paymentTotalForBill(current.payments, bill.id))),
+        reference: `ADMIN-${Date.now()}`,
+        processor: "manual",
+        channel: "cash",
+        date: today(),
+        status: "confirmed",
+        source: "admin",
+        confirmedAt: new Date().toISOString(),
+        confirmedBy: "Estate admin"
+      };
+      const nextPayments = payment.amount > 0 ? [payment, ...current.payments] : current.payments;
+
+      return {
+        ...current,
+        payments: nextPayments,
+        bills: current.bills.map((item) =>
+          item.id === billId ? { ...item, paidAmount: item.amount, status: "paid" } : item
+        ),
+        auditLogs: addAuditLog(current, {
+          estateId: bill.estateId,
+          actor: "Estate admin",
+          action: "marked bill paid manually",
+          entityType: "bill",
+          entityId: bill.id,
+          metadata: {
+            amount: bill.amount,
+            residentId: bill.residentId,
+            unitId: bill.unitId ?? ""
+          }
+        })
+      };
+    });
   }
 
   function addBill(input: BillInput) {
     const resident = state.residents.find((item) => item.id === input.residentId);
+    const unit = state.units.find((item) => item.id === input.unitId) ?? state.units.find((item) => item.id === resident?.unitId);
     const bill: Bill = {
       id: `bill-${Date.now()}`,
       residentId: input.residentId,
       estateId: resident?.estateId ?? state.estates[0]?.id ?? "lekki-gardens",
+      propertyId: unit?.propertyId ?? resident?.propertyId,
+      unitId: unit?.id ?? resident?.unitId,
+      category: input.category ?? "Service charge",
       title: input.title,
       amount: input.amount,
+      paidAmount: 0,
       dueDate: input.dueDate,
       status: "unpaid"
     };
 
     commit((current) => ({
       ...current,
-      bills: [bill, ...current.bills]
+      bills: [bill, ...current.bills],
+      auditLogs: addAuditLog(current, {
+        estateId: bill.estateId,
+        actor: "Estate admin",
+        action: "created bill",
+        entityType: "bill",
+        entityId: bill.id,
+        metadata: {
+          amount: bill.amount,
+          category: bill.category ?? "",
+          residentId: bill.residentId,
+          unitId: bill.unitId ?? ""
+        }
+      })
     }));
     void saveSupabaseBill(bill);
 
@@ -856,6 +1089,31 @@ export function getCurrentResident(state: LocalEstateState) {
   });
 }
 
+export function getResidentUnit(state: LocalEstateState, resident: Resident) {
+  return state.units.find((unit) => unit.id === resident.unitId || unit.currentResidentId === resident.id);
+}
+
+export function getResidentProperty(state: LocalEstateState, resident: Resident) {
+  const unit = getResidentUnit(state, resident);
+  return state.properties.find((property) => property.id === (resident.propertyId ?? unit?.propertyId));
+}
+
+export function residentUnitLabel(state: LocalEstateState, resident: Resident) {
+  const unit = getResidentUnit(state, resident);
+  const property = getResidentProperty(state, resident);
+  const unitCode = unit?.unitCode ?? resident.houseNumber;
+
+  return property ? `${property.propertyCode} / ${unitCode}` : unitCode;
+}
+
+export function billPaidAmount(state: LocalEstateState, bill: Bill) {
+  return bill.paidAmount ?? paymentTotalForBill(state.payments, bill.id);
+}
+
+export function billOutstandingAmount(state: LocalEstateState, bill: Bill) {
+  return Math.max(0, bill.amount - billPaidAmount(state, bill));
+}
+
 export function removeLegacyLekkiAccounts() {
   if (typeof window === "undefined") {
     return;
@@ -935,6 +1193,8 @@ function approveLocalAccessRequest(current: LocalEstateState, requestId: string)
 
 function normalizeLocalEstateState(saved: Partial<LocalEstateState>) {
   const defaults = defaultState();
+  const normalizedProperties = saved.properties?.length ? saved.properties : defaults.properties;
+  const normalizedUnits = saved.units?.length ? saved.units : defaults.units;
   const approvedUsers = (saved.approvedUsers ?? defaults.approvedUsers).map((user) =>
     user.role === "resident" && !user.residentId
       ? { ...user, phone: user.phone ?? "", residentId: residentIdForIdentifier(user.phone || user.email) }
@@ -945,6 +1205,48 @@ function normalizeLocalEstateState(saved: Partial<LocalEstateState>) {
     phone: request.phone ?? ""
   }));
   const savedResidents = saved.residents?.length ? saved.residents : defaults.residents;
+  const normalizedResidents = savedResidents.map((resident) => {
+    const defaultResident = defaults.residents.find((item) => item.id === resident.id);
+    const assignedUnit = normalizedUnits.find((unit) => unit.id === resident.unitId || unit.currentResidentId === resident.id)
+      ?? (defaultResident?.unitId ? normalizedUnits.find((unit) => unit.id === defaultResident.unitId) : undefined);
+
+    return {
+      ...resident,
+      propertyId: resident.propertyId ?? defaultResident?.propertyId ?? assignedUnit?.propertyId,
+      unitId: resident.unitId ?? defaultResident?.unitId ?? assignedUnit?.id,
+      houseNumber: resident.propertyId || resident.unitId
+        ? resident.houseNumber
+        : defaultResident?.houseNumber ?? resident.houseNumber,
+      moveInDate: resident.moveInDate ?? defaultResident?.moveInDate ?? assignedUnit?.moveInDate
+    };
+  });
+  const normalizedPayments = (saved.payments ?? defaults.payments).map((payment) => {
+    const bill = (saved.bills ?? defaults.bills).find((item) => item.id === payment.billId);
+    const resident = normalizedResidents.find((item) => item.id === payment.residentId);
+
+    return {
+      ...payment,
+      estateId: payment.estateId ?? bill?.estateId ?? resident?.estateId,
+      propertyId: payment.propertyId ?? bill?.propertyId ?? resident?.propertyId,
+      unitId: payment.unitId ?? bill?.unitId ?? resident?.unitId,
+      processor: payment.processor ?? "manual",
+      channel: payment.channel ?? "bank_transfer",
+      source: payment.source ?? (payment.status === "confirmed" ? "admin" : "resident")
+    };
+  });
+  const normalizedBills = (saved.bills ?? defaults.bills).map((bill) => {
+    const resident = normalizedResidents.find((item) => item.id === bill.residentId);
+    const paidAmount = bill.paidAmount ?? paymentTotalForBill(normalizedPayments, bill.id);
+
+    return {
+      ...bill,
+      propertyId: bill.propertyId ?? resident?.propertyId,
+      unitId: bill.unitId ?? resident?.unitId,
+      category: bill.category ?? "Service charge",
+      paidAmount,
+      status: billStatusForPaymentTotal(bill, paidAmount)
+    };
+  });
   const approvedResidentProfiles = approvedUsers
     .filter((user) => user.role === "resident")
     .map((user) =>
@@ -958,7 +1260,7 @@ function normalizeLocalEstateState(saved: Partial<LocalEstateState>) {
     )
     .filter(
       (profile) =>
-        !savedResidents.some(
+        !normalizedResidents.some(
           (resident) =>
             resident.id === profile.id ||
             resident.email.toLowerCase() === profile.email.toLowerCase()
@@ -969,10 +1271,15 @@ function normalizeLocalEstateState(saved: Partial<LocalEstateState>) {
     ...defaults,
     ...saved,
     estates: sortEstatesWithDefaultFirst(saved.estates?.length ? saved.estates : defaults.estates),
+    properties: normalizedProperties,
+    units: normalizedUnits,
     accessRequests,
-    residents: [...savedResidents, ...approvedResidentProfiles],
+    residents: [...normalizedResidents, ...approvedResidentProfiles],
+    bills: normalizedBills,
+    payments: normalizedPayments,
     emergencyAlerts: saved.emergencyAlerts ?? defaults.emergencyAlerts,
-    approvedUsers
+    approvedUsers,
+    auditLogs: saved.auditLogs?.length ? saved.auditLogs : defaults.auditLogs
   } as LocalEstateState;
 }
 

@@ -73,6 +73,8 @@ NEXT_PUBLIC_ESTATE_APP_URL=https://lbsview-estate.appwrite.network
 NEXT_PUBLIC_ENABLE_LOCAL_DEMO=true
 ```
 
+Backend migration notes are tracked in `docs/appwrite-migration-plan.md`. The target model is property first, unit second, resident third, with online payment webhooks updating bills, balances, reports, and audit logs automatically.
+
 ## Demo Accounts
 
 All demo accounts use `CorsoDemo!2026#LBS`.

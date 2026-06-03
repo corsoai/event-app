@@ -16,15 +16,42 @@ export type Estate = {
   gateName: string;
 };
 
+export type Property = {
+  id: string;
+  estateId: string;
+  propertyCode: string;
+  name: string;
+  description: string;
+  street: string;
+  legacyName?: string;
+  status: "active" | "inactive";
+};
+
+export type Unit = {
+  id: string;
+  estateId: string;
+  propertyId: string;
+  unitCode: string;
+  label: string;
+  apartmentType: string;
+  status: "occupied" | "vacant" | "moved out";
+  currentResidentId?: string;
+  moveInDate?: string;
+  legacyName?: string;
+};
+
 export type Resident = {
   id: string;
   estateId: string;
+  propertyId?: string;
+  unitId?: string;
   name: string;
   houseNumber: string;
   phone: string;
   email: string;
   type: "owner" | "tenant" | "family member";
   status: "active" | "inactive" | "moved out";
+  moveInDate?: string;
 };
 
 export type Visitor = {
@@ -47,20 +74,58 @@ export type Bill = {
   id: string;
   residentId: string;
   estateId: string;
+  propertyId?: string;
+  unitId?: string;
+  category?: string;
   title: string;
   amount: number;
+  paidAmount?: number;
   dueDate: string;
   status: "unpaid" | "partially paid" | "paid" | "overdue";
 };
+
+export type PaymentChannel =
+  | "online"
+  | "bank_transfer"
+  | "cash"
+  | "pos"
+  | "whatsapp_receipt";
+
+export type PaymentProcessor =
+  | "paystack"
+  | "flutterwave"
+  | "monnify"
+  | "gtbank_squad"
+  | "manual";
 
 export type Payment = {
   id: string;
   billId: string;
   residentId: string;
+  estateId?: string;
+  propertyId?: string;
+  unitId?: string;
   amount: number;
   reference: string;
+  processor?: PaymentProcessor;
+  channel?: PaymentChannel;
+  providerReference?: string;
   date: string;
   status: "pending" | "confirmed" | "rejected";
+  source?: "resident" | "admin" | "webhook";
+  confirmedAt?: string;
+  confirmedBy?: string;
+};
+
+export type AuditLog = {
+  id: string;
+  estateId: string;
+  actor: string;
+  action: string;
+  entityType: "property" | "unit" | "resident" | "bill" | "payment" | "visitor" | "system";
+  entityId: string;
+  metadata?: Record<string, string | number | boolean>;
+  createdAt: string;
 };
 
 export type Complaint = {

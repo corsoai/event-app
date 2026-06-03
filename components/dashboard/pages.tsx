@@ -54,10 +54,20 @@ import {
   announcements,
   knowledgeBase,
 } from "@/lib/demo-data";
-import { getCurrentResident, type LocalAccessRequest, type LocalEstateState, useLocalEstateStore } from "@/lib/local-store";
+import {
+  billOutstandingAmount,
+  billPaidAmount,
+  getCurrentResident,
+  getResidentProperty,
+  getResidentUnit,
+  residentUnitLabel,
+  type LocalAccessRequest,
+  type LocalEstateState,
+  useLocalEstateStore
+} from "@/lib/local-store";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { createSupabaseResidentVisitor, findSupabaseVisitorByCode } from "@/lib/supabase/data";
-import type { Bill, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, Resident, UserRole, Visitor } from "@/lib/types";
+import type { Bill, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, Payment, Resident, UserRole, Visitor } from "@/lib/types";
 import { contactLabel, makeDigitalIdNumber, money } from "@/lib/utils";
 import { getVisitorWindowState, VISITOR_CODE_VALIDITY_HOURS } from "@/lib/visitor-window";
 
@@ -155,9 +165,13 @@ function useCurrentResidentProfile(state: LocalEstateState) {
 
 export function AdminDashboard() {
   const { state } = useLocalEstateStore();
-  const paid = state.payments.filter((payment) => payment.status === "confirmed").reduce((sum, payment) => sum + payment.amount, 0);
+  const confirmedPayments = state.payments.filter((payment) => payment.status === "confirmed");
+  const paid = confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
   const expected = state.bills.reduce((sum, bill) => sum + bill.amount, 0);
-  const outstanding = state.bills.filter((bill) => bill.status !== "paid").reduce((sum, bill) => sum + bill.amount, 0);
+  const outstanding = state.bills.reduce((sum, bill) => sum + billOutstandingAmount(state, bill), 0);
+  const onlinePayments = confirmedPayments.filter((payment) => payment.channel === "online").reduce((sum, payment) => sum + payment.amount, 0);
+  const manualPayments = confirmedPayments.filter((payment) => payment.channel !== "online").reduce((sum, payment) => sum + payment.amount, 0);
+  const pendingPayments = state.payments.filter((payment) => payment.status === "pending").reduce((sum, payment) => sum + payment.amount, 0);
 
   return (
     <>
@@ -191,11 +205,14 @@ export function AdminDashboard() {
           ])}
         />
         <Card>
-          <CardHeader title="Revenue snapshot" description="MVP billing totals by estate assignment." />
+          <CardHeader title="Revenue snapshot" description="Expected revenue, confirmed payments, outstanding balances, and pending reviews." />
           <div className="space-y-5">
             <Progress label="Expected revenue" value={expected} max={expected} />
             <Progress label="Confirmed paid" value={paid} max={expected} />
             <Progress label="Outstanding" value={outstanding} max={expected} tone="bg-warn" />
+            <Progress label="Confirmed online" value={onlinePayments} max={expected} tone="bg-sky" />
+            <Progress label="Confirmed manual" value={manualPayments} max={expected} tone="bg-slate-400" />
+            <Progress label="Pending review" value={pendingPayments} max={expected} tone="bg-red-400" />
           </div>
           <div className="mt-6 border-t border-line pt-5">
             <p className="text-sm font-medium text-white">Recent activities</p>
@@ -282,6 +299,7 @@ export function ResidentsAdminPage() {
       {editingResident ? (
         <ResidentEditCard
           resident={editingResident}
+          state={state}
           saving={savingResident}
           onSave={saveResident}
           onCancel={() => setEditingResident(null)}
@@ -289,11 +307,18 @@ export function ResidentsAdminPage() {
       ) : null}
       <DataTable
         title="Resident directory"
-        description="Edit resident contact details, apartment / house number, resident type, and active status."
-        headers={["Name", "House", "Type", "Phone", "Status", "Action"]}
-        rows={state.residents.map((resident) => [
+        description="Edit resident contact details, property/unit assignment, resident type, and active status."
+        headers={["Name", "Property / Unit", "Type", "Phone", "Status", "Action"]}
+        rows={state.residents.map((resident) => {
+          const unit = getResidentUnit(state, resident);
+          const property = getResidentProperty(state, resident);
+
+          return [
           <div key={resident.id}><p className="font-medium text-white">{resident.name}</p><p className="text-xs text-slate-500">{resident.email}</p></div>,
-          resident.houseNumber,
+          <div key={`${resident.id}-unit`}>
+            <p className="font-mono text-smart">{residentUnitLabel(state, resident)}</p>
+            <p className="text-xs text-slate-500">{unit?.apartmentType ?? "Unit pending"}{property?.legacyName ? ` - Legacy: ${property.legacyName}` : ""}</p>
+          </div>,
           resident.type,
           resident.phone,
           <StatusBadge key={resident.status} status={resident.status} />,
@@ -301,7 +326,8 @@ export function ResidentsAdminPage() {
             <Pencil className="h-3.5 w-3.5" />
             Edit
           </Button>
-        ])}
+        ];
+        })}
       />
       <div className="mt-6">
         <DataTable
@@ -321,30 +347,43 @@ export function ResidentsAdminPage() {
   );
 }
 
-type ResidentEditInput = Pick<Resident, "name" | "houseNumber" | "phone" | "email" | "type" | "status">;
+type ResidentEditInput = Pick<Resident, "name" | "houseNumber" | "phone" | "email" | "type" | "status"> & {
+  propertyId?: string;
+  unitId?: string;
+  moveInDate?: string;
+};
 
 function ResidentEditCard({
   resident,
+  state,
   saving,
   onSave,
   onCancel
 }: {
   resident: Resident;
+  state: LocalEstateState;
   saving: boolean;
   onSave: (resident: Resident, input: ResidentEditInput) => void | Promise<void>;
   onCancel: () => void;
 }) {
+  const selectedUnit = getResidentUnit(state, resident);
+
   function submitResidentEdit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const unitId = String(form.get("unitId") ?? resident.unitId ?? "");
+    const unit = state.units.find((item) => item.id === unitId);
 
     void onSave(resident, {
       name: String(form.get("name") ?? "").trim(),
-      houseNumber: String(form.get("houseNumber") ?? "").trim(),
+      houseNumber: unit?.unitCode ?? String(form.get("houseNumber") ?? "").trim(),
       phone: String(form.get("phone") ?? "").trim(),
       email: String(form.get("email") ?? "").trim(),
       type: String(form.get("type") ?? resident.type) as Resident["type"],
-      status: String(form.get("status") ?? resident.status) as Resident["status"]
+      status: String(form.get("status") ?? resident.status) as Resident["status"],
+      propertyId: unit?.propertyId ?? resident.propertyId,
+      unitId: unit?.id ?? resident.unitId,
+      moveInDate: String(form.get("moveInDate") ?? resident.moveInDate ?? "").trim()
     });
   }
 
@@ -359,7 +398,16 @@ function ResidentEditCard({
           <Field label="Full name">
             <Input name="name" defaultValue={resident.name} required />
           </Field>
-          <Field label="Apartment / house number">
+          <Field label="Property / unit">
+            <Select name="unitId" defaultValue={selectedUnit?.id ?? resident.unitId ?? ""}>
+              {state.units.map((unit) => (
+                <option key={unit.id} value={unit.id}>
+                  {unit.unitCode} - {unit.label} - {unit.apartmentType}
+                </option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="Legacy / fallback house number">
             <Input name="houseNumber" defaultValue={resident.houseNumber} required />
           </Field>
           <Field label="Phone">
@@ -381,6 +429,9 @@ function ResidentEditCard({
               <option value="inactive">Inactive</option>
               <option value="moved out">Moved out</option>
             </Select>
+          </Field>
+          <Field label="Move-in date">
+            <Input name="moveInDate" type="date" defaultValue={resident.moveInDate ?? ""} />
           </Field>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -532,9 +583,9 @@ export function BillsAdminPage() {
       <PageHeader title="Bills" description="Create estate bills, assign them to residents or houses, and track due dates and payment status.">
         <Button type="button" onClick={() => scrollToSection("create-bill")}><ReceiptText className="h-4 w-4" />New bill</Button>
       </PageHeader>
-      <BillComposer onCreateBill={addBill} residentsDirectory={state.residents} />
+      <BillComposer onCreateBill={addBill} state={state} residentsDirectory={state.residents} />
       <div className="mt-6">
-        <BillsTable title="Current billing register" rows={state.bills} admin onMarkPaid={markBillPaid} residentsDirectory={state.residents} />
+        <BillsTable title="Current billing register" rows={state.bills} state={state} admin onMarkPaid={markBillPaid} residentsDirectory={state.residents} />
       </div>
     </>
   );
@@ -542,19 +593,40 @@ export function BillsAdminPage() {
 
 export function PaymentsAdminPage() {
   const { state, confirmPayment } = useLocalEstateStore();
+  const expected = state.bills.reduce((sum, bill) => sum + bill.amount, 0);
+  const confirmed = state.payments.filter((payment) => payment.status === "confirmed").reduce((sum, payment) => sum + payment.amount, 0);
+  const pendingReview = state.payments.filter((payment) => payment.status === "pending").reduce((sum, payment) => sum + payment.amount, 0);
+  const outstanding = state.bills.reduce((sum, bill) => sum + billOutstandingAmount(state, bill), 0);
+  const debtors = state.bills.filter((bill) => billOutstandingAmount(state, bill) > 0).length;
 
   return (
     <>
-      <PageHeader title="Payments" description="Review uploaded payment proof, payment references, and confirmation status before marking bills as paid." />
+      <PageHeader title="Payments" description="Online payments confirm automatically through processor webhooks. Manual bank transfers, cash, POS, and WhatsApp receipts stay available as admin-reviewed fallback." />
+      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+        <StatCard label="Expected revenue" value={money(expected)} helper="All issued bills" icon={<ReceiptText className="h-5 w-5" />} />
+        <StatCard label="Confirmed paid" value={money(confirmed)} helper="Webhook and admin confirmed" icon={<WalletCards className="h-5 w-5" />} />
+        <StatCard label="Outstanding" value={money(outstanding)} helper="Balance still owed" icon={<Landmark className="h-5 w-5" />} />
+        <StatCard label="Pending review" value={money(pendingReview)} helper="Manual proofs awaiting admin" icon={<ShieldCheck className="h-5 w-5" />} />
+        <StatCard label="Debtors" value={String(debtors)} helper="Bills with balance" icon={<Users className="h-5 w-5" />} />
+      </div>
       <DataTable
         title="Payment queue"
-        headers={["Reference", "Resident", "Bill", "Amount", "Date", "Status", "Action"]}
-        rows={state.payments.map((payment) => [
+        headers={["Reference", "Resident / unit", "Bill", "Amount", "Channel", "Status", "Action"]}
+        rows={state.payments.map((payment) => {
+          const resident = state.residents.find((item) => item.id === payment.residentId);
+
+          return [
           <span key={payment.reference} className="font-mono text-smart">{payment.reference}</span>,
-          state.residents.find((resident) => resident.id === payment.residentId)?.name ?? "Unknown",
+          <div key={`${payment.id}-resident`}>
+            <p className="font-medium text-white">{resident?.name ?? "Unknown"}</p>
+            <p className="text-xs font-mono text-smart">{resident ? residentUnitLabel(state, resident) : payment.unitId ?? "Unit pending"}</p>
+          </div>,
           state.bills.find((bill) => bill.id === payment.billId)?.title ?? "Unknown bill",
           money(payment.amount),
-          payment.date,
+          <div key={`${payment.id}-channel`}>
+            <p className="capitalize text-slate-200">{paymentChannelLabel(payment)}</p>
+            <p className="text-xs text-slate-500">{payment.processor ?? "manual"} - {payment.date}</p>
+          </div>,
           <StatusBadge key={payment.status} status={payment.status} />,
           payment.status === "confirmed" ? (
             <span key="done" className="text-xs text-slate-500">Confirmed</span>
@@ -563,8 +635,22 @@ export function PaymentsAdminPage() {
               Confirm
             </Button>
           )
-        ])}
+        ];
+        })}
       />
+      <div className="mt-6">
+        <DataTable
+          title="Recent audit trail"
+          description="Payment and billing changes should always leave a trace of who or what updated the record."
+          headers={["Time", "Actor", "Action", "Entity"]}
+          rows={state.auditLogs.slice(0, 8).map((log) => [
+            new Date(log.createdAt).toLocaleString("en-NG"),
+            log.actor,
+            log.action,
+            `${log.entityType}: ${log.entityId}`
+          ])}
+        />
+      </div>
     </>
   );
 }
@@ -654,7 +740,7 @@ export function DigitalIdsAdminPage() {
       <PageHeader title="Digital IDs" description="Issue and verify resident, domestic staff, vendor, and security IDs with QR-ready status checks." />
       <div className="grid gap-5 lg:grid-cols-3">
         {state.residents.slice(0, 3).map((resident) => (
-          <DigitalIdCard key={resident.id} name={resident.name} role={resident.type} estate="LBS View Estate" house={resident.houseNumber} idNumber={makeDigitalIdNumber(resident)} status={resident.status} />
+          <DigitalIdCard key={resident.id} name={resident.name} role={resident.type} estate="LBS View Estate" house={residentUnitLabel(state, resident)} idNumber={makeDigitalIdNumber(resident)} status={resident.status} />
         ))}
       </div>
     </>
@@ -719,32 +805,103 @@ function KnowledgeBasePage({ manager = false }: { manager?: boolean }) {
 
 export function ReportsPage() {
   const { state } = useLocalEstateStore();
-  const bars = [
-    ["Residents", state.residents.length, 10],
-    ["Visitors today", state.visitors.length, 8],
-    ["Outstanding bills", state.bills.filter((bill) => bill.status !== "paid").length, 8],
-    ["Open complaints", state.complaints.filter((complaint) => complaint.status !== "resolved").length, 8]
-  ] as const;
+  const expectedRevenue = state.bills.reduce((sum, bill) => sum + bill.amount, 0);
+  const confirmedPayments = state.payments.filter((payment) => payment.status === "confirmed");
+  const paidAmount = confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  const outstandingBalance = state.bills.reduce((sum, bill) => sum + billOutstandingAmount(state, bill), 0);
+  const debtorBills = state.bills.filter((bill) => billOutstandingAmount(state, bill) > 0);
+  const channelTotals = confirmedPayments.reduce<Record<string, number>>((totals, payment) => {
+    const channel = paymentChannelLabel(payment);
+    totals[channel] = (totals[channel] ?? 0) + payment.amount;
+    return totals;
+  }, {});
+  const paymentStatusTotals = state.payments.reduce<Record<string, { count: number; amount: number }>>((totals, payment) => {
+    const confirmation = payment.status === "confirmed"
+      ? "Confirmed"
+      : payment.status === "pending"
+        ? "Unconfirmed"
+        : "Rejected";
+    const method = payment.channel === "online" ? "online" : "manual";
+    const key = `${confirmation} ${method}`;
+
+    totals[key] = {
+      count: (totals[key]?.count ?? 0) + 1,
+      amount: (totals[key]?.amount ?? 0) + payment.amount
+    };
+
+    return totals;
+  }, {});
+  const categoryTotals = state.bills.reduce<Record<string, number>>((totals, bill) => {
+    const category = bill.category ?? "Service charge";
+    totals[category] = (totals[category] ?? 0) + bill.amount;
+    return totals;
+  }, {});
 
   return (
     <>
-      <PageHeader title="Reports" description="Basic operational analytics for estate admins: access, billing, complaints, and activities." />
-      <Card>
-        <CardHeader title="MVP analytics" description="Simple chart structure ready for a charting library in version 2." />
-        <div className="grid gap-5">
-          {bars.map(([label, value, max]) => (
-            <div key={label}>
-              <div className="mb-2 flex justify-between text-sm">
-                <span className="text-slate-300">{label}</span>
-                <span className="font-semibold text-white">{value}</span>
-              </div>
-              <div className="h-3 overflow-hidden rounded-full bg-ink">
-                <div className="h-full rounded-full bg-smart" style={{ width: `${Math.max(12, (value / max) * 100)}%` }} />
-              </div>
-            </div>
-          ))}
-        </div>
-      </Card>
+      <PageHeader title="Reports" description="Accounting and operations analytics for expected revenue, confirmed payments, outstanding balances, debtors, channels, categories, and audit trail." />
+      <div className="grid gap-4 md:grid-cols-4">
+        <StatCard label="Expected revenue" value={money(expectedRevenue)} helper="All bills issued" icon={<ReceiptText className="h-5 w-5" />} />
+        <StatCard label="Paid amount" value={money(paidAmount)} helper="Confirmed payments" icon={<WalletCards className="h-5 w-5" />} />
+        <StatCard label="Outstanding" value={money(outstandingBalance)} helper="Open balance" icon={<Landmark className="h-5 w-5" />} />
+        <StatCard label="Debtors" value={String(debtorBills.length)} helper="Bills with balance" icon={<Users className="h-5 w-5" />} />
+      </div>
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        <DataTable
+          title="Debtors"
+          headers={["Resident", "Unit", "Bill", "Outstanding"]}
+          rows={debtorBills.map((bill) => {
+            const resident = state.residents.find((item) => item.id === bill.residentId);
+
+            return [
+              resident?.name ?? "Unknown",
+              resident ? residentUnitLabel(state, resident) : bill.unitId ?? "Unit pending",
+              bill.title,
+              money(billOutstandingAmount(state, bill))
+            ];
+          })}
+        />
+        <DataTable
+          title="Payment channels"
+          description="Confirmed revenue by processor and payment route."
+          headers={["Channel", "Amount"]}
+          rows={Object.entries(channelTotals).map(([channel, amount]) => [
+            channel,
+            money(amount)
+          ])}
+        />
+      </div>
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
+        <DataTable
+          title="Bill categories"
+          headers={["Category", "Expected amount"]}
+          rows={Object.entries(categoryTotals).map(([category, amount]) => [
+            category,
+            money(amount)
+          ])}
+        />
+        <DataTable
+          title="Payment statuses"
+          headers={["Status", "Count", "Amount"]}
+          rows={Object.entries(paymentStatusTotals).map(([status, summary]) => [
+            status,
+            String(summary.count),
+            money(summary.amount)
+          ])}
+        />
+      </div>
+      <div className="mt-6">
+        <DataTable
+          title="Audit trail"
+          headers={["Time", "Actor", "Action", "Entity"]}
+          rows={state.auditLogs.slice(0, 8).map((log) => [
+            new Date(log.createdAt).toLocaleString("en-NG"),
+            log.actor,
+            log.action,
+            `${log.entityType}: ${log.entityId}`
+          ])}
+        />
+      </div>
     </>
   );
 }
@@ -756,7 +913,7 @@ export function SettingsPage() {
     <>
       <PageHeader title="Settings" description="Control role permissions, gate settings, service categories, integrations, and notification preferences." />
       <Card>
-        <CardHeader title="Platform controls" description="Role-based access and payment integration placeholders." />
+        <CardHeader title="Platform controls" description="Role-based access, payment processors, gate settings, and notification preferences." />
         <div className="grid gap-4 md:grid-cols-2">
           <Field label="Default resident status">
             <Select defaultValue="active"><option>active</option><option>inactive</option></Select>
@@ -765,7 +922,12 @@ export function SettingsPage() {
             <Select defaultValue="expire after visit date"><option>expire after visit date</option><option>expire after checkout</option></Select>
           </Field>
           <Field label="Payment gateway planned">
-            <Select defaultValue="Paystack"><option>Paystack</option><option>Flutterwave</option></Select>
+            <Select defaultValue="Paystack">
+              <option>Paystack</option>
+              <option>Flutterwave</option>
+              <option>Monnify</option>
+              <option>GTBank Squad</option>
+            </Select>
           </Field>
           <Field label="Notification providers planned">
             <Input defaultValue="Email, SMS, Push notifications" />
@@ -889,6 +1051,7 @@ export function EstateDetailPage({ estateId }: { estateId: string }) {
         <div className="mt-6">
           <ResidentEditCard
             resident={editingResident}
+            state={state}
             saving={savingResident}
             onSave={saveEstateResident}
             onCancel={() => setEditingResident(null)}
@@ -926,20 +1089,27 @@ export function EstateDetailPage({ estateId }: { estateId: string }) {
         <DataTable
           title="Resident directory"
           description="Super Admin can correct resident details inside this estate."
-          headers={["Resident", "House", "Type", "Status", "Action"]}
-          rows={estateResidents.map((resident) => [
+          headers={["Resident", "Property / Unit", "Type", "Status", "Action"]}
+          rows={estateResidents.map((resident) => {
+            const unit = getResidentUnit(state, resident);
+
+            return [
             <div key={resident.id}>
               <p className="font-medium text-white">{resident.name}</p>
               <p className="text-xs text-slate-500">{resident.email}</p>
             </div>,
-            resident.houseNumber,
+            <div key={`${resident.id}-unit`}>
+              <p className="font-mono text-smart">{residentUnitLabel(state, resident)}</p>
+              <p className="text-xs text-slate-500">{unit?.apartmentType ?? "Unit pending"}</p>
+            </div>,
             resident.type,
             <StatusBadge key={resident.status} status={resident.status} />,
             <Button key={`${resident.id}-edit`} variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={() => setEditingResident(resident)}>
               <Pencil className="h-3.5 w-3.5" />
               Edit
             </Button>
-          ])}
+          ];
+          })}
         />
       </div>
 
@@ -1327,7 +1497,7 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
       <PageHeader
         title="Users and roles"
         description={scope === "super-admin"
-          ? "Create platform, estate admin, security, resident, and vendor users without opening Supabase."
+          ? "Create platform, estate admin, security, resident, and vendor users from Corso."
           : "Create security, resident, and vendor users for your assigned estate."}
       />
       <AccessRequestsPanel
@@ -1364,8 +1534,8 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
               </Field>
             ) : null}
             {role === "resident" ? (
-              <Field label="Apartment / house number">
-                <Input name="houseNumber" placeholder="B12" required />
+              <Field label="Property / unit ID">
+                <Input name="houseNumber" placeholder="LDI-01-B" required />
               </Field>
             ) : null}
             <Field label="Set login password">
@@ -1433,7 +1603,7 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
                 </Field>
               ) : null}
               {editRole === "resident" ? (
-                <Field label="Apartment / house number">
+                <Field label="Property / unit ID">
                   <Input name="houseNumber" defaultValue={editingUser.houseNumber || "Pending assignment"} required />
                 </Field>
               ) : null}
@@ -1615,7 +1785,7 @@ export function ResidentDashboard() {
   const { state } = useLocalEstateStore();
   const resident = useCurrentResidentProfile(state);
   const myBills = state.bills.filter((bill) => bill.residentId === resident.id);
-  const outstanding = myBills.filter((bill) => bill.status !== "paid").reduce((sum, bill) => sum + bill.amount, 0);
+  const outstanding = myBills.reduce((sum, bill) => sum + billOutstandingAmount(state, bill), 0);
   return (
     <>
       <PageHeader title={`Welcome, ${resident.name}`} description="Invite visitors, check bills, submit complaints, read announcements, and keep your digital ID ready." >
@@ -1626,7 +1796,7 @@ export function ResidentDashboard() {
         </div>
       </PageHeader>
       <div className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Outstanding bills" value={money(outstanding)} helper="Transfer then upload proof" icon={<ReceiptText className="h-5 w-5" />} />
+        <StatCard label="Outstanding bills" value={money(outstanding)} helper="Pay online first" icon={<ReceiptText className="h-5 w-5" />} />
         <StatCard label="Expected visitors" value={String(state.visitors.filter((visitor) => visitor.residentId === resident.id).length)} helper="Pending access codes" icon={<DoorOpen className="h-5 w-5" />} />
         <StatCard label="My complaints" value={String(state.complaints.filter((complaint) => complaint.residentId === resident.id).length)} helper="Open and resolved tickets" icon={<ClipboardList className="h-5 w-5" />} />
       </div>
@@ -1635,7 +1805,7 @@ export function ResidentDashboard() {
           <CardHeader title="Resident actions" description="The core mobile-first resident flow." />
           <div className="grid gap-3">
             <ActionRow icon={<QrCode className="h-5 w-5" />} title="Invite visitor" helper="Create a code and share it manually by WhatsApp or SMS." />
-            <ActionRow icon={<Upload className="h-5 w-5" />} title="Upload payment proof" helper="Add transfer reference for admin confirmation." />
+            <ActionRow icon={<WalletCards className="h-5 w-5" />} title="Pay bills online" helper="Use Paystack, Flutterwave, Monnify, or Squad when connected." />
             <ActionRow icon={<ClipboardList className="h-5 w-5" />} title="Submit complaint" helper="Report security, power, water, waste, road, or facility issues." />
           </div>
         </Card>
@@ -1688,7 +1858,7 @@ function ResidentSosFlow() {
   const selectedOption = emergencyAlertOptions.find((option) => option.type === selectedType) ?? emergencyAlertOptions[1];
   const myAlerts = state.emergencyAlerts.filter((alert) => alert.residentId === resident.id);
   const openResidentAlert = myAlerts.find((alert) => alert.status === "active" || alert.status === "acknowledged");
-  const locationLabel = `${resident.houseNumber}, ${estate?.address ?? "LBS View Estate"}`;
+  const locationLabel = `${residentUnitLabel(state, resident)}, ${estate?.address ?? "LBS View Estate"}`;
   const cooldownRemaining = Math.max(0, Math.ceil((SOS_RESUBMIT_COOLDOWN_MS - (Date.now() - lastSubmitAt)) / 1000));
   const sendLocked = Boolean(openResidentAlert) || cooldownRemaining > 0;
 
@@ -1943,7 +2113,7 @@ export function InviteVisitorPage() {
           status={status}
           phone={sharePhone}
           estateName={estate?.name ?? "LBS View Estate"}
-          residentAddress={`${resident.houseNumber}, ${estate?.address ?? "LBS View Estate"}`}
+          residentAddress={`${residentUnitLabel(state, resident)}, ${estate?.address ?? "LBS View Estate"}`}
           visitDate={shareDate}
           arrivalTime={shareTime}
         />
@@ -1982,7 +2152,7 @@ export function MyBillsPage() {
   return (
     <>
       <PageHeader title="My bills" description="View outstanding estate bills, due dates, and payment status." />
-      <BillsTable title="Resident billing" rows={myBills} residentsDirectory={state.residents} />
+      <BillsTable title="Resident billing" rows={myBills} state={state} residentsDirectory={state.residents} />
     </>
   );
 }
@@ -1991,32 +2161,92 @@ export function PaymentHistoryPage() {
   const { state, addPayment } = useLocalEstateStore();
   const resident = useCurrentResidentProfile(state);
   const myBills = state.bills.filter((bill) => bill.residentId === resident.id);
+  const payableBills = myBills.filter((bill) => billOutstandingAmount(state, bill) > 0);
   const myPayments = state.payments.filter((payment) => payment.residentId === resident.id);
   const [paymentMessage, setPaymentMessage] = useState("");
 
-  function submitPayment(event: FormEvent<HTMLFormElement>) {
+  function submitOnlinePayment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const billId = String(form.get("billId") ?? payableBills[0]?.id);
+    const bill = payableBills.find((item) => item.id === billId) ?? payableBills[0];
+    const processor = String(form.get("processor") ?? "paystack") as Payment["processor"];
+    if (!bill) {
+      return;
+    }
+
+    const payment = addPayment({
+      billId: bill.id,
+      amount: billOutstandingAmount(state, bill),
+      reference: `${processor?.toUpperCase() ?? "ONLINE"}-${Date.now()}`,
+      channel: "online",
+      processor,
+      source: "webhook"
+    });
+    setPaymentMessage(`${payment.reference} confirmed automatically by ${processor} webhook.`);
+    event.currentTarget.reset();
+  }
+
+  function submitManualPayment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
     const payment = addPayment({
-      billId: String(form.get("billId") ?? myBills[0]?.id),
+      billId: String(form.get("billId") ?? payableBills[0]?.id),
       amount: Number(form.get("amount") ?? 0),
-      reference: String(form.get("reference") || `LOCAL-${Date.now()}`)
+      reference: String(form.get("reference") || `LOCAL-${Date.now()}`),
+      channel: String(form.get("channel") ?? "bank_transfer") as Payment["channel"],
+      processor: "manual",
+      source: "resident"
     });
-    setPaymentMessage(`Payment proof ${payment.reference} saved locally for admin confirmation.`);
+    setPaymentMessage(`Manual payment proof ${payment.reference} saved for admin confirmation.`);
     event.currentTarget.reset();
   }
 
   return (
     <>
-      <PageHeader title="Payment history" description="Upload payment proof and track admin confirmation for manual bank transfers." />
-      {myBills.length ? (
+      <PageHeader title="Payment history" description="Pay bills online first. Manual bank transfer, POS, cash, or WhatsApp receipts remain available when online payment is not possible." />
+      {payableBills.length ? (
         <Card className="mb-6">
-          <CardHeader title="Upload proof" description="Structure is ready for a future Paystack or Flutterwave integration." />
-          <form onSubmit={submitPayment}>
+          <CardHeader title="Pay online" description="Demo flow: the processor webhook confirms the payment, updates the bill, resident balance, reports, and audit trail automatically." />
+          <form onSubmit={submitOnlinePayment}>
             <div className="grid gap-4 md:grid-cols-4">
               <Field label="Bill">
                 <Select name="billId" defaultValue={myBills[0]?.id}>
-                  {myBills.map((bill) => (
+                  {payableBills.map((bill) => (
+                    <option key={bill.id} value={bill.id}>
+                      {bill.title} - {money(billOutstandingAmount(state, bill))}
+                    </option>
+                  ))}
+                </Select>
+              </Field>
+              <Field label="Processor">
+                <Select name="processor" defaultValue="paystack">
+                  <option value="paystack">Paystack</option>
+                  <option value="flutterwave">Flutterwave</option>
+                  <option value="monnify">Monnify</option>
+                  <option value="gtbank_squad">GTBank Squad</option>
+                </Select>
+              </Field>
+              <Field label="Unit"><Input value={residentUnitLabel(state, resident)} readOnly /></Field>
+              <div className="flex items-end">
+                <Button className="w-full"><WalletCards className="h-4 w-4" />Pay online</Button>
+              </div>
+            </div>
+          </form>
+        </Card>
+      ) : (
+        <Card className="mb-6">
+          <CardHeader title="No outstanding bills" description="All assigned bills are fully paid or no bills have been assigned to this resident." />
+        </Card>
+      )}
+      {payableBills.length ? (
+        <Card className="mb-6">
+          <CardHeader title="Manual payment fallback" description="Use this only for bank transfers, cash, POS, or WhatsApp receipt payments that need admin confirmation." />
+          <form onSubmit={submitManualPayment}>
+            <div className="grid gap-4 md:grid-cols-5">
+              <Field label="Bill">
+                <Select name="billId" defaultValue={payableBills[0]?.id}>
+                  {payableBills.map((bill) => (
                     <option key={bill.id} value={bill.id}>
                       {bill.title}
                     </option>
@@ -2025,24 +2255,29 @@ export function PaymentHistoryPage() {
               </Field>
               <Field label="Payment reference"><Input name="reference" placeholder="BANK-TRANSFER-REF" required /></Field>
               <Field label="Amount"><Input name="amount" type="number" placeholder="85000" min={1} required /></Field>
+              <Field label="Channel">
+                <Select name="channel" defaultValue="bank_transfer">
+                  <option value="bank_transfer">Bank transfer</option>
+                  <option value="cash">Cash</option>
+                  <option value="pos">POS</option>
+                  <option value="whatsapp_receipt">WhatsApp receipt</option>
+                </Select>
+              </Field>
               <Field label="Proof upload"><Input type="file" /></Field>
             </div>
-            {paymentMessage ? <p className="mt-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{paymentMessage}</p> : null}
-            <Button className="mt-5"><Upload className="h-4 w-4" />Submit proof</Button>
+            <Button className="mt-5"><Upload className="h-4 w-4" />Submit manual proof</Button>
           </form>
         </Card>
-      ) : (
-        <Card className="mb-6">
-          <CardHeader title="No assigned bills yet" description="An estate admin can assign bills to this resident from the billing page." />
-        </Card>
-      )}
+      ) : null}
+      {paymentMessage ? <p className="mb-6 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{paymentMessage}</p> : null}
       <DataTable
         title="Payment history"
-        headers={["Reference", "Bill", "Amount", "Date", "Status"]}
+        headers={["Reference", "Bill", "Amount", "Channel", "Date", "Status"]}
         rows={myPayments.map((payment) => [
           <span key={payment.reference} className="font-mono text-smart">{payment.reference}</span>,
           state.bills.find((bill) => bill.id === payment.billId)?.title ?? "Unknown bill",
           money(payment.amount),
+          paymentChannelLabel(payment),
           payment.date,
           <StatusBadge key={payment.status} status={payment.status} />
         ])}
@@ -2152,12 +2387,12 @@ export function ResidentDigitalIdPage() {
     <>
       <PageHeader title="My digital ID" description="Use your digital ID for status checks at the gate and estate service points." />
       <div className="grid gap-6 lg:grid-cols-[0.8fr_1fr]">
-        <DigitalIdCard name={resident.name} role={`Resident ${resident.type}`} estate="LBS View Estate" house={resident.houseNumber} idNumber={idNumber} status={resident.status} />
+        <DigitalIdCard name={resident.name} role={`Resident ${resident.type}`} estate="LBS View Estate" house={residentUnitLabel(state, resident)} idNumber={idNumber} status={resident.status} />
         <Card>
           <CardHeader title="ID verification details" description="Security can scan the QR or search the ID number." />
           <div className="grid gap-4 text-sm text-slate-300">
             <ActionRow icon={<ShieldCheck className="h-5 w-5" />} title="Status" helper="Active resident with valid estate access." />
-            <ActionRow icon={<HomeIcon />} title="Household" helper={`${resident.houseNumber} resident profile.`} />
+            <ActionRow icon={<HomeIcon />} title="Property / unit" helper={`${residentUnitLabel(state, resident)} resident profile.`} />
             <ActionRow icon={<Landmark className="h-5 w-5" />} title="Estate" helper="LBS View Estate - Main Gate A." />
           </div>
         </Card>
@@ -2739,7 +2974,7 @@ export function EntryLogsPage() {
 }
 
 export function VerifyDigitalIdPage() {
-  const [idNumber, setIdNumber] = useState("LBS-B12-0010");
+  const [idNumber, setIdNumber] = useState("LBS-LDI01B-0010");
   const [message, setMessage] = useState("");
   const [scannerOpen, setScannerOpen] = useState(false);
 
@@ -2785,7 +3020,7 @@ export function VerifyDigitalIdPage() {
           onClose={() => setScannerOpen(false)}
         />
         <div className="mt-5 grid gap-6 lg:grid-cols-[0.8fr_1fr]">
-          <DigitalIdCard name="Amina Okafor" role="Resident owner" estate="LBS View Estate" house="B12" idNumber={idNumber} status="active" />
+          <DigitalIdCard name="Amina Okafor" role="Resident owner" estate="LBS View Estate" house="LDI-01-B" idNumber={idNumber} status="active" />
           <div className="rounded-lg border border-smart/30 bg-smart/10 p-4 text-sm leading-6 text-smart">
             {message || "Enter an ID number and click Verify ID to check access status."}
           </div>
@@ -2860,12 +3095,14 @@ function EstateComposer({ onCreateEstate }: { onCreateEstate: (input: Omit<Estat
 function BillsTable({
   title,
   rows,
+  state,
   residentsDirectory,
   admin = false,
   onMarkPaid
 }: {
   title: string;
   rows: Bill[];
+  state: LocalEstateState;
   residentsDirectory: Resident[];
   admin?: boolean;
   onMarkPaid?: (billId: string) => void;
@@ -2873,12 +3110,22 @@ function BillsTable({
   return (
     <DataTable
       title={title}
-      headers={["Bill", "Resident", "Amount", "Due date", "Status", "Action"]}
-      rows={rows.map((bill) => [
-        bill.title,
-        residentsDirectory.find((resident) => resident.id === bill.residentId)?.name ?? "All residents",
+      headers={["Bill", "Unit", "Resident", "Expected", "Paid", "Outstanding", "Status", "Action"]}
+      rows={rows.map((bill) => {
+        const resident = residentsDirectory.find((item) => item.id === bill.residentId);
+        const paid = billPaidAmount(state, bill);
+        const outstanding = billOutstandingAmount(state, bill);
+
+        return [
+        <div key={`${bill.id}-title`}>
+          <p className="font-medium text-white">{bill.title}</p>
+          <p className="text-xs text-slate-500">{bill.category ?? "Service charge"} - Due {bill.dueDate}</p>
+        </div>,
+        resident ? residentUnitLabel(state, resident) : bill.unitId ?? "All units",
+        resident?.name ?? "All residents",
         money(bill.amount),
-        bill.dueDate,
+        money(paid),
+        money(outstanding),
         <StatusBadge key={bill.status} status={bill.status} />,
         admin ? (
           <Button key="confirm" variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={() => onMarkPaid?.(bill.id)}>
@@ -2886,19 +3133,22 @@ function BillsTable({
           </Button>
         ) : (
           <Link key="proof" href="/resident/payments">
-            <Button variant="secondary" className="min-h-9 px-3 py-1 text-xs">Upload proof</Button>
+            <Button variant="secondary" className="min-h-9 px-3 py-1 text-xs">Pay online</Button>
           </Link>
         )
-      ])}
+      ];
+      })}
     />
   );
 }
 
 function BillComposer({
   onCreateBill,
+  state,
   residentsDirectory
 }: {
-  onCreateBill: (input: { title: string; amount: number; dueDate: string; residentId: string }) => Bill;
+  onCreateBill: (input: { title: string; amount: number; dueDate: string; residentId: string; category?: string; unitId?: string }) => Bill;
+  state: LocalEstateState;
   residentsDirectory: Resident[];
 }) {
   const [message, setMessage] = useState("");
@@ -2906,11 +3156,15 @@ function BillComposer({
   function submitBill(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const residentId = String(form.get("residentId") ?? "res-001");
+    const resident = residentsDirectory.find((item) => item.id === residentId);
     const bill = onCreateBill({
       title: String(form.get("title") ?? ""),
+      category: String(form.get("category") ?? "Service charge"),
       amount: Number(form.get("amount") ?? 0),
       dueDate: String(form.get("dueDate") ?? ""),
-      residentId: String(form.get("residentId") ?? "res-001")
+      residentId,
+      unitId: resident?.unitId
     });
     setMessage(`${bill.title} saved locally.`);
     event.currentTarget.reset();
@@ -2920,15 +3174,24 @@ function BillComposer({
     <Card id="create-bill" className="scroll-mt-24">
       <CardHeader title="Create bill" description="Assign a service charge, security levy, waste fee, power levy, maintenance fee, or custom charge." />
       <form onSubmit={submitBill}>
-        <div className="grid gap-4 md:grid-cols-4">
+        <div className="grid gap-4 md:grid-cols-5">
           <Field label="Title"><Input name="title" defaultValue="June 2026 Service Charge" required /></Field>
+          <Field label="Category">
+            <Select name="category" defaultValue="Service charge">
+              <option>Service charge</option>
+              <option>Security levy</option>
+              <option>Waste management</option>
+              <option>Power/infrastructure levy</option>
+              <option>Maintenance fee</option>
+            </Select>
+          </Field>
           <Field label="Amount"><Input name="amount" type="number" defaultValue={85000} min={1} required /></Field>
           <Field label="Due date"><Input name="dueDate" type="date" defaultValue="2026-06-28" required /></Field>
-          <Field label="Assignment">
+          <Field label="Resident / unit">
             <Select name="residentId" defaultValue="res-001">
               {residentsDirectory.map((resident) => (
                 <option key={resident.id} value={resident.id}>
-                  {resident.name} - {resident.houseNumber}
+                  {resident.name} - {residentUnitLabel(state, resident)}
                 </option>
               ))}
             </Select>
@@ -2942,6 +3205,8 @@ function BillComposer({
 }
 
 function Progress({ label, value, max, tone = "bg-smart" }: { label: string; value: number; max: number; tone?: string }) {
+  const width = max > 0 ? Math.min(100, (value / max) * 100) : 0;
+
   return (
     <div>
       <div className="mb-2 flex justify-between gap-4 text-sm">
@@ -2949,7 +3214,7 @@ function Progress({ label, value, max, tone = "bg-smart" }: { label: string; val
         <span className="font-semibold text-white">{money(value)}</span>
       </div>
       <div className="h-3 overflow-hidden rounded-full bg-ink">
-        <div className={`h-full rounded-full ${tone}`} style={{ width: `${Math.min(100, (value / max) * 100)}%` }} />
+        <div className={`h-full rounded-full ${tone}`} style={{ width: `${width}%` }} />
       </div>
     </div>
   );
@@ -3548,6 +3813,14 @@ function roleLabel(role: UserRole) {
     .split("_")
     .map((part) => part.charAt(0).toUpperCase() + part.slice(1))
     .join(" ");
+}
+
+function paymentChannelLabel(payment: Payment) {
+  if (payment.channel === "online") {
+    return `${payment.processor ?? "online"} online`;
+  }
+
+  return (payment.channel ?? "manual").replaceAll("_", " ");
 }
 
 function scrollToSection(id: string) {
