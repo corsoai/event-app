@@ -52,6 +52,8 @@ export type Resident = {
   type: "owner" | "tenant" | "family member";
   status: "active" | "inactive" | "moved out";
   moveInDate?: string;
+  legacyName?: string;
+  legacyAddress?: string;
 };
 
 export type Visitor = {

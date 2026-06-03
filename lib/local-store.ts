@@ -165,10 +165,43 @@ type EstateInput = {
   gateName: string;
 };
 
+type PropertyInput = {
+  estateId: string;
+  propertyCode: string;
+  name: string;
+  description: string;
+  street: string;
+  legacyName?: string;
+  status?: Property["status"];
+};
+
+type UnitInput = {
+  estateId: string;
+  propertyId: string;
+  unitCode: string;
+  label: string;
+  apartmentType: string;
+  status?: Unit["status"];
+  moveInDate?: string;
+  legacyName?: string;
+};
+
 type ResidentUpdateInput = Pick<Resident, "name" | "houseNumber" | "phone" | "email" | "type" | "status"> & {
   propertyId?: string;
   unitId?: string;
   moveInDate?: string;
+  legacyName?: string;
+  legacyAddress?: string;
+};
+
+type ResidentOnboardingInput = Pick<Resident, "name" | "phone" | "email" | "type" | "status"> & {
+  estateId: string;
+  unitId: string;
+  moveInDate?: string;
+  legacyName?: string;
+  legacyAddress?: string;
+  openingBalance?: number;
+  monthlyCharge?: number;
 };
 
 function defaultState(): LocalEstateState {
@@ -313,6 +346,58 @@ function addAuditLog(current: LocalEstateState, log: Omit<AuditLog, "id" | "crea
   };
 
   return [auditLog, ...current.auditLogs];
+}
+
+function slugForId(value: string) {
+  return value
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "") || "item";
+}
+
+function entityId(prefix: string, value: string) {
+  return `${prefix}-${slugForId(value)}`;
+}
+
+function nextEntityId(prefix: string, value: string) {
+  return `${entityId(prefix, value)}-${Date.now()}`;
+}
+
+function normalizePropertyCode(value: string) {
+  return value
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "-")
+    .replace(/-+/g, "-")
+    .replace(/^-|-$/g, "");
+}
+
+export function normalizeOnboardingUnitCode(value: string, propertyCode = "") {
+  const raw = value
+    .trim()
+    .toUpperCase()
+    .replace(/[’']/g, "")
+    .replace(/\s+/g, " ")
+    .replace(/\s*-\s*/g, "-");
+  const normalizedPropertyCode = normalizePropertyCode(propertyCode);
+  const jcMatch = raw.match(/^JC-?(\d+)$/);
+  const ateeqMatch = raw.match(/^A-?(\d+)$/);
+  const aaMatch = raw.match(/^AA-?(\d+)$/);
+
+  if (jcMatch) {
+    return `JC-${Number(jcMatch[1])}`;
+  }
+
+  if (aaMatch) {
+    return `AA-${Number(aaMatch[1])}`;
+  }
+
+  if (normalizedPropertyCode === "AA" && ateeqMatch) {
+    return `AA-${Number(ateeqMatch[1])}`;
+  }
+
+  return raw;
 }
 
 function realtimeEmergencyAlertFromPayload(payload: { new?: Record<string, unknown> | null }) {
@@ -925,6 +1010,191 @@ export function useLocalEstateStore() {
     return bill;
   }
 
+  function addProperty(input: PropertyInput) {
+    const propertyCode = normalizePropertyCode(input.propertyCode);
+    const existingProperty = state.properties.find(
+      (property) => property.propertyCode.toUpperCase() === propertyCode && property.estateId === input.estateId
+    );
+    const property: Property = {
+      id: existingProperty?.id ?? entityId("prop", `${input.estateId}-${propertyCode}`),
+      estateId: input.estateId,
+      propertyCode,
+      name: input.name.trim() || propertyCode,
+      description: input.description.trim(),
+      street: input.street.trim(),
+      legacyName: input.legacyName?.trim() || undefined,
+      status: input.status ?? "active"
+    };
+
+    commit((current) => ({
+      ...current,
+      properties: existingProperty
+        ? current.properties.map((item) => (item.id === existingProperty.id ? property : item))
+        : [property, ...current.properties],
+      auditLogs: addAuditLog(current, {
+        estateId: property.estateId,
+        actor: "Estate admin",
+        action: existingProperty ? "updated property group" : "created property group",
+        entityType: "property",
+        entityId: property.id,
+        metadata: {
+          propertyCode: property.propertyCode,
+          legacyName: property.legacyName ?? ""
+        }
+      })
+    }));
+
+    return property;
+  }
+
+  function addUnit(input: UnitInput) {
+    const property = state.properties.find((item) => item.id === input.propertyId);
+    if (!property) {
+      throw new Error("Choose a valid property group before creating a unit.");
+    }
+
+    const unitCode = normalizeOnboardingUnitCode(input.unitCode, property.propertyCode);
+    const existingUnit = state.units.find(
+      (unit) => unit.unitCode.toUpperCase() === unitCode && unit.estateId === input.estateId
+    );
+    const unit: Unit = {
+      id: existingUnit?.id ?? entityId("unit", `${input.estateId}-${unitCode}`),
+      estateId: input.estateId,
+      propertyId: property.id,
+      unitCode,
+      label: input.label.trim() || unitCode,
+      apartmentType: input.apartmentType.trim() || "Pending classification",
+      status: input.status ?? existingUnit?.status ?? "vacant",
+      currentResidentId: existingUnit?.currentResidentId,
+      moveInDate: input.moveInDate?.trim() || existingUnit?.moveInDate,
+      legacyName: input.legacyName?.trim() || existingUnit?.legacyName
+    };
+
+    commit((current) => ({
+      ...current,
+      units: existingUnit
+        ? current.units.map((item) => (item.id === existingUnit.id ? unit : item))
+        : [unit, ...current.units],
+      auditLogs: addAuditLog(current, {
+        estateId: unit.estateId,
+        actor: "Estate admin",
+        action: existingUnit ? "updated unit" : "created unit",
+        entityType: "unit",
+        entityId: unit.id,
+        metadata: {
+          propertyId: unit.propertyId,
+          unitCode: unit.unitCode,
+          legacyName: unit.legacyName ?? ""
+        }
+      })
+    }));
+
+    return unit;
+  }
+
+  function onboardResident(input: ResidentOnboardingInput) {
+    const unit = state.units.find((item) => item.id === input.unitId);
+    if (!unit) {
+      throw new Error("Choose a valid unit before onboarding a resident.");
+    }
+
+    const property = state.properties.find((item) => item.id === unit.propertyId);
+    const normalizedEmail = input.email.trim().toLowerCase();
+    const normalizedPhone = normalizePhoneNumber(input.phone);
+    const existingResident = state.residents.find(
+      (resident) =>
+        (!!normalizedEmail && resident.email.toLowerCase() === normalizedEmail) ||
+        (!!normalizedPhone && normalizePhoneNumber(resident.phone) === normalizedPhone)
+    );
+    const residentId = existingResident?.id ?? nextEntityId("res", input.name || unit.unitCode);
+    const activeOccupantId = input.status === "active" ? residentId : unit.currentResidentId;
+    const resident: Resident = {
+      id: residentId,
+      estateId: input.estateId,
+      propertyId: property?.id ?? unit.propertyId,
+      unitId: unit.id,
+      name: input.name.trim(),
+      houseNumber: unit.unitCode,
+      phone: normalizedPhone || input.phone.trim() || "Not provided",
+      email: normalizedEmail,
+      type: input.type,
+      status: input.status,
+      moveInDate: input.moveInDate?.trim() || undefined,
+      legacyName: input.legacyName?.trim() || undefined,
+      legacyAddress: input.legacyAddress?.trim() || undefined
+    };
+    const previousCurrentResidentId = unit.currentResidentId && unit.currentResidentId !== resident.id
+      ? unit.currentResidentId
+      : undefined;
+    const openingBalance = Math.max(0, input.openingBalance ?? 0);
+    const openingBill: Bill | null = openingBalance > 0
+      ? {
+          id: `bill-open-${Date.now()}`,
+          residentId: resident.id,
+          estateId: resident.estateId,
+          propertyId: resident.propertyId,
+          unitId: resident.unitId,
+          category: "Opening balance",
+          title: "Opening balance from legacy system",
+          amount: openingBalance,
+          paidAmount: 0,
+          dueDate: today(),
+          status: "unpaid"
+        }
+      : null;
+
+    commit((current) => ({
+      ...current,
+      residents: existingResident
+        ? current.residents.map((item) => {
+            if (item.id === resident.id) {
+              return resident;
+            }
+
+            if (previousCurrentResidentId && item.id === previousCurrentResidentId) {
+              return { ...item, status: "moved out" as const };
+            }
+
+            return item;
+          })
+        : [
+            resident,
+            ...current.residents.map((item) =>
+              previousCurrentResidentId && item.id === previousCurrentResidentId
+                ? { ...item, status: "moved out" as const }
+                : item
+            )
+          ],
+      units: current.units.map((item) =>
+        item.id === unit.id
+          ? {
+              ...item,
+              currentResidentId: input.status === "active" ? activeOccupantId : item.currentResidentId,
+              status: input.status === "active" ? "occupied" : item.status,
+              moveInDate: input.status === "active" ? resident.moveInDate ?? item.moveInDate : item.moveInDate
+            }
+          : item
+      ),
+      bills: openingBill ? [openingBill, ...current.bills] : current.bills,
+      auditLogs: addAuditLog(current, {
+        estateId: resident.estateId,
+        actor: "Estate admin",
+        action: existingResident ? "updated resident onboarding" : "onboarded resident",
+        entityType: "resident",
+        entityId: resident.id,
+        metadata: {
+          unitCode: unit.unitCode,
+          propertyCode: property?.propertyCode ?? "",
+          openingBalance,
+          monthlyCharge: input.monthlyCharge ?? 0,
+          previousCurrentResidentId: previousCurrentResidentId ?? ""
+        }
+      })
+    }));
+
+    return resident;
+  }
+
   function addEstate(input: EstateInput) {
     const estate: Estate = {
       id: makeEstateId(),
@@ -1001,6 +1271,9 @@ export function useLocalEstateStore() {
     confirmPayment,
     markBillPaid,
     addBill,
+    addProperty,
+    addUnit,
+    onboardResident,
     addEstate,
     resetLocalDemo
   };
@@ -1208,10 +1481,19 @@ function approveLocalAccessRequest(current: LocalEstateState, requestId: string)
   };
 }
 
+function mergeSavedWithDefaultsById<T extends { id: string }>(savedItems: T[] | undefined, defaultItems: T[]) {
+  if (!savedItems?.length) {
+    return defaultItems;
+  }
+
+  const savedIds = new Set(savedItems.map((item) => item.id));
+  return [...savedItems, ...defaultItems.filter((item) => !savedIds.has(item.id))];
+}
+
 function normalizeLocalEstateState(saved: Partial<LocalEstateState>) {
   const defaults = defaultState();
-  const normalizedProperties = saved.properties?.length ? saved.properties : defaults.properties;
-  const normalizedUnits = saved.units?.length ? saved.units : defaults.units;
+  const normalizedProperties = mergeSavedWithDefaultsById(saved.properties, defaults.properties);
+  const normalizedUnits = mergeSavedWithDefaultsById(saved.units, defaults.units);
   const approvedUsers = (saved.approvedUsers ?? defaults.approvedUsers).map((user) =>
     user.role === "resident" && !user.residentId
       ? { ...user, phone: user.phone ?? "", residentId: residentIdForIdentifier(user.phone || user.email) }

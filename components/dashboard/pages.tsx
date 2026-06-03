@@ -67,7 +67,7 @@ import {
 } from "@/lib/local-store";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { createSupabaseResidentVisitor, findSupabaseVisitorByCode } from "@/lib/supabase/data";
-import type { Bill, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, Payment, Resident, UserRole, Visitor } from "@/lib/types";
+import type { Bill, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, Payment, Property, Resident, Unit, UserRole, Visitor } from "@/lib/types";
 import { contactLabel, makeDigitalIdNumber, money } from "@/lib/utils";
 import { getVisitorWindowState, VISITOR_CODE_VALIDITY_HOURS } from "@/lib/visitor-window";
 
@@ -270,11 +270,21 @@ export function EstateProfilePage() {
 }
 
 export function ResidentsAdminPage() {
-  const { state, approveAccessRequest, rejectAccessRequest, refreshEstateState, updateResident } = useLocalEstateStore();
+  const {
+    state,
+    approveAccessRequest,
+    rejectAccessRequest,
+    refreshEstateState,
+    updateResident,
+    addProperty,
+    addUnit,
+    onboardResident
+  } = useLocalEstateStore();
   const pendingRequests = state.accessRequests.filter((request) => request.status === "pending");
   const [editingResident, setEditingResident] = useState<Resident | null>(null);
   const [savingResident, setSavingResident] = useState(false);
   const [residentMessage, setResidentMessage] = useState("");
+  const [onboardingMessage, setOnboardingMessage] = useState("");
 
   async function saveResident(resident: Resident, input: ResidentEditInput) {
     setSavingResident(true);
@@ -305,6 +315,30 @@ export function ResidentsAdminPage() {
         onRefresh={() => void refreshEstateState()}
       />
       {residentMessage ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{residentMessage}</p> : null}
+      {onboardingMessage ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{onboardingMessage}</p> : null}
+      <ResidentOnboardingPanel
+        state={state}
+        onCreateProperty={(input) => {
+          const property = addProperty(input);
+          setOnboardingMessage(`${property.propertyCode} property group is ready.`);
+        }}
+        onCreateUnit={(input) => {
+          try {
+            const unit = addUnit(input);
+            setOnboardingMessage(`${unit.unitCode} unit is ready.`);
+          } catch (error) {
+            setOnboardingMessage(error instanceof Error ? error.message : "Unit could not be saved.");
+          }
+        }}
+        onCreateResident={(input) => {
+          try {
+            const resident = onboardResident(input);
+            setOnboardingMessage(`${resident.name} has been attached to ${resident.houseNumber}.`);
+          } catch (error) {
+            setOnboardingMessage(error instanceof Error ? error.message : "Resident could not be onboarded.");
+          }
+        }}
+      />
       {editingResident ? (
         <ResidentEditCard
           resident={editingResident}
@@ -356,10 +390,225 @@ export function ResidentsAdminPage() {
   );
 }
 
+type PropertyOnboardingInput = {
+  estateId: string;
+  propertyCode: string;
+  name: string;
+  description: string;
+  street: string;
+  legacyName?: string;
+  status?: Property["status"];
+};
+
+type UnitOnboardingInput = {
+  estateId: string;
+  propertyId: string;
+  unitCode: string;
+  label: string;
+  apartmentType: string;
+  status?: Unit["status"];
+  moveInDate?: string;
+  legacyName?: string;
+};
+
+type ResidentOnboardingInput = Pick<Resident, "name" | "phone" | "email" | "type" | "status"> & {
+  estateId: string;
+  unitId: string;
+  moveInDate?: string;
+  legacyName?: string;
+  legacyAddress?: string;
+  openingBalance?: number;
+  monthlyCharge?: number;
+};
+
+function ResidentOnboardingPanel({
+  state,
+  onCreateProperty,
+  onCreateUnit,
+  onCreateResident
+}: {
+  state: LocalEstateState;
+  onCreateProperty: (input: PropertyOnboardingInput) => void;
+  onCreateUnit: (input: UnitOnboardingInput) => void;
+  onCreateResident: (input: ResidentOnboardingInput) => void;
+}) {
+  const estate = state.estates[0];
+  const estateProperties = state.properties.filter((property) => property.estateId === estate.id);
+  const estateUnits = state.units.filter((unit) => unit.estateId === estate.id);
+  const activeResidents = state.residents.filter((resident) => resident.estateId === estate.id && resident.status === "active");
+
+  function submitProperty(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    onCreateProperty({
+      estateId: String(form.get("estateId") ?? estate.id),
+      propertyCode: String(form.get("propertyCode") ?? "").trim(),
+      name: String(form.get("name") ?? "").trim(),
+      description: String(form.get("description") ?? "").trim(),
+      street: String(form.get("street") ?? "").trim(),
+      legacyName: String(form.get("legacyName") ?? "").trim(),
+      status: String(form.get("status") ?? "active") as Property["status"]
+    });
+    event.currentTarget.reset();
+  }
+
+  function submitUnit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const propertyId = String(form.get("propertyId") ?? "");
+    const property = state.properties.find((item) => item.id === propertyId);
+
+    onCreateUnit({
+      estateId: property?.estateId ?? estate.id,
+      propertyId,
+      unitCode: String(form.get("unitCode") ?? "").trim(),
+      label: String(form.get("label") ?? "").trim(),
+      apartmentType: String(form.get("apartmentType") ?? "").trim(),
+      status: String(form.get("status") ?? "vacant") as Unit["status"],
+      moveInDate: String(form.get("moveInDate") ?? "").trim(),
+      legacyName: String(form.get("legacyName") ?? "").trim()
+    });
+    event.currentTarget.reset();
+  }
+
+  function submitResident(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const unitId = String(form.get("unitId") ?? "");
+    const unit = state.units.find((item) => item.id === unitId);
+
+    onCreateResident({
+      estateId: unit?.estateId ?? estate.id,
+      unitId,
+      name: String(form.get("name") ?? "").trim(),
+      phone: String(form.get("phone") ?? "").trim(),
+      email: String(form.get("email") ?? "").trim(),
+      type: String(form.get("type") ?? "tenant") as Resident["type"],
+      status: String(form.get("status") ?? "active") as Resident["status"],
+      moveInDate: String(form.get("moveInDate") ?? "").trim(),
+      legacyName: String(form.get("legacyName") ?? "").trim(),
+      legacyAddress: String(form.get("legacyAddress") ?? "").trim(),
+      openingBalance: moneyInputToNumber(String(form.get("openingBalance") ?? "")),
+      monthlyCharge: moneyInputToNumber(String(form.get("monthlyCharge") ?? ""))
+    });
+    event.currentTarget.reset();
+  }
+
+  return (
+    <div className="mb-6 grid gap-5">
+      <div className="grid gap-4 md:grid-cols-3">
+        <StatCard label="Property groups" value={String(estateProperties.length)} helper="Includes LDI, JC, AA" icon={<Building2 className="h-5 w-5" />} />
+        <StatCard label="Units" value={String(estateUnits.length)} helper="Official unit IDs" icon={<Landmark className="h-5 w-5" />} />
+        <StatCard label="Active residents" value={String(activeResidents.length)} helper="Current occupants" icon={<Users className="h-5 w-5" />} />
+      </div>
+      <div className="grid gap-5 xl:grid-cols-3">
+        <Card>
+          <CardHeader title="Property group" description="Create LDI, JC, AA, or any other group." />
+          <form className="grid gap-3" onSubmit={submitProperty}>
+            <input type="hidden" name="estateId" value={estate.id} />
+            <Field label="Code"><Input name="propertyCode" placeholder="JC or AA" required /></Field>
+            <Field label="Name"><Input name="name" placeholder="Jeds Court Apartments" required /></Field>
+            <Field label="Street / location"><Input name="street" placeholder="LBS View Estate" /></Field>
+            <Field label="Description"><Input name="description" placeholder="Mini estate inside LBS View" /></Field>
+            <Field label="Legacy label"><Input name="legacyName" placeholder="Old landlord or export label" /></Field>
+            <Field label="Status">
+              <Select name="status" defaultValue="active">
+                <option value="active">Active</option>
+                <option value="inactive">Inactive</option>
+              </Select>
+            </Field>
+            <Button className="w-fit"><Building2 className="h-4 w-4" />Save group</Button>
+          </form>
+        </Card>
+        <Card>
+          <CardHeader title="Unit" description="Normalize IDs like JC1, A1, AA-1." />
+          <form className="grid gap-3" onSubmit={submitUnit}>
+            <Field label="Property group">
+              <Select name="propertyId" required>
+                {estateProperties.map((property) => (
+                  <option key={property.id} value={property.id}>
+                    {property.propertyCode} - {property.name}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Unit ID"><Input name="unitCode" placeholder="JC1 or A1" required /></Field>
+            <Field label="Label"><Input name="label" placeholder="Apartment 1" /></Field>
+            <Field label="Apartment type"><Input name="apartmentType" placeholder="2 bedroom apartment" /></Field>
+            <Field label="Legacy note"><Input name="legacyName" placeholder="JC1 Jed's Court Apartments" /></Field>
+            <Field label="Status">
+              <Select name="status" defaultValue="vacant">
+                <option value="vacant">Vacant</option>
+                <option value="occupied">Occupied</option>
+                <option value="moved out">Moved out</option>
+              </Select>
+            </Field>
+            <Button className="w-fit"><Landmark className="h-4 w-4" />Save unit</Button>
+          </form>
+        </Card>
+        <Card>
+          <CardHeader title="Resident" description="Attach resident to official unit ID." />
+          <form className="grid gap-3" onSubmit={submitResident}>
+            <Field label="Unit">
+              <Select name="unitId" required>
+                {estateUnits.map((unit) => (
+                  <option key={unit.id} value={unit.id}>
+                    {unit.unitCode} - {unit.apartmentType}
+                  </option>
+                ))}
+              </Select>
+            </Field>
+            <Field label="Full name"><Input name="name" required /></Field>
+            <Field label="Phone"><Input name="phone" placeholder="+234..." /></Field>
+            <Field label="Email"><Input name="email" type="email" /></Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Type">
+                <Select name="type" defaultValue="tenant">
+                  <option value="tenant">Tenant</option>
+                  <option value="owner">Owner</option>
+                  <option value="family member">Family member</option>
+                </Select>
+              </Field>
+              <Field label="Status">
+                <Select name="status" defaultValue="active">
+                  <option value="active">Active</option>
+                  <option value="inactive">Inactive</option>
+                  <option value="moved out">Moved out</option>
+                </Select>
+              </Field>
+            </div>
+            <Field label="Move-in date"><Input name="moveInDate" type="date" /></Field>
+            <Field label="Legacy name"><Input name="legacyName" placeholder="Old alias or landlord label" /></Field>
+            <Field label="Legacy address"><Input name="legacyAddress" placeholder="Old address/export text" /></Field>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <Field label="Opening balance"><Input name="openingBalance" inputMode="decimal" placeholder="90000" /></Field>
+              <Field label="Monthly charge"><Input name="monthlyCharge" inputMode="decimal" placeholder="10000" /></Field>
+            </div>
+            <Button className="w-fit"><UserCheck className="h-4 w-4" />Onboard resident</Button>
+          </form>
+        </Card>
+      </div>
+      <DataTable
+        title="Property and unit groups"
+        description="Use this to confirm mini-estate IDs before attaching residents."
+        headers={["Group", "Name", "Units", "Legacy"]}
+        rows={estateProperties.map((property) => [
+          <span key={property.id} className="font-mono text-smart">{property.propertyCode}</span>,
+          property.name,
+          String(estateUnits.filter((unit) => unit.propertyId === property.id).length),
+          property.legacyName ?? "-"
+        ])}
+      />
+    </div>
+  );
+}
+
 type ResidentEditInput = Pick<Resident, "name" | "houseNumber" | "phone" | "email" | "type" | "status"> & {
   propertyId?: string;
   unitId?: string;
   moveInDate?: string;
+  legacyName?: string;
+  legacyAddress?: string;
 };
 
 function ResidentEditCard({
@@ -392,7 +641,9 @@ function ResidentEditCard({
       status: String(form.get("status") ?? resident.status) as Resident["status"],
       propertyId: unit?.propertyId ?? resident.propertyId,
       unitId: unit?.id ?? resident.unitId,
-      moveInDate: String(form.get("moveInDate") ?? resident.moveInDate ?? "").trim()
+      moveInDate: String(form.get("moveInDate") ?? resident.moveInDate ?? "").trim(),
+      legacyName: String(form.get("legacyName") ?? "").trim(),
+      legacyAddress: String(form.get("legacyAddress") ?? "").trim()
     });
   }
 
@@ -441,6 +692,12 @@ function ResidentEditCard({
           </Field>
           <Field label="Move-in date">
             <Input name="moveInDate" type="date" defaultValue={resident.moveInDate ?? ""} />
+          </Field>
+          <Field label="Legacy name">
+            <Input name="legacyName" defaultValue={resident.legacyName ?? ""} placeholder="Old alias or landlord label" />
+          </Field>
+          <Field label="Legacy address">
+            <Input name="legacyAddress" defaultValue={resident.legacyAddress ?? ""} placeholder="Old address/export text" />
           </Field>
         </div>
         <div className="flex flex-wrap gap-3">
@@ -3883,6 +4140,11 @@ function visitorAccessWindowLabel(date: string, time: string) {
   }).format(endsAt);
 
   return `on ${formattedDate} from ${startTime} to ${formattedEndTime}`;
+}
+
+function moneyInputToNumber(value: string) {
+  const parsed = Number(value.replace(/[^\d.-]/g, ""));
+  return Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
 }
 
 function dateInputValue(date = new Date()) {

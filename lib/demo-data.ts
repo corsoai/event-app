@@ -79,6 +79,26 @@ export const properties: Property[] = [
     status: "active"
   },
   {
+    id: "prop-jc",
+    estateId: "lekki-gardens",
+    propertyCode: "JC",
+    name: "Jeds Court Apartments",
+    description: "Mini estate inside LBS View Estate",
+    street: "LBS View Estate",
+    legacyName: "Jed's Court Apartments",
+    status: "active"
+  },
+  {
+    id: "prop-aa",
+    estateId: "lekki-gardens",
+    propertyCode: "AA",
+    name: "Ateeq Apartment",
+    description: "Eight-unit Ateeq Apartment block inside LBS View Estate",
+    street: "LBS View Estate",
+    legacyName: "Ateeq Apartments",
+    status: "active"
+  },
+  {
     id: "prop-vic-02",
     estateId: "vi-court",
     propertyCode: "VIC-02",
@@ -224,6 +244,86 @@ export const units: Unit[] = [
     label: "Main house",
     apartmentType: "Detached house",
     status: "vacant"
+  },
+  {
+    id: "unit-aa-1",
+    estateId: "lekki-gardens",
+    propertyId: "prop-aa",
+    unitCode: "AA-1",
+    label: "Apartment 1",
+    apartmentType: "Duplex",
+    status: "vacant",
+    legacyName: "A1, Ateeq Apartments"
+  },
+  {
+    id: "unit-aa-2",
+    estateId: "lekki-gardens",
+    propertyId: "prop-aa",
+    unitCode: "AA-2",
+    label: "Apartment 2",
+    apartmentType: "Duplex",
+    status: "vacant",
+    legacyName: "A2, Ateeq Apartments"
+  },
+  {
+    id: "unit-aa-3",
+    estateId: "lekki-gardens",
+    propertyId: "prop-aa",
+    unitCode: "AA-3",
+    label: "Apartment 3",
+    apartmentType: "Duplex",
+    status: "vacant",
+    legacyName: "A3, Ateeq Apartments"
+  },
+  {
+    id: "unit-aa-4",
+    estateId: "lekki-gardens",
+    propertyId: "prop-aa",
+    unitCode: "AA-4",
+    label: "Apartment 4",
+    apartmentType: "Duplex",
+    status: "vacant",
+    legacyName: "A4, Ateeq Apartments"
+  },
+  {
+    id: "unit-aa-5",
+    estateId: "lekki-gardens",
+    propertyId: "prop-aa",
+    unitCode: "AA-5",
+    label: "Apartment 5",
+    apartmentType: "Duplex",
+    status: "vacant",
+    legacyName: "A5, Ateeq Apartments"
+  },
+  {
+    id: "unit-aa-6",
+    estateId: "lekki-gardens",
+    propertyId: "prop-aa",
+    unitCode: "AA-6",
+    label: "Apartment 6",
+    apartmentType: "Duplex",
+    status: "vacant",
+    legacyName: "A6, Ateeq Apartments"
+  },
+  {
+    id: "unit-aa-7",
+    estateId: "lekki-gardens",
+    propertyId: "prop-aa",
+    unitCode: "AA-7",
+    label: "Apartment 7",
+    apartmentType: "Duplex",
+    status: "vacant",
+    legacyName: "A7, Ateeq Apartments"
+  },
+  {
+    id: "unit-aa-8",
+    estateId: "lekki-gardens",
+    propertyId: "prop-aa",
+    unitCode: "AA-8",
+    label: "Apartment 8",
+    apartmentType: "Duplex",
+    status: "vacant",
+    legacyName: "A8, Ateeq Apartments"
   },
   {
     id: "unit-vic-02-p2",
