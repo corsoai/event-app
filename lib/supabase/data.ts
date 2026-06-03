@@ -11,6 +11,7 @@ import type {
 } from "@/lib/local-store";
 
 const LBS_VIEW_ESTATE_ID = "11111111-1111-1111-1111-111111111111";
+const LAGOS_TIME_ZONE = "Africa/Lagos";
 
 type SupabaseAccessRequest = {
   id: string;
@@ -554,8 +555,8 @@ function mapVisitorLog(row: Record<string, any>): LocalVisitorLog {
     code: row.visitors?.access_code ?? "",
     gateName: row.gate_name,
     guardName: "Security",
-    entryTime: row.entry_time ? new Date(row.entry_time).toLocaleTimeString("en-NG", { hour: "numeric", minute: "2-digit" }) : undefined,
-    exitTime: row.exit_time ? new Date(row.exit_time).toLocaleTimeString("en-NG", { hour: "numeric", minute: "2-digit" }) : undefined,
+    entryTime: row.entry_time ? new Intl.DateTimeFormat("en-NG", { hour: "numeric", minute: "2-digit", timeZone: LAGOS_TIME_ZONE }).format(new Date(row.entry_time)) : undefined,
+    exitTime: row.exit_time ? new Intl.DateTimeFormat("en-NG", { hour: "numeric", minute: "2-digit", timeZone: LAGOS_TIME_ZONE }).format(new Date(row.exit_time)) : undefined,
     decision: fromSupabaseVisitorDecision(row.decision),
     createdAt: String(row.created_at).slice(0, 10)
   };

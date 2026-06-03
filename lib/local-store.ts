@@ -52,6 +52,7 @@ import { getVisitorExpiresAtIso } from "@/lib/visitor-window";
 const STORAGE_KEY = "corso_estate_local_db_v1";
 const STATE_UPDATED_EVENT = "corso_estate_state_updated";
 const LEGACY_ESTATE_TOKEN = ["lekki", "gardens"].join("");
+const LAGOS_TIME_ZONE = "Africa/Lagos";
 
 export type LocalVisitorLog = {
   id: string;
@@ -227,7 +228,8 @@ function saveLocalEstateState(next: LocalEstateState) {
 function formatTime() {
   return new Intl.DateTimeFormat("en-NG", {
     hour: "numeric",
-    minute: "2-digit"
+    minute: "2-digit",
+    timeZone: LAGOS_TIME_ZONE
   }).format(new Date());
 }
 

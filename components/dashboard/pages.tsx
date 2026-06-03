@@ -77,6 +77,8 @@ type BarcodeDetectorInstance = {
 
 type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorInstance;
 
+const LAGOS_TIME_ZONE = "Africa/Lagos";
+
 declare global {
   interface Window {
     BarcodeDetector?: BarcodeDetectorConstructor;
@@ -644,7 +646,7 @@ export function PaymentsAdminPage() {
           description="Payment and billing changes should always leave a trace of who or what updated the record."
           headers={["Time", "Actor", "Action", "Entity"]}
           rows={state.auditLogs.slice(0, 8).map((log) => [
-            new Date(log.createdAt).toLocaleString("en-NG"),
+            formatAuditTime(log.createdAt),
             log.actor,
             log.action,
             `${log.entityType}: ${log.entityId}`
@@ -895,7 +897,7 @@ export function ReportsPage() {
           title="Audit trail"
           headers={["Time", "Actor", "Action", "Entity"]}
           rows={state.auditLogs.slice(0, 8).map((log) => [
-            new Date(log.createdAt).toLocaleString("en-NG"),
+            formatAuditTime(log.createdAt),
             log.actor,
             log.action,
             `${log.entityType}: ${log.entityId}`
@@ -3543,7 +3545,8 @@ function formatAlertTime(value: string) {
     month: "short",
     day: "numeric",
     hour: "numeric",
-    minute: "2-digit"
+    minute: "2-digit",
+    timeZone: LAGOS_TIME_ZONE
   }).format(new Date(value));
 }
 
@@ -3671,25 +3674,46 @@ function formatVisitDateTime(date: string, time: string) {
     weekday: "short",
     year: "numeric",
     month: "short",
-    day: "numeric"
-  }).format(new Date(`${date}T00:00:00`));
+    day: "numeric",
+    timeZone: LAGOS_TIME_ZONE
+  }).format(new Date(`${date}T00:00:00+01:00`));
 
   return `${formattedDate}${time ? ` at ${time}` : ""}`;
 }
 
 function dateInputValue(date = new Date()) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
+  const parts = new Intl.DateTimeFormat("en-CA", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    timeZone: LAGOS_TIME_ZONE
+  }).formatToParts(date);
+  const year = parts.find((part) => part.type === "year")?.value ?? String(date.getUTCFullYear());
+  const month = parts.find((part) => part.type === "month")?.value ?? String(date.getUTCMonth() + 1).padStart(2, "0");
+  const day = parts.find((part) => part.type === "day")?.value ?? String(date.getUTCDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
 }
 
 function timeInputValue(date = new Date()) {
-  const hour = String(date.getHours()).padStart(2, "0");
-  const minute = String(date.getMinutes()).padStart(2, "0");
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: LAGOS_TIME_ZONE
+  }).formatToParts(date);
+  const hour = parts.find((part) => part.type === "hour")?.value ?? String(date.getUTCHours()).padStart(2, "0");
+  const minute = parts.find((part) => part.type === "minute")?.value ?? String(date.getUTCMinutes()).padStart(2, "0");
 
   return `${hour}:${minute}`;
+}
+
+function formatAuditTime(value: string) {
+  return new Intl.DateTimeFormat("en-NG", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: LAGOS_TIME_ZONE
+  }).format(new Date(value));
 }
 
 function VisitorVerificationCard({
