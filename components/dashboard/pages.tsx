@@ -2074,7 +2074,7 @@ export function InviteVisitorPage() {
       }
 
       setCode(savedVisitor.code);
-      setVisitorQrValue(visitorQrValueFor(savedVisitor, resident));
+      setVisitorQrValue(visitorQrValueFor(savedVisitor));
       setSharePhone(phone);
       setShareDate(visitDate);
       setShareTime(arrivalTime);
@@ -2991,15 +2991,8 @@ async function findDemoVisitorByCode(code: string) {
   return payload as { visitor: Visitor; resident: Resident | null };
 }
 
-function visitorQrValueFor(visitor: Visitor, resident: Resident) {
-  const payload: VisitorQrPayload = {
-    type: "corso.visitor.invitation",
-    version: 1,
-    visitor,
-    resident
-  };
-
-  return `corso-visitor:${base64UrlEncode(JSON.stringify(payload))}`;
+function visitorQrValueFor(visitor: Visitor) {
+  return visitor.code;
 }
 
 function parseVisitorQrPayload(value: string): VisitorQrPayload | null {
@@ -3975,11 +3968,12 @@ function QRCodeImage({ value }: { value: string }) {
 
   useEffect(() => {
     QRCode.toDataURL(value, {
+      errorCorrectionLevel: "M",
       margin: 1,
-      width: 220,
+      width: 260,
       color: {
         dark: "#000000",
-        light: "#D5D5D5"
+        light: "#FFFFFF"
       }
     }).then(setSrc);
   }, [value]);
