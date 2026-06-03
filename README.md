@@ -7,7 +7,8 @@ A modern Next.js + TypeScript Progressive Web App for gated estate and community
 - Next.js App Router
 - TypeScript
 - Tailwind CSS
-- Supabase Auth and Postgres schema
+- Appwrite Sites deployment
+- Optional legacy Supabase Auth and Postgres schema
 - Manual PWA manifest and service worker
 - Mobile-first resident navigation and desktop admin sidebar
 
@@ -22,16 +23,55 @@ Open `http://localhost:3000`.
 
 ## Environment
 
-Copy `.env.example` to `.env.local` and fill in your Supabase project values:
+Copy `.env.example` to `.env.local`.
 
 ```bash
-NEXT_PUBLIC_SUPABASE_URL=https://your-project.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=your-supabase-anon-key
 NEXT_PUBLIC_APP_URL=http://localhost:3000
-NEXT_PUBLIC_ENABLE_LOCAL_DEMO=false
+NEXT_PUBLIC_ESTATE_APP_URL=http://localhost:3000
+NEXT_PUBLIC_ENABLE_LOCAL_DEMO=true
+NEXT_PUBLIC_APPWRITE_PROJECT_ID=lbsview-estate
+NEXT_PUBLIC_APPWRITE_PROJECT_NAME=LBS View Estate
+NEXT_PUBLIC_APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1
 ```
 
-If Supabase variables are not set, the login page still supports local demo routing so the MVP can be reviewed without a backend. When Supabase is configured, local demo login is disabled unless `NEXT_PUBLIC_ENABLE_LOCAL_DEMO=true`.
+The current Appwrite Sites deployment runs with local demo mode enabled while the backend is migrated to Appwrite. Do not set placeholder Supabase values in Appwrite environment variables. If Supabase variables are not set, the login page supports local demo routing so the MVP can be reviewed without a backend. When Supabase is configured, local demo login is disabled unless `NEXT_PUBLIC_ENABLE_LOCAL_DEMO=true`.
+
+## Appwrite Sites Deployment
+
+Production URL:
+
+```text
+https://lbsview-estate.appwrite.network
+```
+
+Appwrite project:
+
+```text
+Project ID: lbsview-estate
+Endpoint: https://fra.cloud.appwrite.io/v1
+Site ID: 6a1f926d0037a05007c7
+```
+
+Site settings:
+
+```text
+Repository: corsoai/lbsview-estate
+Branch: main
+Framework: Next.js
+Root directory: ./
+Install command: npm install
+Build command: npm run build
+Start command: bash helpers/next-js/server.sh
+Output directory: ./.next
+```
+
+Site environment variables:
+
+```bash
+NEXT_PUBLIC_APP_URL=https://lbsview-estate.appwrite.network
+NEXT_PUBLIC_ESTATE_APP_URL=https://lbsview-estate.appwrite.network
+NEXT_PUBLIC_ENABLE_LOCAL_DEMO=true
+```
 
 ## Demo Accounts
 
@@ -56,7 +96,7 @@ Approval flow:
 6. Admin approves the pending access request.
 7. The resident can now log in with the phone number and password they submitted.
 
-On production, the same flow uses Supabase Auth plus the `access_requests`, `profiles`, and `residents` tables. Admin approval creates the user's profile and resident record.
+With a production backend configured, the same flow should persist access requests, profiles, and residents server-side. The current Appwrite deployment uses local demo storage until the backend migration is complete.
 
 ## Routes
 

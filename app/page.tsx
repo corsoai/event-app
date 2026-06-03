@@ -133,7 +133,7 @@ export default function LandingPage() {
             <p className="text-sm font-semibold uppercase tracking-[0.2em] text-smart">Request Demo</p>
             <h2 className="mt-3 text-3xl font-semibold text-white">Deploy a smarter estate workflow</h2>
             <p className="mt-4 text-sm leading-7 text-slate-400">
-              Use this MVP as a foundation for a secure Corso estate product with Supabase auth, role-based dashboards, and mobile-ready access.
+              Use this MVP as a foundation for a secure Corso estate product with managed auth, role-based dashboards, and mobile-ready access.
             </p>
           </div>
           <DemoRequestForm />
