@@ -26,6 +26,17 @@ Recommended collections:
 | `payments` | Online and manual payment records |
 | `audit_logs` | Who or what changed each sensitive record |
 
+These are implemented for Appwrite TablesDB in `lib/appwrite/schema.ts`. The setup endpoint is:
+
+- `POST /api/appwrite/onboarding/setup`
+
+The resident import endpoints are:
+
+- `GET /api/appwrite/onboarding/status`
+- `POST /api/appwrite/onboarding/import`
+
+Mutation endpoints require the existing admin or super-admin role cookie and a server-only `APPWRITE_API_KEY`.
+
 ## Property And Unit Fields
 
 `properties`

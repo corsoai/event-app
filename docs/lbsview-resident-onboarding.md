@@ -58,3 +58,43 @@ Admin can now manually:
 - preserve legacy name/address notes
 - mark old occupants as `moved out`
 - create an opening balance bill during onboarding
+
+## Appwrite Import
+
+The admin import panel is on `/admin/residents` as `Appwrite import`.
+
+Required server environment variables:
+
+```bash
+NEXT_PUBLIC_APPWRITE_PROJECT_ID=lbsview-estate
+NEXT_PUBLIC_APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1
+APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1
+APPWRITE_DATABASE_ID=lbsview_estate
+APPWRITE_API_KEY=server-api-key-with-tablesdb-access
+```
+
+Flow:
+
+1. Click `Setup schema` to create the Appwrite TablesDB database and tables.
+2. Upload `.local-import/lbsview-onboarding-preview.json`.
+3. Review the dry-run counts.
+4. Click `Import` only after the ready/skipped totals look correct.
+
+Automatic import writes:
+
+- `estates`
+- `properties`
+- `units`
+- `residents`
+- `resident_unit_history`
+- opening balance `bills`
+- legacy confirmed `payments`
+- one `audit_logs` entry
+
+Automatic import skips:
+
+- rows already flagged for manual review
+- rows without a clean unit ID
+- rows outside approved property groups `JC`, `AA`, and clean `LDI-##`
+- duplicate active residents for the same unit
+- rows without phone and email

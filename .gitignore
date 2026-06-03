@@ -12,4 +12,5 @@ pnpm-debug.log*
 coverage
 tsconfig.tsbuildinfo
 .next-dev*.log
+.next-start*.log
 .local-import/

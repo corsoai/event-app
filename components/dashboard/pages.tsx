@@ -11,7 +11,9 @@ import {
   Camera,
   CheckCircle2,
   ClipboardList,
+  Database,
   DoorOpen,
+  FileJson,
   FilePlus2,
   Flame,
   HeartPulse,
@@ -25,6 +27,7 @@ import {
   Pencil,
   QrCode,
   ReceiptText,
+  RefreshCw,
   Search,
   ShieldCheck,
   Siren,
@@ -82,6 +85,60 @@ type VisitorQrPayload = {
   version: 1;
   visitor: Visitor;
   resident: Resident;
+};
+
+type AppwriteOnboardingStatus = {
+  configured: boolean;
+  missing: string[];
+  endpoint: string;
+  projectId: string;
+  databaseId: string;
+  apiKeyConfigured: boolean;
+  tableIds: string[];
+};
+
+type AppwriteImportSummary = {
+  totalRows: number;
+  importableRows: number;
+  skippedRows: number;
+  reviewRows: number;
+  duplicateActiveUnitRows: number;
+  properties: number;
+  units: number;
+  residents: number;
+  openingBills: number;
+  legacyPayments: number;
+  byProperty: Array<{ propertyCode: string; count: number }>;
+  skippedReasons: Array<{ reason: string; count: number }>;
+};
+
+type AppwriteImportResponse = {
+  dryRun: boolean;
+  imported: boolean;
+  summary: AppwriteImportSummary;
+  error?: string;
+};
+
+type LbsviewOnboardingPreviewRow = {
+  sourceRow: number;
+  fullName: string;
+  phone: string;
+  email: string;
+  role: string;
+  residentStatus: string;
+  propertyCode: string;
+  propertyName: string;
+  unitCode: string;
+  apartmentType: string;
+  legacyName: string;
+  legacyAddress: string;
+  legacyProperty: string;
+  expectedPayment: number;
+  amountPaid: number;
+  openingOutstanding: number;
+  expectedMonthly: number;
+  reviewRequired: boolean;
+  reviewReasons: string[];
 };
 
 const LAGOS_TIME_ZONE = "Africa/Lagos";
@@ -501,6 +558,7 @@ function ResidentOnboardingPanel({
         <StatCard label="Units" value={String(estateUnits.length)} helper="Official unit IDs" icon={<Landmark className="h-5 w-5" />} />
         <StatCard label="Active residents" value={String(activeResidents.length)} helper="Current occupants" icon={<Users className="h-5 w-5" />} />
       </div>
+      <AppwriteOnboardingPanel />
       <div className="grid gap-5 xl:grid-cols-3">
         <Card>
           <CardHeader title="Property group" description="Create LDI, JC, AA, or any other group." />
@@ -599,6 +657,260 @@ function ResidentOnboardingPanel({
           property.legacyName ?? "-"
         ])}
       />
+    </div>
+  );
+}
+
+function AppwriteOnboardingPanel() {
+  const [status, setStatus] = useState<AppwriteOnboardingStatus | null>(null);
+  const [rows, setRows] = useState<LbsviewOnboardingPreviewRow[]>([]);
+  const [summary, setSummary] = useState<AppwriteImportSummary | null>(null);
+  const [message, setMessage] = useState("");
+  const [busy, setBusy] = useState<"" | "status" | "setup" | "dry-run" | "import">("");
+  const ready = Boolean(status?.configured);
+  const hasRows = rows.length > 0;
+
+  useEffect(() => {
+    void refreshStatus();
+  }, []);
+
+  async function refreshStatus() {
+    setBusy("status");
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/appwrite/onboarding/status", { cache: "no-store" });
+      const payload = await response.json() as AppwriteOnboardingStatus;
+      setStatus(payload);
+    } catch {
+      setMessage("Appwrite status could not be checked.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function setupSchema() {
+    setBusy("setup");
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/appwrite/onboarding/setup", { method: "POST" });
+      const payload = await response.json() as { error?: string };
+      if (!response.ok) {
+        throw new Error(payload.error ?? "Appwrite schema setup failed.");
+      }
+
+      setMessage("Appwrite database and tables are ready.");
+      await refreshStatus();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Appwrite schema setup failed.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function loadPreviewFile(file: File | undefined) {
+    if (!file) {
+      return;
+    }
+
+    setBusy("dry-run");
+    setMessage("");
+
+    try {
+      const parsed = JSON.parse(await file.text()) as unknown;
+      const previewRows = Array.isArray(parsed)
+        ? parsed
+        : parsed && typeof parsed === "object" && "rows" in parsed && Array.isArray((parsed as { rows?: unknown }).rows)
+          ? (parsed as { rows: unknown[] }).rows
+          : [];
+
+      if (!previewRows.length) {
+        throw new Error("That file does not contain onboarding preview rows.");
+      }
+
+      const typedRows = previewRows as LbsviewOnboardingPreviewRow[];
+      setRows(typedRows);
+      const result = await sendImportRequest(typedRows, true);
+      setMessage(`${result.summary.importableRows} rows are ready; ${result.summary.skippedRows} need review.`);
+    } catch (error) {
+      setRows([]);
+      setSummary(null);
+      setMessage(error instanceof Error ? error.message : "Preview file could not be loaded.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function dryRunLoadedRows() {
+    if (!rows.length) {
+      setMessage("Upload the onboarding preview JSON first.");
+      return;
+    }
+
+    setBusy("dry-run");
+    setMessage("");
+
+    try {
+      const result = await sendImportRequest(rows, true);
+      setMessage(`${result.summary.importableRows} rows are ready; ${result.summary.skippedRows} need review.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Dry run failed.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function importLoadedRows() {
+    if (!rows.length) {
+      setMessage("Upload the onboarding preview JSON first.");
+      return;
+    }
+
+    setBusy("import");
+    setMessage("");
+
+    try {
+      const result = await sendImportRequest(rows, false);
+      setMessage(`Imported ${result.summary.residents} residents, ${result.summary.units} units, and ${result.summary.openingBills} opening bills.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Import failed.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function sendImportRequest(previewRows: LbsviewOnboardingPreviewRow[], dryRun: boolean) {
+    const response = await fetch("/api/appwrite/onboarding/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dryRun, rows: previewRows })
+    });
+    const payload = await response.json() as AppwriteImportResponse;
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Import request failed.");
+    }
+
+    setSummary(payload.summary);
+    return payload;
+  }
+
+  return (
+    <Card>
+      <CardHeader
+        title="Appwrite import"
+        description="Create the live TablesDB schema, then import approved Excel-preview rows."
+        action={
+          <Button type="button" variant="secondary" className="min-h-9 px-3 py-1 text-xs" disabled={busy === "status"} onClick={() => void refreshStatus()}>
+            <RefreshCw className="h-3.5 w-3.5" />
+            Refresh
+          </Button>
+        }
+      />
+      <div className="grid gap-4 xl:grid-cols-[0.8fr_1.2fr]">
+        <div className="rounded-lg border border-line bg-ink/50 p-4">
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex items-center gap-3">
+              <span className="grid h-10 w-10 place-items-center rounded-lg bg-smart/10 text-smart">
+                <Database className="h-5 w-5" />
+              </span>
+              <div>
+                <p className="text-sm font-semibold text-white">TablesDB</p>
+                <p className="text-xs text-slate-400">{status?.databaseId ?? "lbsview_estate"}</p>
+              </div>
+            </div>
+            <StatusBadge status={ready ? "configured" : "missing key"} tone={ready ? "green" : "yellow"} />
+          </div>
+          <div className="mt-4 grid gap-2 text-xs text-slate-400">
+            <p><span className="text-slate-500">Project:</span> {status?.projectId || "Not set"}</p>
+            <p><span className="text-slate-500">Endpoint:</span> {status?.endpoint || "Not checked"}</p>
+            <p><span className="text-slate-500">Missing:</span> {status?.missing.length ? status.missing.join(", ") : "None"}</p>
+            <p><span className="text-slate-500">Tables:</span> {status?.tableIds.length ?? 0}</p>
+          </div>
+          <div className="mt-4 flex flex-wrap gap-2">
+            <Button type="button" className="min-h-9 px-3 py-1 text-xs" disabled={!ready || busy === "setup"} onClick={() => void setupSchema()}>
+              <Database className="h-3.5 w-3.5" />
+              Setup schema
+            </Button>
+            <label className="inline-flex min-h-9 cursor-pointer items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3 py-1 text-xs font-semibold text-white transition hover:bg-white/15">
+              <FileJson className="h-3.5 w-3.5" />
+              Upload preview
+              <input
+                className="sr-only"
+                type="file"
+                accept="application/json,.json"
+                onChange={(event) => void loadPreviewFile(event.currentTarget.files?.[0])}
+              />
+            </label>
+          </div>
+        </div>
+
+        <div className="rounded-lg border border-line bg-ink/50 p-4">
+          <div className="flex flex-wrap items-start justify-between gap-3">
+            <div>
+              <p className="text-sm font-semibold text-white">Preview result</p>
+              <p className="mt-1 text-xs text-slate-400">{hasRows ? `${rows.length} rows loaded` : "Upload .local-import/lbsview-onboarding-preview.json"}</p>
+            </div>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" className="min-h-9 px-3 py-1 text-xs" disabled={!hasRows || busy === "dry-run"} onClick={() => void dryRunLoadedRows()}>
+                <Search className="h-3.5 w-3.5" />
+                Dry run
+              </Button>
+              <Button type="button" className="min-h-9 px-3 py-1 text-xs" disabled={!ready || !hasRows || busy === "import"} onClick={() => void importLoadedRows()}>
+                <Upload className="h-3.5 w-3.5" />
+                Import
+              </Button>
+            </div>
+          </div>
+          {summary ? (
+            <>
+              <div className="mt-4 grid gap-3 sm:grid-cols-3">
+                <MiniImportStat label="Ready" value={summary.importableRows} />
+                <MiniImportStat label="Units" value={summary.units} />
+                <MiniImportStat label="Skipped" value={summary.skippedRows} tone="text-warn" />
+              </div>
+              <div className="mt-4 grid gap-3 text-xs text-slate-400 sm:grid-cols-2">
+                <p>Properties: <span className="font-semibold text-white">{summary.properties}</span></p>
+                <p>Opening bills: <span className="font-semibold text-white">{summary.openingBills}</span></p>
+                <p>Legacy payments: <span className="font-semibold text-white">{summary.legacyPayments}</span></p>
+                <p>Manual review: <span className="font-semibold text-white">{summary.reviewRows}</span></p>
+              </div>
+              {summary.byProperty.length ? (
+                <div className="mt-4 flex flex-wrap gap-2">
+                  {summary.byProperty.map((item) => (
+                    <span key={item.propertyCode} className="rounded-full border border-white/15 bg-white/10 px-2.5 py-1 text-xs text-slate-300">
+                      {item.propertyCode}: {item.count}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+              {summary.skippedReasons.length ? (
+                <div className="mt-4 grid gap-1 text-xs text-slate-400">
+                  {summary.skippedReasons.slice(0, 3).map((item) => (
+                    <p key={item.reason}>{item.reason}: <span className="text-slate-200">{item.count}</span></p>
+                  ))}
+                </div>
+              ) : null}
+            </>
+          ) : (
+            <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.04] px-3 py-6 text-center text-sm text-slate-400">
+              No preview loaded.
+            </div>
+          )}
+          {message ? (
+            <p className="mt-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{message}</p>
+          ) : null}
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function MiniImportStat({ label, value, tone = "text-smart" }: { label: string; value: number; tone?: string }) {
+  return (
+    <div className="rounded-lg border border-white/10 bg-white/[0.04] px-3 py-3">
+      <p className="text-xs text-slate-500">{label}</p>
+      <p className={`mt-1 text-xl font-semibold ${tone}`}>{value}</p>
     </div>
   );
 }

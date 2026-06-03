@@ -32,6 +32,9 @@ NEXT_PUBLIC_ENABLE_LOCAL_DEMO=true
 NEXT_PUBLIC_APPWRITE_PROJECT_ID=lbsview-estate
 NEXT_PUBLIC_APPWRITE_PROJECT_NAME=LBS View Estate
 NEXT_PUBLIC_APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1
+APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1
+APPWRITE_DATABASE_ID=lbsview_estate
+# APPWRITE_API_KEY=server-api-key-with-tablesdb-access
 ```
 
 The current Appwrite Sites deployment runs with local demo mode enabled while the backend is migrated to Appwrite. Do not set placeholder Supabase values in Appwrite environment variables. If Supabase variables are not set, the login page supports local demo routing so the MVP can be reviewed without a backend. When Supabase is configured, local demo login is disabled unless `NEXT_PUBLIC_ENABLE_LOCAL_DEMO=true`.
@@ -71,9 +74,28 @@ Site environment variables:
 NEXT_PUBLIC_APP_URL=https://lbsview-estate.appwrite.network
 NEXT_PUBLIC_ESTATE_APP_URL=https://lbsview-estate.appwrite.network
 NEXT_PUBLIC_ENABLE_LOCAL_DEMO=true
+NEXT_PUBLIC_APPWRITE_PROJECT_ID=lbsview-estate
+NEXT_PUBLIC_APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1
+APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1
+APPWRITE_DATABASE_ID=lbsview_estate
+APPWRITE_API_KEY=server-api-key-with-tablesdb-access
 ```
 
 Backend migration notes are tracked in `docs/appwrite-migration-plan.md`. The target model is property first, unit second, resident third, with online payment webhooks updating bills, balances, reports, and audit logs automatically.
+
+## Appwrite Resident Import
+
+Admin import controls are available at `/admin/residents` under `Appwrite import`.
+
+1. Generate the private preview with `.\scripts\lbsview-resident-import-preview.ps1 -WorkbookPath "C:\Users\MICROSOFT PC\Desktop\AI BUILDER\LBSView Resident Data.xlsx"`.
+2. Sign in as estate admin or super admin.
+3. Open `/admin/residents`.
+4. Confirm `APPWRITE_API_KEY` is configured.
+5. Click `Setup schema`.
+6. Upload `.local-import/lbsview-onboarding-preview.json`.
+7. Review the dry-run counts, then click `Import`.
+
+The importer writes only approved rows. Rows flagged for review, unknown property groups, blank unit IDs, and duplicate active residents on one unit are skipped for manual cleanup.
 
 ## Demo Accounts
 
