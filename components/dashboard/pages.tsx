@@ -77,6 +77,13 @@ type BarcodeDetectorInstance = {
 
 type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorInstance;
 
+type VisitorQrPayload = {
+  type: "corso.visitor.invitation";
+  version: 1;
+  visitor: Visitor;
+  resident: Resident;
+};
+
 const LAGOS_TIME_ZONE = "Africa/Lagos";
 
 declare global {
@@ -2033,6 +2040,7 @@ export function InviteVisitorPage() {
   const [shareDate, setShareDate] = useState(today);
   const [shareTime, setShareTime] = useState(timeInputValue());
   const [status, setStatus] = useState("Generate a code to save it online for security verification.");
+  const [visitorQrValue, setVisitorQrValue] = useState("");
   const [saving, setSaving] = useState(false);
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -2055,18 +2063,27 @@ export function InviteVisitorPage() {
     setStatus("Saving visitor invitation online...");
 
     try {
-      const savedVisitor = getSupabaseBrowserClient()
+      const supabase = getSupabaseBrowserClient();
+      const savedVisitor = supabase
         ? addVisitorRecord(await createSupabaseResidentVisitor(input))
         : addVisitor(input);
+      let demoRegistrySaved = false;
+
+      if (!supabase) {
+        demoRegistrySaved = await saveDemoVisitorInvitation(savedVisitor, resident);
+      }
 
       setCode(savedVisitor.code);
+      setVisitorQrValue(visitorQrValueFor(savedVisitor, resident));
       setSharePhone(phone);
       setShareDate(visitDate);
       setShareTime(arrivalTime);
       setStatus(
-        getSupabaseBrowserClient()
+        supabase
           ? "Visitor invitation saved online. Security can now verify this code."
-          : "Visitor invitation saved locally. Demo security can now verify this code on this device."
+          : demoRegistrySaved
+            ? "Visitor invitation saved for demo security verification. Security can scan the QR or enter this code."
+            : "Visitor invitation saved in this browser. Security can scan the QR, or use the same device to search the code."
       );
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Visitor invitation could not be saved online.");
@@ -2111,6 +2128,7 @@ export function InviteVisitorPage() {
         </Card>
         <VisitorCodeCard
           code={code}
+          qrValue={visitorQrValue}
           visitorName={visitorName || "Visitor"}
           status={status}
           phone={sharePhone}
@@ -2603,14 +2621,22 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
     }
 
     setSearching(true);
-    setMessage("Searching online visitor records...");
+    setMessage("Searching visitor records...");
 
     try {
+      if (!getSupabaseBrowserClient()) {
+        const demoResult = await findDemoVisitorByCode(targetCode);
+        if (demoResult?.visitor) {
+          loadVisitorLookup(demoResult.visitor, demoResult.resident);
+          return;
+        }
+
+        setMessage("No valid visitor invitation found for this code. In demo mode, scan the visitor QR or search on the same device that generated the invitation.");
+        return;
+      }
+
       const result = await findSupabaseVisitorByCode(targetCode);
-      addVisitorRecord(result.visitor);
-      setLookupVisitor(result.visitor);
-      setLookupResident(result.resident);
-      setMessage(gateLookupMessage(result.visitor));
+      loadVisitorLookup(result.visitor, result.resident);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No valid visitor invitation found for this code.");
     } finally {
@@ -2619,6 +2645,18 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
   }
 
   function handleVisitorQrScan(rawValue: string) {
+    try {
+      const payload = parseVisitorQrPayload(rawValue);
+      if (payload) {
+        loadVisitorLookup(payload.visitor, payload.resident);
+        return;
+      }
+    } catch {
+      setHasSearched(true);
+      setMessage("Scanned QR invitation could not be read. Enter the 6-digit code or regenerate the visitor invitation.");
+      return;
+    }
+
     const scannedCode = extractVisitorCode(rawValue);
     if (!scannedCode) {
       setHasSearched(true);
@@ -2627,6 +2665,29 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
     }
 
     void verifyCode(scannedCode);
+  }
+
+  function loadVisitorLookup(visitor: Visitor, resident: Resident | null) {
+    let nextVisitor = visitor;
+    const windowState = getVisitorWindowState(visitor);
+
+    if (visitor.status === "pending") {
+      if (!windowState.canVerifyOrCheckIn) {
+        nextVisitor = windowState.status === "expired" ? { ...visitor, status: "expired" } : visitor;
+        setMessage(`${windowState.message} Visitor codes are valid for ${VISITOR_CODE_VALIDITY_HOURS} hours after generation.`);
+      } else {
+        nextVisitor = { ...visitor, status: "verified" };
+        setMessage(`${visitor.visitorName} found and verified. Use Check in when entry is approved.`);
+      }
+    } else {
+      setMessage(gateLookupMessage(visitor));
+    }
+
+    addVisitorRecord(nextVisitor);
+    setLookupVisitor(nextVisitor);
+    setLookupResident(resident);
+    setCode(nextVisitor.code);
+    setHasSearched(true);
   }
 
   function autoVerifyPendingVisitor(visitor: Visitor) {
@@ -2709,7 +2770,7 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
           onClose={() => setScannerOpen(false)}
         />
         <div className="mt-5">
-          {message ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{message}</p> : null}
+          {message ? <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${visitorLookupMessageClassName(message)}`}>{message}</p> : null}
           {found ? (
           <VisitorVerificationCard
               visitor={found}
@@ -2718,7 +2779,7 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
               onCheckOut={() => changeStatus(found, "checked-out")}
               onReject={() => changeStatus(found, "cancelled")}
             />
-          ) : hasSearched ? (
+          ) : hasSearched && !message ? (
             <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger">No valid visitor invitation found for this code.</div>
           ) : null}
         </div>
@@ -2897,8 +2958,108 @@ function readQrValueFromCanvas(video: HTMLVideoElement, canvasRef: { current: HT
   return jsQR(image.data, width, height, { inversionAttempts: "attemptBoth" })?.data.trim() ?? "";
 }
 
+async function saveDemoVisitorInvitation(visitor: Visitor, resident: Resident) {
+  try {
+    const response = await fetch("/api/local/visitors", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ visitor, resident })
+    });
+
+    return response.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function findDemoVisitorByCode(code: string) {
+  const response = await fetch(`/api/local/visitors?code=${encodeURIComponent(code)}`, {
+    cache: "no-store"
+  }).catch(() => null);
+
+  if (!response || response.status === 404) {
+    return null;
+  }
+
+  const payload = await response.json().catch(() => null);
+  if (!response.ok || !payload?.visitor) {
+    return null;
+  }
+
+  return payload as { visitor: Visitor; resident: Resident | null };
+}
+
+function visitorQrValueFor(visitor: Visitor, resident: Resident) {
+  const payload: VisitorQrPayload = {
+    type: "corso.visitor.invitation",
+    version: 1,
+    visitor,
+    resident
+  };
+
+  return `corso-visitor:${base64UrlEncode(JSON.stringify(payload))}`;
+}
+
+function parseVisitorQrPayload(value: string): VisitorQrPayload | null {
+  const trimmed = value.trim();
+  const encoded = trimmed.startsWith("corso-visitor:")
+    ? trimmed.slice("corso-visitor:".length)
+    : "";
+  const rawPayload = encoded ? base64UrlDecode(encoded) : trimmed.startsWith("{") ? trimmed : "";
+
+  if (!rawPayload) {
+    return null;
+  }
+
+  const payload = JSON.parse(rawPayload) as Partial<VisitorQrPayload>;
+  if (
+    payload.type !== "corso.visitor.invitation" ||
+    payload.version !== 1 ||
+    !payload.visitor?.code ||
+    !payload.resident?.id
+  ) {
+    return null;
+  }
+
+  return payload as VisitorQrPayload;
+}
+
+function base64UrlEncode(value: string) {
+  const bytes = new TextEncoder().encode(value);
+  let binary = "";
+  bytes.forEach((byte) => {
+    binary += String.fromCharCode(byte);
+  });
+
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function base64UrlDecode(value: string) {
+  const padded = value.replace(/-/g, "+").replace(/_/g, "/").padEnd(Math.ceil(value.length / 4) * 4, "=");
+  const binary = atob(padded);
+  const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+
+  return new TextDecoder().decode(bytes);
+}
+
 function extractVisitorCode(value: string) {
   return value.match(/\b\d{6}\b/)?.[0] ?? "";
+}
+
+function visitorLookupMessageClassName(message: string) {
+  const lowerMessage = message.toLowerCase();
+  const isError = lowerMessage.includes("no valid")
+    || lowerMessage.includes("could not")
+    || lowerMessage.includes("expired")
+    || lowerMessage.includes("cancelled")
+    || lowerMessage.includes("enter the full")
+    || lowerMessage.includes("does not contain");
+
+  return isError
+    ? "border border-danger/30 bg-danger/10 text-danger"
+    : "border border-smart/30 bg-smart/10 text-smart";
 }
 
 function gateLookupMessage(visitor: Visitor) {
@@ -3552,6 +3713,7 @@ function formatAlertTime(value: string) {
 
 function VisitorCodeCard({
   code,
+  qrValue,
   visitorName,
   status,
   phone,
@@ -3561,6 +3723,7 @@ function VisitorCodeCard({
   arrivalTime
 }: {
   code: string;
+  qrValue?: string;
   visitorName: string;
   status: string;
   phone: string;
@@ -3582,7 +3745,7 @@ function VisitorCodeCard({
     <Card>
       <CardHeader title="Generated access" description={status} />
       <div className="rounded-lg border border-smart/30 bg-smart/10 p-4 text-center">
-        <QRCodeImage value={code || "Pending visitor code"} />
+        <QRCodeImage value={qrValue || code || "Pending visitor code"} />
         <p className="mt-4 font-mono text-xl font-semibold text-white">{code || "No code yet"}</p>
         <p className="mt-2 text-sm text-slate-300">{visitorName} - 6-digit code expires {VISITOR_CODE_VALIDITY_HOURS} hours after generation</p>
       </div>
