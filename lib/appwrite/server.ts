@@ -180,7 +180,7 @@ export function safeAppwriteId(prefix: string, seed: string) {
 }
 
 export function getAppwriteApiKey() {
-  return (process.env.APPWRITE_API_KEY ?? process.env.APPWRITE_SERVER_API_KEY ?? "").trim();
+  return (process.env.APPWRITE_SERVER_API_KEY ?? process.env.APPWRITE_API_KEY ?? "").trim();
 }
 
 async function ensureTable(databaseId: string, table: AppwriteTableDefinition) {
