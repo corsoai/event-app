@@ -1739,7 +1739,7 @@ type TemporaryCredential = {
 };
 
 export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }) {
-  const { state, approveAccessRequest, rejectAccessRequest, refreshEstateState } = useLocalEstateStore();
+  const { state, approveAccessRequest, rejectAccessRequest, refreshEstateState, createManagedLocalUser } = useLocalEstateStore();
   const [users, setUsers] = useState<ManagedAppUser[]>([]);
   const [role, setRole] = useState<UserRole>(scope === "super-admin" ? "estate_admin" : "resident");
   const [message, setMessage] = useState("");
@@ -1752,9 +1752,12 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
   const [editRole, setEditRole] = useState<UserRole>("resident");
   const [emailInvite, setEmailInvite] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
-  const allowedRoles: UserRole[] = scope === "super-admin"
-    ? ["super_admin", "estate_admin", "security_guard", "resident", "vendor"]
-    : ["security_guard", "resident", "vendor"];
+  const allowedRoles = useMemo<UserRole[]>(
+    () => scope === "super-admin"
+      ? ["super_admin", "estate_admin", "security_guard", "resident", "vendor"]
+      : ["security_guard", "resident", "vendor"],
+    [scope]
+  );
   const selectedUsers = users.filter((user) => selectedUserIds.includes(user.id));
   const allUsersSelected = users.length > 0 && users.every((user) => selectedUserIds.includes(user.id));
   const pendingRequests = state.accessRequests.filter((request) => request.status === "pending");
@@ -1762,6 +1765,13 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
   useEffect(() => {
     void loadUsers();
   }, []);
+
+  useEffect(() => {
+    if (!getSupabaseBrowserClient()) {
+      setUsers(localManagedUsersFromState(state, allowedRoles));
+      setLoadingUsers(false);
+    }
+  }, [state.approvedUsers, state.residents, state.estates, allowedRoles]);
 
   useEffect(() => {
     setSelectedUserIds((current) => current.filter((id) => users.some((user) => user.id === id)));
@@ -1831,6 +1841,11 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
     setMessage("");
 
     try {
+      if (!getSupabaseBrowserClient()) {
+        setUsers(localManagedUsersFromState(state, allowedRoles));
+        return;
+      }
+
       const token = await getAccessToken();
       const response = await fetch("/api/admin/users", {
         headers: {
@@ -1862,6 +1877,31 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
     const form = new FormData(formElement);
 
     try {
+      if (!getSupabaseBrowserClient()) {
+        const data = createManagedLocalUser({
+          fullName: String(form.get("fullName") ?? ""),
+          email: String(form.get("email") ?? ""),
+          phone: String(form.get("phone") ?? ""),
+          role,
+          estateId: String(form.get("estateId") ?? state.estates[0]?.id ?? ""),
+          houseNumber: String(form.get("houseNumber") ?? ""),
+          password: String(form.get("password") ?? "")
+        });
+
+        setMessage(data.message);
+        setCreatedPassword(data.temporaryPassword);
+        setTemporaryCredential({
+          fullName: data.user.fullName,
+          role,
+          loginIdentifier: data.loginIdentifier,
+          password: data.temporaryPassword
+        });
+        formElement.reset();
+        setEmailInvite(false);
+        await refreshEstateState();
+        return;
+      }
+
       const token = await getAccessToken();
       const response = await fetch("/api/admin/users", {
         method: "POST",
@@ -2276,6 +2316,32 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
       />
     </>
   );
+}
+
+function localManagedUsersFromState(state: LocalEstateState, allowedRoles: UserRole[]): ManagedAppUser[] {
+  return state.approvedUsers
+    .filter((user) => allowedRoles.includes(user.role))
+    .map((user) => {
+      const estate = state.estates.find((item) => item.name === user.estate);
+      const resident = user.residentId
+        ? state.residents.find((item) => item.id === user.residentId)
+        : state.residents.find((item) => item.email.toLowerCase() === user.email.toLowerCase());
+
+      return {
+        id: user.id,
+        authUserId: null,
+        estateId: resident?.estateId ?? estate?.id ?? null,
+        fullName: user.fullName,
+        email: user.email,
+        phone: user.phone,
+        role: user.role,
+        estate: user.role === "super_admin" ? "All estates" : user.estate,
+        houseNumber: resident?.houseNumber ?? "",
+        active: true,
+        createdAt: user.approvedAt
+      };
+    })
+    .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
 function SetupLinkBox({ setupLink }: { setupLink: string }) {

@@ -204,6 +204,16 @@ type ResidentOnboardingInput = Pick<Resident, "name" | "phone" | "email" | "type
   monthlyCharge?: number;
 };
 
+type ManagedLocalUserInput = {
+  fullName: string;
+  email?: string;
+  phone: string;
+  password: string;
+  role: UserRole;
+  estateId: string;
+  houseNumber?: string;
+};
+
 function defaultState(): LocalEstateState {
   return {
     estates,
@@ -371,6 +381,25 @@ function normalizePropertyCode(value: string) {
     .replace(/\s+/g, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "");
+}
+
+function propertyCodeFromUnitCode(unitCode: string) {
+  const normalized = normalizeOnboardingUnitCode(unitCode);
+  const ldiMatch = normalized.match(/^(LDI-\d+)-[A-Z0-9]+$/);
+
+  if (ldiMatch) {
+    return ldiMatch[1];
+  }
+
+  if (normalized.startsWith("JC-")) {
+    return "JC";
+  }
+
+  if (normalized.startsWith("AA-")) {
+    return "AA";
+  }
+
+  return normalized.split("-").slice(0, -1).join("-") || normalized;
 }
 
 export function normalizeOnboardingUnitCode(value: string, propertyCode = "") {
@@ -1195,6 +1224,157 @@ export function useLocalEstateStore() {
     return resident;
   }
 
+  function createManagedLocalUser(input: ManagedLocalUserInput) {
+    const fullName = input.fullName.trim();
+    const phone = normalizePhoneNumber(input.phone);
+    const rawEmail = input.email?.trim().toLowerCase() ?? "";
+    const email = rawEmail || phoneAuthEmail(phone);
+    const password = input.password.trim() || `Corso-${Date.now().toString(36)}-247`;
+    const estate = state.estates.find((item) => item.id === input.estateId) ?? state.estates[0];
+    const estateId = input.role === "super_admin" ? "" : estate?.id ?? input.estateId;
+    const loginIdentifier = rawEmail || phone;
+
+    if (!fullName || !phone) {
+      throw new Error("Full name and phone number are required.");
+    }
+
+    if (rawEmail && !rawEmail.includes("@")) {
+      throw new Error("Enter a valid email address or leave email empty.");
+    }
+
+    if (password.length < 8) {
+      throw new Error("Password must be at least 8 characters.");
+    }
+
+    if (input.role !== "super_admin" && !estateId) {
+      throw new Error("An estate is required for this user role.");
+    }
+
+    const residentId = input.role === "resident" ? residentIdForIdentifier(phone || email) : undefined;
+    const approvedUser: LocalApprovedUser = {
+      id: `user-${Date.now()}`,
+      fullName,
+      email,
+      phone,
+      password,
+      role: input.role,
+      estate: estate?.name ?? "LBS View Estate",
+      residentId,
+      approvedAt: today()
+    };
+
+    commit((current) => {
+      const existingApproved = current.approvedUsers.find(
+        (user) => user.email === email || (!!phone && user.phone === phone)
+      );
+      const nextApprovedUser = existingApproved
+        ? { ...existingApproved, ...approvedUser, id: existingApproved.id }
+        : approvedUser;
+      let nextProperties = current.properties;
+      let nextUnits = current.units;
+      let nextResidents = current.residents;
+      let propertyId = "";
+      let unitId = "";
+      let unitCode = input.houseNumber?.trim() || "Pending assignment";
+
+      if (input.role === "resident" && residentId && estateId) {
+        unitCode = normalizeOnboardingUnitCode(unitCode);
+        const propertyCode = propertyCodeFromUnitCode(unitCode);
+        const existingProperty = current.properties.find(
+          (property) => property.estateId === estateId && property.propertyCode.toUpperCase() === propertyCode
+        );
+        const property: Property = existingProperty ?? {
+          id: entityId("prop", `${estateId}-${propertyCode}`),
+          estateId,
+          propertyCode,
+          name: propertyCode,
+          description: "Created from admin user onboarding",
+          street: estate?.address ?? "LBS View Estate",
+          status: "active"
+        };
+        propertyId = property.id;
+        nextProperties = existingProperty ? nextProperties : [property, ...nextProperties];
+
+        const existingUnit = current.units.find(
+          (unit) => unit.estateId === estateId && unit.unitCode.toUpperCase() === unitCode
+        );
+        const unit: Unit = existingUnit
+          ? { ...existingUnit, propertyId, currentResidentId: residentId, status: "occupied" }
+          : {
+              id: entityId("unit", `${estateId}-${unitCode}`),
+              estateId,
+              propertyId,
+              unitCode,
+              label: unitCode,
+              apartmentType: "Pending classification",
+              status: "occupied",
+              currentResidentId: residentId
+            };
+        unitId = unit.id;
+        nextUnits = existingUnit
+          ? nextUnits.map((item) => (item.id === existingUnit.id ? unit : item))
+          : [unit, ...nextUnits];
+
+        const existingResident = current.residents.find(
+          (resident) =>
+            resident.id === residentId ||
+            resident.email.toLowerCase() === email ||
+            (!!phone && normalizePhoneNumber(resident.phone) === phone)
+        );
+        const resident: Resident = {
+          id: existingResident?.id ?? residentId,
+          estateId,
+          propertyId,
+          unitId,
+          name: fullName,
+          houseNumber: unitCode,
+          phone,
+          email,
+          type: "tenant",
+          status: "active"
+        };
+        nextResidents = existingResident
+          ? nextResidents.map((item) => (item.id === existingResident.id ? resident : item))
+          : [resident, ...nextResidents];
+      }
+
+      return {
+        ...current,
+        properties: nextProperties,
+        units: nextUnits,
+        residents: nextResidents,
+        approvedUsers: [
+          nextApprovedUser,
+          ...current.approvedUsers.filter((user) => user.id !== nextApprovedUser.id)
+        ],
+        auditLogs: addAuditLog(current, {
+          estateId: estateId || current.estates[0]?.id || "platform",
+          actor: "Estate admin",
+          action: "created local login user",
+          entityType: "system",
+          entityId: nextApprovedUser.id,
+          metadata: {
+            role: input.role,
+            loginIdentifier,
+            unitCode: input.role === "resident" ? unitCode : ""
+          }
+        })
+      };
+    });
+
+    return {
+      message: `${fullName} has been created as ${input.role.replaceAll("_", " ")} for local Appwrite demo login.`,
+      temporaryPassword: password,
+      loginIdentifier,
+      user: {
+        email,
+        phone,
+        fullName,
+        role: input.role
+      }
+    };
+  }
+
   function addEstate(input: EstateInput) {
     const estate: Estate = {
       id: makeEstateId(),
@@ -1274,6 +1454,7 @@ export function useLocalEstateStore() {
     addProperty,
     addUnit,
     onboardResident,
+    createManagedLocalUser,
     addEstate,
     resetLocalDemo
   };
