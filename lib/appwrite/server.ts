@@ -71,7 +71,7 @@ export function getAppwriteServerConfig(): AppwriteServerConfig {
   const databaseId = (process.env.APPWRITE_DATABASE_ID ?? APPWRITE_ONBOARDING_DATABASE_ID).trim();
   const missing = [
     projectId ? "" : "NEXT_PUBLIC_APPWRITE_PROJECT_ID",
-    apiKey ? "" : "APPWRITE_API_KEY",
+    apiKey ? "" : "CORSO_APPWRITE_API_KEY",
     databaseId ? "" : "APPWRITE_DATABASE_ID"
   ].filter(Boolean);
 
@@ -181,6 +181,7 @@ export function safeAppwriteId(prefix: string, seed: string) {
 
 export function getAppwriteApiKey() {
   return (
+    process.env.CORSO_APPWRITE_API_KEY ??
     process.env.APPWRITE_RUNTIME_API_KEY ??
     process.env.APPWRITE_SERVER_API_KEY ??
     process.env.APPWRITE_API_KEY ??
@@ -263,6 +264,7 @@ async function ensureIndex(databaseId: string, tableId: string, index: AppwriteI
 export async function appwriteRequest<T>(path: string, options: AppwriteRequestOptions = {}): Promise<T> {
   const config = getAppwriteServerConfig();
   const apiKey = getAppwriteApiKey();
+  assertValidAppwriteApiKey(apiKey);
   if (options.requireApiKey !== false && !config.configured) {
     throw new Error(`Appwrite server configuration is missing: ${config.missing.join(", ")}`);
   }
@@ -309,6 +311,21 @@ export async function appwriteRequest<T>(path: string, options: AppwriteRequestO
 function normalizeEndpoint(value: string) {
   const trimmed = value.trim().replace(/\/+$/g, "");
   return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
+}
+
+function assertValidAppwriteApiKey(value: string) {
+  if (!value) {
+    return;
+  }
+
+  const hasNonAscii = [...value].some((char) => char.charCodeAt(0) > 127);
+  const looksLikeCopiedLabel = /\b(API secret|Verify|Copy API key|Appwrite)\b/i.test(value);
+
+  if (hasNonAscii || looksLikeCopiedLabel) {
+    throw new Error(
+      "Appwrite API key is not a valid key value. Create a fresh API key and copy the one-time 'Copy API key' value into CORSO_APPWRITE_API_KEY."
+    );
+  }
 }
 
 function compactRecord(data: Record<string, unknown>) {
