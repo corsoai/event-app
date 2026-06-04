@@ -271,9 +271,23 @@ export function AuthCard({ mode }: { mode: Mode }) {
         }
       }
 
+      const appwriteResult = await signInWithAppwrite(email, password);
+      if (appwriteResult.ok && appwriteResult.user) {
+        persistSession(appwriteResult.user);
+        router.push(params.get("next") ?? roleHome[appwriteResult.user.role]);
+        return;
+      }
+
+      if (!appwriteResult.canFallback) {
+        setMessageTone("error");
+        setMessage(appwriteResult.error ?? "Invalid login details.");
+        setLoading(false);
+        return;
+      }
+
       if (!localDemoEnabled) {
         setMessageTone("error");
-        setMessage("Local demo accounts are disabled because Supabase is configured.");
+        setMessage(appwriteResult.error ?? "No configured login backend is available.");
         setLoading(false);
         return;
       }
@@ -476,6 +490,48 @@ export function AuthCard({ mode }: { mode: Mode }) {
       </div>
     </Card>
   );
+}
+
+async function signInWithAppwrite(identifier: string, password: string): Promise<{
+  ok: boolean;
+  canFallback: boolean;
+  error?: string;
+  user?: {
+    email: string;
+    phone?: string;
+    name: string;
+    role: UserRole;
+    estate: string;
+  };
+}> {
+  try {
+    const response = await fetch("/api/appwrite/auth/login", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ identifier, password })
+    });
+    const data = await response.json().catch(() => ({}));
+    if (!response.ok) {
+      const error = String(data.error ?? "Invalid login details.");
+      return {
+        ok: false,
+        canFallback: response.status !== 401,
+        error
+      };
+    }
+
+    return {
+      ok: true,
+      canFallback: false,
+      user: data.user
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      canFallback: true,
+      error: error instanceof Error ? error.message : "Appwrite login is unavailable."
+    };
+  }
 }
 
 function messageClassName(tone: "success" | "error" | "info") {

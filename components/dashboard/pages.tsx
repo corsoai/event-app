@@ -1739,7 +1739,7 @@ type TemporaryCredential = {
 };
 
 export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }) {
-  const { state, approveAccessRequest, rejectAccessRequest, refreshEstateState, createManagedLocalUser } = useLocalEstateStore();
+  const { state, approveAccessRequest, rejectAccessRequest, refreshEstateState } = useLocalEstateStore();
   const [users, setUsers] = useState<ManagedAppUser[]>([]);
   const [role, setRole] = useState<UserRole>(scope === "super-admin" ? "estate_admin" : "resident");
   const [message, setMessage] = useState("");
@@ -1765,13 +1765,6 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
   useEffect(() => {
     void loadUsers();
   }, []);
-
-  useEffect(() => {
-    if (!getSupabaseBrowserClient()) {
-      setUsers(localManagedUsersFromState(state, allowedRoles));
-      setLoadingUsers(false);
-    }
-  }, [state.approvedUsers, state.residents, state.estates, allowedRoles]);
 
   useEffect(() => {
     setSelectedUserIds((current) => current.filter((id) => users.some((user) => user.id === id)));
@@ -1821,6 +1814,27 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
     return data;
   }
 
+  async function patchManagedUser(payload: Record<string, unknown>) {
+    if (!getSupabaseBrowserClient()) {
+      const response = await fetch("/api/appwrite/admin/users", {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify(payload)
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Unable to update Appwrite user.");
+      }
+
+      return data;
+    }
+
+    const token = await getAccessToken();
+    return patchUserWithToken(token, payload);
+  }
+
   async function deleteUserWithToken(token: string, profileId: string) {
     const response = await fetch(`/api/admin/users?profileId=${encodeURIComponent(profileId)}`, {
       method: "DELETE",
@@ -1836,13 +1850,36 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
     return data;
   }
 
+  async function deleteManagedUser(profileId: string) {
+    if (!getSupabaseBrowserClient()) {
+      const response = await fetch(`/api/appwrite/admin/users?profileId=${encodeURIComponent(profileId)}`, {
+        method: "DELETE"
+      });
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error ?? "Unable to delete Appwrite user.");
+      }
+
+      return data;
+    }
+
+    const token = await getAccessToken();
+    return deleteUserWithToken(token, profileId);
+  }
+
   async function loadUsers() {
     setLoadingUsers(true);
     setMessage("");
 
     try {
       if (!getSupabaseBrowserClient()) {
-        setUsers(localManagedUsersFromState(state, allowedRoles));
+        const response = await fetch("/api/appwrite/admin/users", { cache: "no-store" });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error ?? "Unable to load Appwrite users.");
+        }
+
+        setUsers(data.users ?? []);
         return;
       }
 
@@ -1878,15 +1915,25 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
 
     try {
       if (!getSupabaseBrowserClient()) {
-        const data = createManagedLocalUser({
-          fullName: String(form.get("fullName") ?? ""),
-          email: String(form.get("email") ?? ""),
-          phone: String(form.get("phone") ?? ""),
-          role,
-          estateId: String(form.get("estateId") ?? state.estates[0]?.id ?? ""),
-          houseNumber: String(form.get("houseNumber") ?? ""),
-          password: String(form.get("password") ?? "")
+        const response = await fetch("/api/appwrite/admin/users", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json"
+          },
+          body: JSON.stringify({
+            fullName: String(form.get("fullName") ?? ""),
+            email: String(form.get("email") ?? ""),
+            phone: String(form.get("phone") ?? ""),
+            role,
+            estateId: String(form.get("estateId") ?? state.estates[0]?.id ?? ""),
+            houseNumber: String(form.get("houseNumber") ?? ""),
+            password: String(form.get("password") ?? "")
+          })
         });
+        const data = await response.json();
+        if (!response.ok) {
+          throw new Error(data.error ?? "Unable to create Appwrite user.");
+        }
 
         setMessage(data.message);
         setCreatedPassword(data.temporaryPassword);
@@ -1898,7 +1945,7 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
         });
         formElement.reset();
         setEmailInvite(false);
-        await refreshEstateState();
+        await loadUsers();
         return;
       }
 
@@ -1977,8 +2024,7 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
 
   async function updateUser(payload: Record<string, unknown>) {
     try {
-      const token = await getAccessToken();
-      const data = await patchUserWithToken(token, payload);
+      const data = await patchManagedUser(payload);
 
       setMessage(data.message ?? "User updated.");
       setSetupLink(data.setupLink ?? "");
@@ -2023,8 +2069,7 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
     }
 
     try {
-      const token = await getAccessToken();
-      const data = await deleteUserWithToken(token, user.id);
+      const data = await deleteManagedUser(user.id);
 
       setMessage(data.message ?? "User deleted.");
       setSetupLink("");
@@ -2045,10 +2090,9 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
     setSetupLink("");
 
     try {
-      const token = await getAccessToken();
       const results = [];
       for (const user of selectedUsers) {
-        results.push(await patchUserWithToken(token, { profileId: user.id, action }));
+        results.push(await patchManagedUser({ profileId: user.id, action }));
       }
 
       setMessage(`${selectedUsers.length} user${selectedUsers.length === 1 ? "" : "s"} updated.`);
@@ -2077,9 +2121,8 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
     setMessage("");
 
     try {
-      const token = await getAccessToken();
       for (const user of selectedUsers) {
-        await deleteUserWithToken(token, user.id);
+        await deleteManagedUser(user.id);
       }
 
       setMessage(`${selectedUsers.length} selected user${selectedUsers.length === 1 ? " has" : "s have"} been deleted.`);

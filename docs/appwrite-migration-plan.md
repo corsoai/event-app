@@ -16,6 +16,7 @@ Recommended collections:
 | Collection | Purpose |
 | --- | --- |
 | `estates` | Estate profile, gate, contact, and service categories |
+| `profiles` | Appwrite Auth user profile, role, estate assignment, and unit ID |
 | `properties` | Compound/property records such as `LDI-01`, `LDI-14`, `LDI-22` |
 | `units` | Apartment/unit records such as `LDI-01-A`, `LDI-01-B` |
 | `residents` | Current and historical resident profiles attached to units |
@@ -35,7 +36,7 @@ The resident import endpoints are:
 - `GET /api/appwrite/onboarding/status`
 - `POST /api/appwrite/onboarding/import`
 
-Mutation endpoints require the existing admin or super-admin role cookie and a server-only `APPWRITE_API_KEY`.
+Mutation endpoints require the existing admin or super-admin role cookie and a server-only `APPWRITE_API_KEY` with Auth Users and TablesDB permissions.
 
 ## Property And Unit Fields
 

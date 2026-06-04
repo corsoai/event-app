@@ -14,6 +14,7 @@ type AppwriteRequestOptions = {
   method?: AppwriteMethod;
   body?: Record<string, unknown>;
   allowNotFound?: boolean;
+  requireApiKey?: boolean;
 };
 
 type AppwriteServerConfig = {
@@ -153,6 +154,17 @@ export async function appwriteUpsertRow<T>(
   );
 }
 
+export async function appwriteDeleteRow<T>(tableId: string, rowId: string): Promise<T> {
+  const config = getAppwriteServerConfig();
+  if (!config.configured) {
+    throw new Error(`Appwrite server configuration is missing: ${config.missing.join(", ")}`);
+  }
+
+  return appwriteRequest<T>(`/tablesdb/${config.databaseId}/tables/${tableId}/rows/${rowId}`, {
+    method: "DELETE"
+  });
+}
+
 export function safeAppwriteId(prefix: string, seed: string) {
   const cleanPrefix = prefix.replace(/[^a-zA-Z0-9]/g, "").slice(0, 8) || "row";
   const slug = seed
@@ -167,7 +179,7 @@ export function safeAppwriteId(prefix: string, seed: string) {
   return value.slice(0, 36).replace(/[-_.]+$/g, "") || `${cleanPrefix}-${hash}`;
 }
 
-function getAppwriteApiKey() {
+export function getAppwriteApiKey() {
   return (process.env.APPWRITE_API_KEY ?? process.env.APPWRITE_SERVER_API_KEY ?? "").trim();
 }
 
@@ -243,15 +255,23 @@ async function ensureIndex(databaseId: string, tableId: string, index: AppwriteI
   return { key: index.key, status: "created" as const };
 }
 
-async function appwriteRequest<T>(path: string, options: AppwriteRequestOptions = {}): Promise<T> {
+export async function appwriteRequest<T>(path: string, options: AppwriteRequestOptions = {}): Promise<T> {
   const config = getAppwriteServerConfig();
   const apiKey = getAppwriteApiKey();
+  if (options.requireApiKey !== false && !config.configured) {
+    throw new Error(`Appwrite server configuration is missing: ${config.missing.join(", ")}`);
+  }
+
+  if (!config.projectId) {
+    throw new Error("Appwrite server configuration is missing: NEXT_PUBLIC_APPWRITE_PROJECT_ID");
+  }
+
   const response = await fetch(`${config.endpoint}${path}`, {
     method: options.method ?? "GET",
     headers: {
       "Content-Type": "application/json",
       "X-Appwrite-Project": config.projectId,
-      "X-Appwrite-Key": apiKey,
+      ...(options.requireApiKey === false ? {} : { "X-Appwrite-Key": apiKey }),
       "X-Appwrite-Response-Format": "1.9.5"
     },
     body: options.body ? JSON.stringify(options.body) : undefined,

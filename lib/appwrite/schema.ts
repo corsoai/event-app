@@ -48,6 +48,26 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
+    tableId: "profiles",
+    name: "Profiles",
+    columns: [
+      ...baseColumns,
+      { key: "userId", type: "string", size: 64, required: true },
+      { key: "fullName", type: "string", size: 160, required: true },
+      { key: "email", type: "string", size: 160, required: true },
+      { key: "phone", type: "string", size: 64, required: false },
+      { key: "role", type: "string", size: 32, required: true },
+      { key: "status", type: "string", size: 32, required: true },
+      { key: "houseNumber", type: "string", size: 64, required: false }
+    ],
+    indexes: [
+      { key: "profile_user_unique", type: "unique", attributes: ["userId"] },
+      { key: "profile_email_unique", type: "unique", attributes: ["email"] },
+      { key: "profile_estate_idx", type: "key", attributes: ["estateId"] },
+      { key: "profile_role_idx", type: "key", attributes: ["role"] }
+    ]
+  },
+  {
     tableId: "properties",
     name: "Properties",
     columns: [
