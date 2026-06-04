@@ -196,6 +196,97 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
+    tableId: "resident_virtual_accounts",
+    name: "Resident Virtual Accounts",
+    columns: [
+      ...baseColumns,
+      { key: "residentId", type: "string", size: 64, required: true },
+      { key: "propertyId", type: "string", size: 64, required: false },
+      { key: "unitId", type: "string", size: 64, required: false },
+      { key: "provider", type: "string", size: 64, required: true },
+      { key: "accountNumber", type: "string", size: 32, required: true },
+      { key: "accountName", type: "string", size: 160, required: true },
+      { key: "bankName", type: "string", size: 128, required: false },
+      { key: "bankCode", type: "string", size: 32, required: false },
+      { key: "providerReference", type: "string", size: 128, required: false },
+      { key: "status", type: "string", size: 32, required: true },
+      { key: "assignedAt", type: "datetime", required: false },
+      { key: "deactivatedAt", type: "datetime", required: false }
+    ],
+    indexes: [
+      { key: "virtual_account_unique", type: "unique", attributes: ["provider", "accountNumber"] },
+      { key: "virtual_account_resident_idx", type: "key", attributes: ["residentId"] },
+      { key: "virtual_account_status_idx", type: "key", attributes: ["status"] }
+    ]
+  },
+  {
+    tableId: "resident_subscriptions",
+    name: "Resident Subscriptions",
+    columns: [
+      ...baseColumns,
+      { key: "residentId", type: "string", size: 64, required: true },
+      { key: "propertyId", type: "string", size: 64, required: false },
+      { key: "unitId", type: "string", size: 64, required: false },
+      { key: "category", type: "string", size: 64, required: true },
+      { key: "amount", type: "float", required: true },
+      { key: "currency", type: "string", size: 8, required: false, default: "NGN" },
+      { key: "billingCycle", type: "string", size: 32, required: true },
+      { key: "nextDueDate", type: "string", size: 32, required: true },
+      { key: "status", type: "string", size: 32, required: true },
+      { key: "autoBill", type: "boolean", required: false, default: true }
+    ],
+    indexes: [
+      { key: "subscription_resident_idx", type: "key", attributes: ["residentId"] },
+      { key: "subscription_due_idx", type: "key", attributes: ["nextDueDate"] },
+      { key: "subscription_status_idx", type: "key", attributes: ["status"] }
+    ]
+  },
+  {
+    tableId: "payment_intents",
+    name: "Payment Intents",
+    columns: [
+      ...baseColumns,
+      { key: "residentId", type: "string", size: 64, required: true },
+      { key: "billId", type: "string", size: 64, required: false },
+      { key: "subscriptionId", type: "string", size: 64, required: false },
+      { key: "virtualAccountId", type: "string", size: 64, required: false },
+      { key: "amount", type: "float", required: true },
+      { key: "currency", type: "string", size: 8, required: false, default: "NGN" },
+      { key: "reference", type: "string", size: 128, required: true },
+      { key: "processor", type: "string", size: 64, required: true },
+      { key: "channel", type: "string", size: 64, required: true },
+      { key: "checkoutUrl", type: "string", size: 1024, required: false },
+      { key: "status", type: "string", size: 32, required: true },
+      { key: "expiresAt", type: "datetime", required: false }
+    ],
+    indexes: [
+      { key: "payment_intent_reference_unique", type: "unique", attributes: ["reference"] },
+      { key: "payment_intent_resident_idx", type: "key", attributes: ["residentId"] },
+      { key: "payment_intent_status_idx", type: "key", attributes: ["status"] }
+    ]
+  },
+  {
+    tableId: "payment_webhook_events",
+    name: "Payment Webhook Events",
+    columns: [
+      ...baseColumns,
+      { key: "provider", type: "string", size: 64, required: true },
+      { key: "eventId", type: "string", size: 128, required: true },
+      { key: "eventType", type: "string", size: 128, required: true },
+      { key: "reference", type: "string", size: 128, required: false },
+      { key: "status", type: "string", size: 32, required: true },
+      { key: "receivedAt", type: "datetime", required: true },
+      { key: "processedAt", type: "datetime", required: false },
+      { key: "payloadHash", type: "string", size: 128, required: false },
+      { key: "errorMessage", type: "string", size: 512, required: false }
+    ],
+    indexes: [
+      { key: "webhook_event_unique", type: "unique", attributes: ["provider", "eventId"] },
+      { key: "webhook_reference_idx", type: "key", attributes: ["reference"] },
+      { key: "webhook_status_idx", type: "key", attributes: ["status"] }
+    ]
+  },
+  {
     tableId: "visitors",
     name: "Visitors",
     columns: [
@@ -234,6 +325,88 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     indexes: [
       { key: "visitor_log_visitor_idx", type: "key", attributes: ["visitorId"] },
       { key: "visitor_log_code_idx", type: "key", attributes: ["code"] }
+    ]
+  },
+  {
+    tableId: "guard_checkpoints",
+    name: "Guard Checkpoints",
+    columns: [
+      ...baseColumns,
+      { key: "checkpointCode", type: "string", size: 64, required: true },
+      { key: "name", type: "string", size: 128, required: true },
+      { key: "gateName", type: "string", size: 128, required: false },
+      { key: "locationLabel", type: "string", size: 255, required: false },
+      { key: "qrToken", type: "string", size: 128, required: true },
+      { key: "status", type: "string", size: 32, required: true },
+      { key: "sortOrder", type: "integer", required: false, default: 0 }
+    ],
+    indexes: [
+      { key: "checkpoint_code_unique", type: "unique", attributes: ["estateId", "checkpointCode"] },
+      { key: "checkpoint_token_unique", type: "unique", attributes: ["qrToken"] },
+      { key: "checkpoint_status_idx", type: "key", attributes: ["status"] }
+    ]
+  },
+  {
+    tableId: "guard_patrol_events",
+    name: "Guard Patrol Events",
+    columns: [
+      ...baseColumns,
+      { key: "checkpointId", type: "string", size: 64, required: true },
+      { key: "checkpointCode", type: "string", size: 64, required: true },
+      { key: "guardProfileId", type: "string", size: 64, required: true },
+      { key: "guardName", type: "string", size: 128, required: false },
+      { key: "scanType", type: "string", size: 32, required: true },
+      { key: "scannedAt", type: "datetime", required: true },
+      { key: "status", type: "string", size: 32, required: true },
+      { key: "deviceLabel", type: "string", size: 128, required: false },
+      { key: "note", type: "string", size: 512, required: false }
+    ],
+    indexes: [
+      { key: "patrol_checkpoint_idx", type: "key", attributes: ["checkpointId"] },
+      { key: "patrol_guard_idx", type: "key", attributes: ["guardProfileId"] },
+      { key: "patrol_scanned_idx", type: "key", attributes: ["scannedAt"] }
+    ]
+  },
+  {
+    tableId: "security_incidents",
+    name: "Security Incidents",
+    columns: [
+      ...baseColumns,
+      { key: "incidentType", type: "string", size: 64, required: true },
+      { key: "severity", type: "string", size: 32, required: true },
+      { key: "status", type: "string", size: 32, required: true },
+      { key: "reportedByRole", type: "string", size: 32, required: true },
+      { key: "reportedByProfileId", type: "string", size: 64, required: false },
+      { key: "assignedToProfileId", type: "string", size: 64, required: false },
+      { key: "locationLabel", type: "string", size: 255, required: false },
+      { key: "summary", type: "string", size: 160, required: true },
+      { key: "details", type: "string", size: 2048, required: false },
+      { key: "openedAt", type: "datetime", required: true },
+      { key: "resolvedAt", type: "datetime", required: false }
+    ],
+    indexes: [
+      { key: "incident_status_idx", type: "key", attributes: ["status"] },
+      { key: "incident_severity_idx", type: "key", attributes: ["severity"] },
+      { key: "incident_assignee_idx", type: "key", attributes: ["assignedToProfileId"] }
+    ]
+  },
+  {
+    tableId: "cso_reviews",
+    name: "CSO Reviews",
+    columns: [
+      ...baseColumns,
+      { key: "incidentId", type: "string", size: 64, required: true },
+      { key: "csoProfileId", type: "string", size: 64, required: true },
+      { key: "decision", type: "string", size: 64, required: true },
+      { key: "note", type: "string", size: 2048, required: false },
+      { key: "reviewedAt", type: "datetime", required: true },
+      { key: "followUpDate", type: "string", size: 32, required: false },
+      { key: "status", type: "string", size: 32, required: true }
+    ],
+    indexes: [
+      { key: "cso_review_incident_idx", type: "key", attributes: ["incidentId"] },
+      { key: "cso_review_profile_idx", type: "key", attributes: ["csoProfileId"] },
+      { key: "cso_review_status_idx", type: "key", attributes: ["status"] }
     ]
   },
   {

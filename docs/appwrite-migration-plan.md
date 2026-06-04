@@ -25,6 +25,14 @@ Recommended collections:
 | `visitor_logs` | Gate verification, check-in, checkout, rejection audit |
 | `bills` | Expected charges by resident/unit/property/category |
 | `payments` | Online and manual payment records |
+| `resident_virtual_accounts` | Dedicated or reserved virtual bank accounts for resident/unit payments |
+| `resident_subscriptions` | Recurring estate dues and service charge schedules |
+| `payment_intents` | Online checkout or virtual-account payment references before confirmation |
+| `payment_webhook_events` | Raw gateway webhook processing audit and idempotency guard |
+| `guard_checkpoints` | QR-coded security patrol/checkpoint locations |
+| `guard_patrol_events` | Guard scan events at checkpoint QR locations |
+| `security_incidents` | Gate, patrol, SOS, complaint, or security escalation records |
+| `cso_reviews` | Chief Security Officer review decisions and follow-up notes |
 | `audit_logs` | Who or what changed each sensitive record |
 
 These are implemented for Appwrite TablesDB in `lib/appwrite/schema.ts`. The setup endpoint is:
@@ -36,7 +44,7 @@ The resident import endpoints are:
 - `GET /api/appwrite/onboarding/status`
 - `POST /api/appwrite/onboarding/import`
 
-Mutation endpoints require the existing admin or super-admin role cookie and a server-only `APPWRITE_API_KEY` with Auth Users and TablesDB permissions.
+Mutation endpoints require the existing admin or super-admin role cookie and a server-only `CORSO_APPWRITE_API_KEY` with Auth Users and TablesDB permissions.
 
 ## Property And Unit Fields
 
@@ -130,6 +138,119 @@ Manual payment remains as fallback.
 - `confirmedAt`
 - `confirmedBy`
 
+`resident_virtual_accounts`
+
+- `estateId`
+- `residentId`
+- `propertyId`
+- `unitId`
+- `provider`: `monnify`, `gtbank_squad`, `paystack_titan`, or another virtual account provider
+- `accountNumber`
+- `accountName`
+- `bankName`
+- `bankCode`
+- `providerReference`
+- `status`: `active`, `inactive`, `suspended`
+- `assignedAt`
+- `deactivatedAt`
+
+`resident_subscriptions`
+
+- `estateId`
+- `residentId`
+- `propertyId`
+- `unitId`
+- `category`
+- `amount`
+- `currency`
+- `billingCycle`: `monthly`, `quarterly`, `annual`, `one_time`
+- `nextDueDate`
+- `status`: `active`, `paused`, `cancelled`
+- `autoBill`
+
+`payment_intents`
+
+- `estateId`
+- `residentId`
+- `billId`
+- `subscriptionId`
+- `virtualAccountId`
+- `amount`
+- `currency`
+- `reference`
+- `processor`
+- `channel`
+- `checkoutUrl`
+- `status`: `created`, `pending`, `confirmed`, `expired`, `cancelled`
+- `expiresAt`
+
+`payment_webhook_events`
+
+- `estateId`
+- `provider`
+- `eventId`
+- `eventType`
+- `reference`
+- `status`: `received`, `processed`, `ignored`, `failed`
+- `receivedAt`
+- `processedAt`
+- `payloadHash`
+- `errorMessage`
+
+## Security And CSO Provisions
+
+Guard checkpoint QR and CSO workflows should use these reserved tables:
+
+`guard_checkpoints`
+
+- `estateId`
+- `checkpointCode`
+- `name`
+- `gateName`
+- `locationLabel`
+- `qrToken`
+- `status`: `active`, `inactive`
+- `sortOrder`
+
+`guard_patrol_events`
+
+- `estateId`
+- `checkpointId`
+- `checkpointCode`
+- `guardProfileId`
+- `guardName`
+- `scanType`: `routine`, `handover`, `incident`, `missed`
+- `scannedAt`
+- `status`: `valid`, `late`, `manual_review`
+- `deviceLabel`
+- `note`
+
+`security_incidents`
+
+- `estateId`
+- `incidentType`: `visitor`, `checkpoint`, `sos`, `complaint`, `manual`
+- `severity`: `low`, `medium`, `high`, `critical`
+- `status`: `open`, `assigned`, `resolved`, `closed`
+- `reportedByRole`
+- `reportedByProfileId`
+- `assignedToProfileId`
+- `locationLabel`
+- `summary`
+- `details`
+- `openedAt`
+- `resolvedAt`
+
+`cso_reviews`
+
+- `estateId`
+- `incidentId`
+- `csoProfileId`
+- `decision`
+- `note`
+- `reviewedAt`
+- `followUpDate`
+- `status`
+
 ## Reporting Requirements
 
 Corso reports should compute:
@@ -164,3 +285,5 @@ Each route must verify provider signature before updating Appwrite.
 5. Turn on online payment initiation.
 6. Turn on verified webhooks.
 7. Keep manual admin payment recording for offline cases.
+8. Assign resident virtual bank accounts after provider credentials are approved.
+9. Add guard checkpoint QR setup and CSO dashboard after security role permissions are finalized.

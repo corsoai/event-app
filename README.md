@@ -34,7 +34,7 @@ NEXT_PUBLIC_APPWRITE_PROJECT_NAME=LBS View Estate
 NEXT_PUBLIC_APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1
 APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1
 APPWRITE_DATABASE_ID=lbsview_estate
-# APPWRITE_API_KEY=server-api-key-with-users-and-tablesdb-access
+# CORSO_APPWRITE_API_KEY=server-api-key-with-users-and-tablesdb-access
 ```
 
 The current Appwrite Sites deployment runs with local demo mode enabled while the backend is migrated to Appwrite. Do not set placeholder Supabase values in Appwrite environment variables. If Supabase variables are not set, the login page supports local demo routing so the MVP can be reviewed without a backend. When Supabase is configured, local demo login is disabled unless `NEXT_PUBLIC_ENABLE_LOCAL_DEMO=true`.
@@ -78,7 +78,7 @@ NEXT_PUBLIC_APPWRITE_PROJECT_ID=lbsview-estate
 NEXT_PUBLIC_APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1
 APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1
 APPWRITE_DATABASE_ID=lbsview_estate
-APPWRITE_API_KEY=server-api-key-with-users-and-tablesdb-access
+CORSO_APPWRITE_API_KEY=server-api-key-with-users-and-tablesdb-access
 ```
 
 Backend migration notes are tracked in `docs/appwrite-migration-plan.md`. The target model is property first, unit second, resident third, with online payment webhooks updating bills, balances, reports, and audit logs automatically.
@@ -90,7 +90,7 @@ Admin import controls are available at `/admin/residents` under `Appwrite import
 1. Generate the private preview with `.\scripts\lbsview-resident-import-preview.ps1 -WorkbookPath "C:\Users\MICROSOFT PC\Desktop\AI BUILDER\LBSView Resident Data.xlsx"`.
 2. Sign in as estate admin or super admin.
 3. Open `/admin/residents`.
-4. Confirm `APPWRITE_API_KEY` is configured with Auth Users and TablesDB permissions.
+4. Confirm `CORSO_APPWRITE_API_KEY` is configured with Auth Users and TablesDB permissions.
 5. Click `Setup schema`.
 6. Upload `.local-import/lbsview-onboarding-preview.json`.
 7. Review the dry-run counts, then click `Import`.
@@ -250,6 +250,14 @@ npm run build
 npm run start
 ```
 
-## Payment Gateway Extension
+## Future Payment And Security Extensions
 
-The MVP tracks manual payments and proof uploads. Add Paystack or Flutterwave by connecting gateway callbacks to `payments`, updating `bills.status`, and writing audit events to `activity_logs`.
+The MVP tracks bills, payments, visitor access, and gate logs. The Appwrite schema also reserves production tables for:
+
+- resident virtual bank accounts through Monnify, GTBank Squad, Paystack/Titan, or another provider
+- estate dues subscriptions and recurring bill generation
+- payment intents and gateway webhook idempotency logs
+- guard QR checkpoints and patrol scan events
+- security incidents and Chief Security Officer review notes
+
+Payment gateways should confirm through verified webhooks before updating `payments`, `bills`, reports, and `audit_logs`. Guard checkpoint and CSO dashboards should be built on top of `guard_checkpoints`, `guard_patrol_events`, `security_incidents`, and `cso_reviews`.
