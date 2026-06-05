@@ -220,13 +220,13 @@ export function PageHeader({
 }
 
 function useCurrentResidentProfile(state: LocalEstateState) {
-  const [resident, setResident] = useState(() => state.residents[0]);
+  const [resident, setResident] = useState(() => getCurrentResident(state));
 
   useEffect(() => {
     setResident(getCurrentResident(state));
   }, [state]);
 
-  return resident ?? state.residents[0];
+  return resident ?? getCurrentResident(state);
 }
 
 export function AdminDashboard() {
