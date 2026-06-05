@@ -81,8 +81,8 @@ export default function LandingPage() {
                 <div className="flex items-center justify-between gap-4">
                   <div>
                     <p className="text-xs uppercase tracking-[0.2em] text-smart">Verified visitor</p>
-                    <p className="mt-2 text-xl font-semibold text-white">Cane Corso</p>
-                    <p className="text-sm text-slate-300">482913 - Family visit</p>
+                    <p className="mt-2 text-xl font-semibold text-white">Guest Access</p>
+                    <p className="text-sm text-slate-300">One-time code - Family visit</p>
                   </div>
                   <QrCode className="h-16 w-16 text-smart" />
                 </div>

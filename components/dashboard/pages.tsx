@@ -2713,8 +2713,8 @@ export function InviteVisitorPage() {
   const estate = state.estates.find((item) => item.id === resident.estateId) ?? state.estates[0];
   const today = dateInputValue();
   const [code, setCode] = useState("");
-  const [visitorName, setVisitorName] = useState("Cane Corso");
-  const [sharePhone, setSharePhone] = useState("+234 906 343 1313");
+  const [visitorName, setVisitorName] = useState("");
+  const [sharePhone, setSharePhone] = useState("");
   const [shareDate, setShareDate] = useState(today);
   const [shareTime, setShareTime] = useState(timeInputValue());
   const [status, setStatus] = useState("Generate a code to save it online for security verification.");
@@ -3897,7 +3897,7 @@ export function VerifyDigitalIdPage() {
           onClose={() => setScannerOpen(false)}
         />
         <div className="mt-5 grid gap-6 lg:grid-cols-[0.8fr_1fr]">
-          <DigitalIdCard name="Amina Okafor" role="Resident owner" estate="LBS View Estate" house="LDI-01-B" idNumber={idNumber} status="active" />
+          <DigitalIdCard name="Resident User" role="Resident" estate="LBS View Estate" house="Pending assignment" idNumber={idNumber} status="active" />
           <div className="rounded-lg border border-smart/30 bg-smart/10 p-4 text-sm leading-6 text-smart">
             {message || "Enter an ID number and click Verify ID to check access status."}
           </div>
@@ -4033,8 +4033,12 @@ function BillComposer({
   function submitBill(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
-    const residentId = String(form.get("residentId") ?? "res-001");
+    const residentId = String(form.get("residentId") ?? residentsDirectory[0]?.id ?? "");
     const resident = residentsDirectory.find((item) => item.id === residentId);
+    if (!resident) {
+      setMessage("Add or import residents before creating a bill.");
+      return;
+    }
     const bill = onCreateBill({
       title: String(form.get("title") ?? ""),
       category: String(form.get("category") ?? "Service charge"),
@@ -4065,12 +4069,16 @@ function BillComposer({
           <Field label="Amount"><Input name="amount" type="number" defaultValue={85000} min={1} required /></Field>
           <Field label="Due date"><Input name="dueDate" type="date" defaultValue="2026-06-28" required /></Field>
           <Field label="Resident / unit">
-            <Select name="residentId" defaultValue="res-001">
-              {residentsDirectory.map((resident) => (
-                <option key={resident.id} value={resident.id}>
-                  {resident.name} - {residentUnitLabel(state, resident)}
-                </option>
-              ))}
+            <Select name="residentId" defaultValue={residentsDirectory[0]?.id ?? ""}>
+              {residentsDirectory.length ? (
+                residentsDirectory.map((resident) => (
+                  <option key={resident.id} value={resident.id}>
+                    {resident.name} - {residentUnitLabel(state, resident)}
+                  </option>
+                ))
+              ) : (
+                <option value="">No residents available</option>
+              )}
             </Select>
           </Field>
         </div>

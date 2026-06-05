@@ -34,7 +34,7 @@ export const demoUsers = [
     email: "resident@lbsview.test",
     password: DEMO_PASSWORD,
     role: "resident" as UserRole,
-    name: "Amina Okafor"
+    name: "Resident User"
   },
   {
     email: "security@lbsview.test",

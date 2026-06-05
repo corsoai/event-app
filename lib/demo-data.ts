@@ -56,7 +56,6 @@ export const properties: Property[] = [
     name: "LDI-01",
     description: "Four-unit compound near the main gate",
     street: "LBS View Estate, Digital Identity Row",
-    legacyName: "Amina Okafor compound",
     status: "active"
   },
   {
@@ -66,7 +65,6 @@ export const properties: Property[] = [
     name: "LDI-14",
     description: "Eight-tenant compound",
     street: "LBS View Estate, Central Close",
-    legacyName: "Tunde Balogun block",
     status: "active"
   },
   {
@@ -105,7 +103,6 @@ export const properties: Property[] = [
     name: "VIC-02",
     description: "Victoria Island Court tower",
     street: "Akin Adesola Street",
-    legacyName: "Ngozi Hassan penthouse",
     status: "active"
   },
   {
@@ -115,7 +112,6 @@ export const properties: Property[] = [
     name: "ABR-18",
     description: "Abuja Royal residential block",
     street: "Gwarinpa",
-    legacyName: "Chinedu Eze house",
     status: "active"
   }
 ];
@@ -138,10 +134,7 @@ export const units: Unit[] = [
     unitCode: "LDI-01-B",
     label: "Apartment B",
     apartmentType: "3 bedroom flat",
-    status: "occupied",
-    currentResidentId: "res-001",
-    moveInDate: "2024-01-10",
-    legacyName: "Amina Okafor house"
+    status: "vacant"
   },
   {
     id: "unit-ldi-01-c",
@@ -168,10 +161,7 @@ export const units: Unit[] = [
     unitCode: "LDI-14-A",
     label: "Apartment A",
     apartmentType: "Mini flat",
-    status: "occupied",
-    currentResidentId: "res-002",
-    moveInDate: "2025-07-01",
-    legacyName: "Tunde Balogun apartment"
+    status: "vacant"
   },
   {
     id: "unit-ldi-14-b",
@@ -332,9 +322,7 @@ export const units: Unit[] = [
     unitCode: "VIC-02-P2",
     label: "Penthouse 2",
     apartmentType: "Penthouse",
-    status: "occupied",
-    currentResidentId: "res-003",
-    moveInDate: "2023-04-12",
+    status: "vacant",
     legacyName: "Penthouse 2"
   },
   {
@@ -344,233 +332,20 @@ export const units: Unit[] = [
     unitCode: "ABR-18-A",
     label: "Apartment A",
     apartmentType: "3 bedroom flat",
-    status: "moved out",
-    currentResidentId: "res-004",
-    moveInDate: "2024-08-01",
+    status: "vacant",
     legacyName: "R18"
   }
 ];
 
-export const residents: Resident[] = [
-  {
-    id: "res-001",
-    estateId: "lekki-gardens",
-    propertyId: "prop-ldi-01",
-    unitId: "unit-ldi-01-b",
-    name: "Amina Okafor",
-    houseNumber: "LDI-01-B",
-    phone: "+234 803 920 4412",
-    email: "amina.okafor@example.com",
-    type: "owner",
-    status: "active",
-    moveInDate: "2024-01-10"
-  },
-  {
-    id: "res-002",
-    estateId: "lekki-gardens",
-    propertyId: "prop-ldi-14",
-    unitId: "unit-ldi-14-a",
-    name: "Tunde Balogun",
-    houseNumber: "LDI-14-A",
-    phone: "+234 805 110 9320",
-    email: "tunde.balogun@example.com",
-    type: "tenant",
-    status: "active",
-    moveInDate: "2025-07-01"
-  },
-  {
-    id: "res-003",
-    estateId: "vi-court",
-    propertyId: "prop-vic-02",
-    unitId: "unit-vic-02-p2",
-    name: "Ngozi Hassan",
-    houseNumber: "VIC-02-P2",
-    phone: "+234 809 440 2281",
-    email: "ngozi.hassan@example.com",
-    type: "owner",
-    status: "active",
-    moveInDate: "2023-04-12"
-  },
-  {
-    id: "res-004",
-    estateId: "abuja-royal",
-    propertyId: "prop-abr-18",
-    unitId: "unit-abr-18-a",
-    name: "Chinedu Eze",
-    houseNumber: "ABR-18-A",
-    phone: "+234 812 617 0031",
-    email: "chinedu.eze@example.com",
-    type: "tenant",
-    status: "inactive",
-    moveInDate: "2024-08-01"
-  }
-];
+export const residents: Resident[] = [];
 
-export const visitors: Visitor[] = [
-  {
-    id: "vis-001",
-    residentId: "res-001",
-    estateId: "lekki-gardens",
-    visitorName: "Cane Corso",
-    phone: "+234 906 343 1313",
-    visitDate: "2026-05-15",
-    arrivalTime: "14:30",
-    purpose: "Family visit",
-    count: 2,
-    code: "482913",
-    status: "pending"
-  },
-  {
-    id: "vis-002",
-    residentId: "res-002",
-    estateId: "lekki-gardens",
-    visitorName: "Kemi Adeyemi",
-    phone: "+234 802 012 7190",
-    visitDate: "2026-05-15",
-    arrivalTime: "10:00",
-    purpose: "Maintenance inspection",
-    count: 1,
-    code: "739204",
-    status: "checked-in"
-  },
-  {
-    id: "vis-003",
-    residentId: "res-003",
-    estateId: "vi-court",
-    visitorName: "Dispatch Rider",
-    phone: "+234 701 220 1199",
-    visitDate: "2026-05-15",
-    arrivalTime: "16:00",
-    purpose: "Delivery",
-    count: 1,
-    code: "158620",
-    status: "verified"
-  }
-];
+export const visitors: Visitor[] = [];
 
-export const bills: Bill[] = [
-  {
-    id: "bill-001",
-    residentId: "res-001",
-    estateId: "lekki-gardens",
-    propertyId: "prop-ldi-01",
-    unitId: "unit-ldi-01-b",
-    category: "Service charge",
-    title: "May 2026 Service Charge",
-    amount: 85000,
-    paidAmount: 0,
-    dueDate: "2026-05-28",
-    status: "unpaid"
-  },
-  {
-    id: "bill-002",
-    residentId: "res-002",
-    estateId: "lekki-gardens",
-    propertyId: "prop-ldi-14",
-    unitId: "unit-ldi-14-a",
-    category: "Security levy",
-    title: "Security Levy",
-    amount: 30000,
-    paidAmount: 0,
-    dueDate: "2026-05-20",
-    status: "unpaid"
-  },
-  {
-    id: "bill-003",
-    residentId: "res-003",
-    estateId: "vi-court",
-    propertyId: "prop-vic-02",
-    unitId: "unit-vic-02-p2",
-    category: "Power/infrastructure levy",
-    title: "Power Infrastructure Levy",
-    amount: 140000,
-    paidAmount: 140000,
-    dueDate: "2026-05-30",
-    status: "paid"
-  },
-  {
-    id: "bill-004",
-    residentId: "res-004",
-    estateId: "abuja-royal",
-    propertyId: "prop-abr-18",
-    unitId: "unit-abr-18-a",
-    category: "Waste management",
-    title: "Waste Management",
-    amount: 18000,
-    paidAmount: 0,
-    dueDate: "2026-05-05",
-    status: "overdue"
-  }
-];
+export const bills: Bill[] = [];
 
-export const payments: Payment[] = [
-  {
-    id: "pay-001",
-    billId: "bill-003",
-    residentId: "res-003",
-    estateId: "vi-court",
-    propertyId: "prop-vic-02",
-    unitId: "unit-vic-02-p2",
-    amount: 140000,
-    reference: "PSK-LBS-54012",
-    processor: "paystack",
-    channel: "online",
-    providerReference: "paystack_54012",
-    date: "2026-05-09",
-    status: "confirmed",
-    source: "webhook",
-    confirmedAt: "2026-05-09T10:22:00.000Z",
-    confirmedBy: "Paystack webhook"
-  },
-  {
-    id: "pay-002",
-    billId: "bill-002",
-    residentId: "res-002",
-    estateId: "lekki-gardens",
-    propertyId: "prop-ldi-14",
-    unitId: "unit-ldi-14-a",
-    amount: 15000,
-    reference: "OPAY-192001",
-    processor: "manual",
-    channel: "whatsapp_receipt",
-    date: "2026-05-12",
-    status: "pending",
-    source: "resident"
-  }
-];
+export const payments: Payment[] = [];
 
-export const complaints: Complaint[] = [
-  {
-    id: "cmp-001",
-    residentId: "res-001",
-    category: "power",
-    title: "Transformer noise at night",
-    priority: "medium",
-    status: "in progress",
-    createdAt: "2026-05-13",
-    assignedTo: "Facility desk"
-  },
-  {
-    id: "cmp-002",
-    residentId: "res-002",
-    category: "security",
-    title: "Unverified visitor around C block",
-    priority: "high",
-    status: "open",
-    createdAt: "2026-05-15",
-    assignedTo: "Main Gate A"
-  },
-  {
-    id: "cmp-003",
-    residentId: "res-003",
-    category: "waste",
-    title: "Waste pickup skipped",
-    priority: "low",
-    status: "resolved",
-    createdAt: "2026-05-08",
-    assignedTo: "Waste contractor"
-  }
-];
+export const complaints: Complaint[] = [];
 
 export const announcements: Announcement[] = [
   {
@@ -640,75 +415,9 @@ export const knowledgeBase: KnowledgeArticle[] = [
   }
 ];
 
-export const emergencyAlerts: EmergencyAlert[] = [
-  {
-    id: "sos-001",
-    estateId: "lekki-gardens",
-    residentId: "res-002",
-    residentName: "Tunde Balogun",
-    houseNumber: "LDI-14-A",
-    phone: "+234 805 110 9320",
-    type: "suspicious_movement",
-    status: "acknowledged",
-    notes: "Resident reported movement around C Block parking after midnight.",
-    createdAt: "2026-05-15T22:18:00.000Z",
-    acknowledgedAt: "2026-05-15T22:20:00.000Z",
-    acknowledgedBy: "Main Gate A",
-    siren: false,
-    locationLabel: "LDI-14-A, LBS View Estate, Lagos"
-  }
-];
+export const emergencyAlerts: EmergencyAlert[] = [];
 
-export const activityLogs = [
-  "Visitor code 482913 invited by Amina Okafor for LDI-01-B",
-  "Security checked in Kemi Adeyemi at Main Gate A",
-  "Payment proof OPAY-192001 uploaded by Tunde Balogun for LDI-14-A",
-  "Complaint CMP-002 assigned to Main Gate A",
-  "Announcement published to all residents"
-];
+export const activityLogs: string[] = [];
 
-export const auditLogs: AuditLog[] = [
-  {
-    id: "audit-001",
-    estateId: "vi-court",
-    actor: "Paystack webhook",
-    action: "confirmed online payment",
-    entityType: "payment",
-    entityId: "pay-001",
-    metadata: {
-      processor: "paystack",
-      amount: 140000,
-      billId: "bill-003"
-    },
-    createdAt: "2026-05-09T10:22:00.000Z"
-  },
-  {
-    id: "audit-002",
-    estateId: "lekki-gardens",
-    actor: "Resident upload",
-    action: "submitted manual payment proof",
-    entityType: "payment",
-    entityId: "pay-002",
-    metadata: {
-      channel: "whatsapp_receipt",
-      amount: 15000,
-      billId: "bill-002"
-    },
-    createdAt: "2026-05-12T09:40:00.000Z"
-  },
-  {
-    id: "audit-003",
-    estateId: "lekki-gardens",
-    actor: "Estate admin",
-    action: "mapped resident to property unit",
-    entityType: "unit",
-    entityId: "unit-ldi-01-b",
-    metadata: {
-      propertyCode: "LDI-01",
-      unitCode: "LDI-01-B",
-      residentId: "res-001"
-    },
-    createdAt: "2026-05-15T08:30:00.000Z"
-  }
-];
+export const auditLogs: AuditLog[] = [];
 

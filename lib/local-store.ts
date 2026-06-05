@@ -3,15 +3,9 @@
 import { useEffect, useState } from "react";
 import {
   auditLogs,
-  bills,
-  complaints,
-  emergencyAlerts,
   estates,
-  payments,
   properties,
-  residents as demoResidents,
-  units,
-  visitors
+  units
 } from "@/lib/demo-data";
 import {
   approveSupabaseAccessRequest,
@@ -53,6 +47,7 @@ const STORAGE_KEY = "corso_estate_local_db_v1";
 const STATE_UPDATED_EVENT = "corso_estate_state_updated";
 const LEGACY_ESTATE_TOKEN = ["lekki", "gardens"].join("");
 const LAGOS_TIME_ZONE = "Africa/Lagos";
+const DEMO_RESIDENT_IDS = new Set(["res-001", "res-002", "res-003", "res-004"]);
 
 export type LocalVisitorLog = {
   id: string;
@@ -219,25 +214,13 @@ function defaultState(): LocalEstateState {
     estates,
     properties,
     units,
-    visitors,
-    visitorLogs: [
-      {
-        id: "log-vis-002",
-        visitorId: "vis-002",
-        visitorName: "Kemi Adeyemi",
-        code: "739204",
-        gateName: "Main Gate A",
-        guardName: "Officer Musa",
-        entryTime: "10:12 AM",
-        decision: "checked-in",
-        createdAt: "2026-05-15"
-      }
-    ],
-    bills,
-    payments,
-    complaints,
-    emergencyAlerts,
-    residents: demoResidents,
+    visitors: [],
+    visitorLogs: [],
+    bills: [],
+    payments: [],
+    complaints: [],
+    emergencyAlerts: [],
+    residents: [],
     accessRequests: [],
     approvedUsers: [],
     auditLogs
@@ -1540,7 +1523,13 @@ export function getCurrentResident(state: LocalEstateState) {
   const session = readLocalSessionUser();
 
   if (!session || session.role !== "resident") {
-    return state.residents[0] ?? demoResidents[0];
+    return state.residents[0] ?? makeResidentProfile({
+      fullName: "Resident User",
+      email: "resident@lbsview.test",
+      phone: "Not provided",
+      estate: "LBS View Estate",
+      residentId: "res-local-demo"
+    });
   }
 
   const normalizedEmail = session.email.trim().toLowerCase();
@@ -1674,7 +1663,11 @@ function mergeSavedWithDefaultsById<T extends { id: string }>(savedItems: T[] | 
 function normalizeLocalEstateState(saved: Partial<LocalEstateState>) {
   const defaults = defaultState();
   const normalizedProperties = mergeSavedWithDefaultsById(saved.properties, defaults.properties);
-  const normalizedUnits = mergeSavedWithDefaultsById(saved.units, defaults.units);
+  const normalizedUnits = mergeSavedWithDefaultsById(saved.units, defaults.units).map((unit) =>
+    unit.currentResidentId && DEMO_RESIDENT_IDS.has(unit.currentResidentId)
+      ? { ...unit, currentResidentId: undefined, status: unit.status === "occupied" ? "vacant" : unit.status }
+      : unit
+  );
   const approvedUsers = (saved.approvedUsers ?? defaults.approvedUsers).map((user) =>
     user.role === "resident" && !user.residentId
       ? { ...user, phone: user.phone ?? "", residentId: residentIdForIdentifier(user.phone || user.email) }
@@ -1685,7 +1678,7 @@ function normalizeLocalEstateState(saved: Partial<LocalEstateState>) {
     phone: request.phone ?? ""
   }));
   const savedResidents = saved.residents?.length ? saved.residents : defaults.residents;
-  const normalizedResidents = savedResidents.map((resident) => {
+  const normalizedResidents = savedResidents.filter((resident) => !isDemoResidentId(resident.id)).map((resident) => {
     const defaultResident = defaults.residents.find((item) => item.id === resident.id);
     const assignedUnit = normalizedUnits.find((unit) => unit.id === resident.unitId || unit.currentResidentId === resident.id)
       ?? (defaultResident?.unitId ? normalizedUnits.find((unit) => unit.id === defaultResident.unitId) : undefined);
@@ -1700,7 +1693,7 @@ function normalizeLocalEstateState(saved: Partial<LocalEstateState>) {
       moveInDate: resident.moveInDate ?? defaultResident?.moveInDate ?? assignedUnit?.moveInDate
     };
   });
-  const normalizedPayments = (saved.payments ?? defaults.payments).map((payment) => {
+  const normalizedPayments = (saved.payments ?? defaults.payments).filter((payment) => !isDemoResidentId(payment.residentId)).map((payment) => {
     const bill = (saved.bills ?? defaults.bills).find((item) => item.id === payment.billId);
     const resident = normalizedResidents.find((item) => item.id === payment.residentId);
 
@@ -1714,7 +1707,7 @@ function normalizeLocalEstateState(saved: Partial<LocalEstateState>) {
       source: payment.source ?? (payment.status === "confirmed" ? "admin" : "resident")
     };
   });
-  const normalizedBills = (saved.bills ?? defaults.bills).map((bill) => {
+  const normalizedBills = (saved.bills ?? defaults.bills).filter((bill) => !isDemoResidentId(bill.residentId)).map((bill) => {
     const resident = normalizedResidents.find((item) => item.id === bill.residentId);
     const paidAmount = bill.paidAmount ?? paymentTotalForBill(normalizedPayments, bill.id);
 
@@ -1757,10 +1750,21 @@ function normalizeLocalEstateState(saved: Partial<LocalEstateState>) {
     residents: [...normalizedResidents, ...approvedResidentProfiles],
     bills: normalizedBills,
     payments: normalizedPayments,
-    emergencyAlerts: saved.emergencyAlerts ?? defaults.emergencyAlerts,
+    visitors: (saved.visitors ?? defaults.visitors).filter((visitor) => !isDemoResidentId(visitor.residentId)),
+    visitorLogs: (saved.visitorLogs ?? defaults.visitorLogs).filter((log) => !["vis-001", "vis-002", "vis-003"].includes(log.visitorId)),
+    complaints: (saved.complaints ?? defaults.complaints).filter((complaint) => !isDemoResidentId(complaint.residentId)),
+    emergencyAlerts: (saved.emergencyAlerts ?? defaults.emergencyAlerts).filter((alert) => !isDemoResidentId(alert.residentId)),
     approvedUsers,
-    auditLogs: saved.auditLogs?.length ? saved.auditLogs : defaults.auditLogs
+    auditLogs: (saved.auditLogs?.length ? saved.auditLogs : defaults.auditLogs).filter((log) => !isDemoEntityId(log.entityId))
   } as LocalEstateState;
+}
+
+function isDemoResidentId(value?: string) {
+  return Boolean(value && DEMO_RESIDENT_IDS.has(value));
+}
+
+function isDemoEntityId(value?: string) {
+  return Boolean(value && (DEMO_RESIDENT_IDS.has(value) || value.startsWith("unit-vic-") || value.startsWith("unit-abr-")));
 }
 
 function makeResidentProfile({
