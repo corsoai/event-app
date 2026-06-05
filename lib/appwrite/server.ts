@@ -209,11 +209,7 @@ async function ensureTable(databaseId: string, table: AppwriteTableDefinition) {
           ...column,
           array: column.array ?? false
         })),
-        indexes: (table.indexes ?? []).map((index) => ({
-          ...index,
-          orders: normalizeIndexOrders(index),
-          lengths: index.lengths ?? []
-        }))
+        indexes: (table.indexes ?? []).map(buildIndexPayload)
       }
     });
   }
@@ -249,13 +245,7 @@ async function ensureIndex(databaseId: string, tableId: string, index: AppwriteI
 
   await appwriteRequest(`/tablesdb/${databaseId}/tables/${tableId}/indexes`, {
     method: "POST",
-    body: {
-      key: index.key,
-      type: index.type,
-      columns: index.attributes,
-      orders: normalizeIndexOrders(index),
-      lengths: index.lengths ?? []
-    }
+    body: buildIndexPayload(index)
   });
 
   return { key: index.key, status: "created" as const };
@@ -330,6 +320,16 @@ function assertValidAppwriteApiKey(value: string) {
 
 function normalizeIndexOrders(index: AppwriteIndexDefinition) {
   return index.orders ?? index.attributes.map(() => "ASC" as const);
+}
+
+function buildIndexPayload(index: AppwriteIndexDefinition) {
+  return {
+    key: index.key,
+    type: index.type,
+    columns: index.attributes,
+    orders: normalizeIndexOrders(index),
+    ...(index.lengths ? { lengths: index.lengths } : {})
+  };
 }
 
 function compactRecord(data: Record<string, unknown>) {
