@@ -102,13 +102,7 @@ async function listAppwriteRows<T>(tableId: string) {
   const limit = 100;
 
   while (true) {
-    const query = new URLSearchParams();
-    query.append("queries[]", `limit(${limit})`);
-    query.append("queries[]", `offset(${offset})`);
-
-    const payload = await appwriteRequest<AppwriteRowList<T>>(
-      `/tablesdb/${config.databaseId}/tables/${tableId}/rows?${query.toString()}`
-    );
+    const payload = await listAppwriteRowsPage<T>(config.databaseId, tableId, limit, offset);
     const pageRows = payload.rows ?? payload.documents ?? [];
     rows.push(...pageRows);
 
@@ -121,6 +115,24 @@ async function listAppwriteRows<T>(tableId: string) {
   }
 
   return rows;
+}
+
+async function listAppwriteRowsPage<T>(databaseId: string, tableId: string, limit: number, offset: number) {
+  const query = new URLSearchParams();
+  query.append("queries[0]", `limit(${limit})`);
+  query.append("queries[1]", `offset(${offset})`);
+
+  try {
+    return await appwriteRequest<AppwriteRowList<T>>(
+      `/tablesdb/${databaseId}/tables/${tableId}/rows?${query.toString()}`
+    );
+  } catch (error) {
+    if (offset === 0 && error instanceof Error && error.message.toLowerCase().includes("invalid query")) {
+      return appwriteRequest<AppwriteRowList<T>>(`/tablesdb/${databaseId}/tables/${tableId}/rows`);
+    }
+
+    throw error;
+  }
 }
 
 function mapPropertyRow(row: AppwritePropertyRow): Property {
