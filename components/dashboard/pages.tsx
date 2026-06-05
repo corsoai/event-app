@@ -13,6 +13,7 @@ import {
   ClipboardList,
   Database,
   DoorOpen,
+  Download,
   FileJson,
   FilePlus2,
   Flame,
@@ -249,6 +250,11 @@ function mergeRecordsById<T extends { id: string }>(localRecords: T[], liveRecor
   return Array.from(merged.values());
 }
 
+function filenameFromContentDisposition(value: string | null) {
+  const match = value?.match(/filename="?([^"]+)"?/i);
+  return match?.[1];
+}
+
 export function AdminDashboard() {
   const { state } = useLocalEstateStore();
   const confirmedPayments = state.payments.filter((payment) => payment.status === "confirmed");
@@ -365,6 +371,7 @@ export function ResidentsAdminPage() {
   const [appwriteDirectory, setAppwriteDirectory] = useState<AppwriteResidentDirectory | null>(null);
   const [appwriteDirectoryStatus, setAppwriteDirectoryStatus] = useState("Loading Appwrite residents...");
   const [loadingAppwriteDirectory, setLoadingAppwriteDirectory] = useState(false);
+  const [exportingScope, setExportingScope] = useState<"" | "residents" | "all">("");
   const directoryState = appwriteDirectory?.residents.length
     ? {
         ...state,
@@ -404,6 +411,36 @@ export function ResidentsAdminPage() {
     }
   }
 
+  async function downloadAppwriteCsv(scope: "residents" | "all") {
+    setExportingScope(scope);
+    setResidentMessage("");
+
+    try {
+      const response = await fetch(`/api/appwrite/admin/export?scope=${scope}`, { cache: "no-store" });
+      if (!response.ok) {
+        const payload = await response.json().catch(() => null) as { error?: string } | null;
+        throw new Error(payload?.error ?? "CSV export failed.");
+      }
+
+      const blob = await response.blob();
+      const url = window.URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filenameFromContentDisposition(response.headers.get("content-disposition")) ?? (
+        scope === "residents" ? "corso-residents.csv" : "corso-appwrite-all-data.csv"
+      );
+      document.body.appendChild(link);
+      link.click();
+      link.remove();
+      window.URL.revokeObjectURL(url);
+      setResidentMessage(scope === "residents" ? "Residents CSV download started." : "Full Appwrite CSV download started.");
+    } catch (error) {
+      setResidentMessage(error instanceof Error ? error.message : "CSV export failed.");
+    } finally {
+      setExportingScope("");
+    }
+  }
+
   async function saveResident(resident: Resident, input: ResidentEditInput) {
     setSavingResident(true);
     setResidentMessage("");
@@ -422,9 +459,19 @@ export function ResidentsAdminPage() {
   return (
     <>
       <PageHeader title="Residents" description="Add residents, manage household details, ownership status, and estate access." >
-        <Link href="/admin/users">
-          <Button><Users className="h-4 w-4" />Add resident</Button>
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="secondary" onClick={() => void downloadAppwriteCsv("residents")} disabled={Boolean(exportingScope)}>
+            <Download className="h-4 w-4" />
+            {exportingScope === "residents" ? "Preparing" : "Residents CSV"}
+          </Button>
+          <Button type="button" variant="secondary" onClick={() => void downloadAppwriteCsv("all")} disabled={Boolean(exportingScope)}>
+            <Database className="h-4 w-4" />
+            {exportingScope === "all" ? "Preparing" : "All data CSV"}
+          </Button>
+          <Link href="/admin/users">
+            <Button><Users className="h-4 w-4" />Add resident</Button>
+          </Link>
+        </div>
       </PageHeader>
       <AccessRequestsPanel
         requests={pendingRequests}

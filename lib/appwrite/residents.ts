@@ -70,9 +70,9 @@ export async function listAppwriteResidentDirectory(): Promise<AppwriteResidentD
   await setupAppwriteOnboardingSchema();
 
   const [propertyRows, unitRows, residentRows] = await Promise.all([
-    listAppwriteRows<AppwritePropertyRow>("properties"),
-    listAppwriteRows<AppwriteUnitRow>("units"),
-    listAppwriteRows<AppwriteResidentRow>("residents")
+    listAppwriteTableRows<AppwritePropertyRow>("properties"),
+    listAppwriteTableRows<AppwriteUnitRow>("units"),
+    listAppwriteTableRows<AppwriteResidentRow>("residents")
   ]);
 
   const properties = propertyRows.map(mapPropertyRow);
@@ -95,7 +95,7 @@ export async function listAppwriteResidentDirectory(): Promise<AppwriteResidentD
   };
 }
 
-async function listAppwriteRows<T>(tableId: string) {
+export async function listAppwriteTableRows<T>(tableId: string) {
   const config = getAppwriteServerConfig();
   const rows: T[] = [];
   let offset = 0;
