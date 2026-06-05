@@ -567,11 +567,14 @@ function ResidentOnboardingPanel({
   onCreateResident: (input: ResidentOnboardingInput) => void;
 }) {
   const estate = state.estates[0];
-  const estateProperties = state.properties.filter((property) => property.estateId === estate.id);
-  const estateUnits = state.units.filter((unit) => unit.estateId === estate.id);
-  const propertyCount = appwriteDirectory?.total.properties ?? estateProperties.length;
-  const unitCount = appwriteDirectory?.total.units ?? estateUnits.length;
-  const activeResidentCount = (appwriteDirectory?.residents ?? state.residents).filter((resident) => resident.estateId === estate.id && resident.status === "active").length;
+  const localEstateProperties = state.properties.filter((property) => property.estateId === estate.id);
+  const localEstateUnits = state.units.filter((unit) => unit.estateId === estate.id);
+  const displayProperties = appwriteDirectory?.properties.length ? appwriteDirectory.properties : localEstateProperties;
+  const displayUnits = appwriteDirectory?.units.length ? appwriteDirectory.units : localEstateUnits;
+  const displayResidents = appwriteDirectory?.residents.length ? appwriteDirectory.residents : state.residents;
+  const propertyCount = appwriteDirectory?.total.properties ?? localEstateProperties.length;
+  const unitCount = appwriteDirectory?.total.units ?? localEstateUnits.length;
+  const activeResidentCount = displayResidents.filter((resident) => resident.status === "active").length;
 
   function submitProperty(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -662,7 +665,7 @@ function ResidentOnboardingPanel({
           <form className="grid gap-3" onSubmit={submitUnit}>
             <Field label="Property group">
               <Select name="propertyId" required>
-                {estateProperties.map((property) => (
+                {localEstateProperties.map((property) => (
                   <option key={property.id} value={property.id}>
                     {property.propertyCode} - {property.name}
                   </option>
@@ -688,7 +691,7 @@ function ResidentOnboardingPanel({
           <form className="grid gap-3" onSubmit={submitResident}>
             <Field label="Unit">
               <Select name="unitId" required>
-                {estateUnits.map((unit) => (
+                {localEstateUnits.map((unit) => (
                   <option key={unit.id} value={unit.id}>
                     {unit.unitCode} - {unit.apartmentType}
                   </option>
@@ -729,10 +732,10 @@ function ResidentOnboardingPanel({
         title="Property and unit groups"
         description="Use this to confirm mini-estate IDs before attaching residents."
         headers={["Group", "Name", "Units", "Legacy"]}
-        rows={estateProperties.map((property) => [
+        rows={displayProperties.map((property) => [
           <span key={property.id} className="font-mono text-smart">{property.propertyCode}</span>,
           property.name,
-          String(estateUnits.filter((unit) => unit.propertyId === property.id).length),
+          String(displayUnits.filter((unit) => unit.propertyId === property.id).length),
           property.legacyName ?? "-"
         ])}
       />
