@@ -206,10 +206,7 @@ async function ensureTable(databaseId: string, table: AppwriteTableDefinition) {
         permissions: [],
         rowSecurity: false,
         enabled: true,
-        columns: table.columns.map((column) => ({
-          ...column,
-          array: column.array ?? false
-        }))
+        columns: table.columns.map(buildColumnPayload)
       }
     });
   }
@@ -332,6 +329,14 @@ function buildIndexPayload(index: AppwriteIndexDefinition) {
     columns: index.attributes,
     orders: normalizeIndexOrders(index),
     ...(index.lengths?.length ? { lengths: index.lengths } : {})
+  };
+}
+
+function buildColumnPayload(column: AppwriteTableDefinition["columns"][number]) {
+  return {
+    ...column,
+    type: column.type === "float" ? "double" : column.type,
+    array: column.array ?? false
   };
 }
 
