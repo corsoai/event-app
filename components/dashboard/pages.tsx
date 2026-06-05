@@ -119,6 +119,17 @@ type AppwriteImportResponse = {
   error?: string;
 };
 
+type AppwriteResidentDirectory = {
+  properties: Property[];
+  units: Unit[];
+  residents: Resident[];
+  total: {
+    properties: number;
+    units: number;
+    residents: number;
+  };
+};
+
 type LbsviewOnboardingPreviewRow = {
   sourceRow: number;
   fullName: string;
@@ -227,6 +238,15 @@ function useCurrentResidentProfile(state: LocalEstateState) {
   }, [state]);
 
   return resident ?? getCurrentResident(state);
+}
+
+function mergeRecordsById<T extends { id: string }>(localRecords: T[], liveRecords: T[]) {
+  const merged = new Map(localRecords.map((record) => [record.id, record]));
+  for (const record of liveRecords) {
+    merged.set(record.id, record);
+  }
+
+  return Array.from(merged.values());
 }
 
 export function AdminDashboard() {
@@ -342,6 +362,47 @@ export function ResidentsAdminPage() {
   const [savingResident, setSavingResident] = useState(false);
   const [residentMessage, setResidentMessage] = useState("");
   const [onboardingMessage, setOnboardingMessage] = useState("");
+  const [appwriteDirectory, setAppwriteDirectory] = useState<AppwriteResidentDirectory | null>(null);
+  const [appwriteDirectoryStatus, setAppwriteDirectoryStatus] = useState("Loading Appwrite residents...");
+  const [loadingAppwriteDirectory, setLoadingAppwriteDirectory] = useState(false);
+  const directoryState = appwriteDirectory?.residents.length
+    ? {
+        ...state,
+        properties: mergeRecordsById(state.properties, appwriteDirectory.properties),
+        units: mergeRecordsById(state.units, appwriteDirectory.units),
+        residents: appwriteDirectory.residents
+      }
+    : state;
+
+  useEffect(() => {
+    void refreshAppwriteResidentDirectory();
+  }, []);
+
+  async function refreshAppwriteResidentDirectory() {
+    setLoadingAppwriteDirectory(true);
+    setAppwriteDirectoryStatus("Loading Appwrite residents...");
+
+    try {
+      const response = await fetch("/api/appwrite/admin/residents", { cache: "no-store" });
+      const payload = await response.json().catch(() => null) as (AppwriteResidentDirectory & { error?: string }) | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Unable to load Appwrite residents.");
+      }
+
+      setAppwriteDirectory(payload);
+      setAppwriteDirectoryStatus(
+        payload?.residents.length
+          ? `Loaded ${payload.residents.length} imported residents from Appwrite TablesDB.`
+          : "Appwrite is connected, but no imported residents were found."
+      );
+    } catch (error) {
+      setAppwriteDirectory(null);
+      setAppwriteDirectoryStatus(error instanceof Error ? error.message : "Unable to load Appwrite residents.");
+    } finally {
+      setLoadingAppwriteDirectory(false);
+    }
+  }
 
   async function saveResident(resident: Resident, input: ResidentEditInput) {
     setSavingResident(true);
@@ -375,6 +436,7 @@ export function ResidentsAdminPage() {
       {onboardingMessage ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{onboardingMessage}</p> : null}
       <ResidentOnboardingPanel
         state={state}
+        appwriteDirectory={appwriteDirectory}
         onCreateProperty={(input) => {
           const property = addProperty(input);
           setOnboardingMessage(`${property.propertyCode} property group is ready.`);
@@ -407,25 +469,38 @@ export function ResidentsAdminPage() {
       ) : null}
       <DataTable
         title="Resident directory"
-        description="Edit resident contact details, property/unit assignment, resident type, and active status."
+        description={appwriteDirectoryStatus}
         headers={["Name", "Property / Unit", "Type", "Phone", "Status", "Action"]}
-        rows={state.residents.map((resident) => {
-          const unit = getResidentUnit(state, resident);
-          const property = getResidentProperty(state, resident);
+        action={
+          <Button type="button" variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={() => void refreshAppwriteResidentDirectory()} disabled={loadingAppwriteDirectory}>
+            <RefreshCw className="h-3.5 w-3.5" />
+            {loadingAppwriteDirectory ? "Loading" : "Refresh"}
+          </Button>
+        }
+        rows={(directoryState.residents.length ? directoryState.residents : []).map((resident) => {
+          const unit = getResidentUnit(directoryState, resident);
+          const property = getResidentProperty(directoryState, resident);
+          const isLocalResident = state.residents.some((item) => item.id === resident.id);
 
           return [
           <div key={resident.id}><p className="font-medium text-white">{resident.name}</p><p className="text-xs text-slate-500">{resident.email}</p></div>,
           <div key={`${resident.id}-unit`}>
-            <p className="font-mono text-smart">{residentUnitLabel(state, resident)}</p>
+            <p className="font-mono text-smart">{residentUnitLabel(directoryState, resident)}</p>
             <p className="text-xs text-slate-500">{unit?.apartmentType ?? "Unit pending"}{property?.legacyName ? ` - Legacy: ${property.legacyName}` : ""}</p>
           </div>,
           resident.type,
           resident.phone,
           <StatusBadge key={resident.status} status={resident.status} />,
-          <Button key={`${resident.id}-edit`} variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={() => setEditingResident(resident)}>
-            <Pencil className="h-3.5 w-3.5" />
-            Edit
-          </Button>
+          isLocalResident ? (
+            <Button key={`${resident.id}-edit`} variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={() => setEditingResident(resident)}>
+              <Pencil className="h-3.5 w-3.5" />
+              Edit
+            </Button>
+          ) : (
+            <span key={`${resident.id}-source`} className="inline-flex rounded-full border border-smart/30 bg-smart/10 px-3 py-1 text-xs font-semibold text-smart">
+              Appwrite
+            </span>
+          )
         ];
         })}
       />
@@ -480,11 +555,13 @@ type ResidentOnboardingInput = Pick<Resident, "name" | "phone" | "email" | "type
 
 function ResidentOnboardingPanel({
   state,
+  appwriteDirectory,
   onCreateProperty,
   onCreateUnit,
   onCreateResident
 }: {
   state: LocalEstateState;
+  appwriteDirectory: AppwriteResidentDirectory | null;
   onCreateProperty: (input: PropertyOnboardingInput) => void;
   onCreateUnit: (input: UnitOnboardingInput) => void;
   onCreateResident: (input: ResidentOnboardingInput) => void;
@@ -492,7 +569,9 @@ function ResidentOnboardingPanel({
   const estate = state.estates[0];
   const estateProperties = state.properties.filter((property) => property.estateId === estate.id);
   const estateUnits = state.units.filter((unit) => unit.estateId === estate.id);
-  const activeResidents = state.residents.filter((resident) => resident.estateId === estate.id && resident.status === "active");
+  const propertyCount = appwriteDirectory?.total.properties ?? estateProperties.length;
+  const unitCount = appwriteDirectory?.total.units ?? estateUnits.length;
+  const activeResidentCount = (appwriteDirectory?.residents ?? state.residents).filter((resident) => resident.estateId === estate.id && resident.status === "active").length;
 
   function submitProperty(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -554,9 +633,9 @@ function ResidentOnboardingPanel({
   return (
     <div className="mb-6 grid gap-5">
       <div className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Property groups" value={String(estateProperties.length)} helper="Includes LDI, JC, AA" icon={<Building2 className="h-5 w-5" />} />
-        <StatCard label="Units" value={String(estateUnits.length)} helper="Official unit IDs" icon={<Landmark className="h-5 w-5" />} />
-        <StatCard label="Active residents" value={String(activeResidents.length)} helper="Current occupants" icon={<Users className="h-5 w-5" />} />
+        <StatCard label="Property groups" value={String(propertyCount)} helper="Includes LDI, JC, AA" icon={<Building2 className="h-5 w-5" />} />
+        <StatCard label="Units" value={String(unitCount)} helper="Official unit IDs" icon={<Landmark className="h-5 w-5" />} />
+        <StatCard label="Active residents" value={String(activeResidentCount)} helper="Current occupants" icon={<Users className="h-5 w-5" />} />
       </div>
       <AppwriteOnboardingPanel />
       <div className="grid gap-5 xl:grid-cols-3">
