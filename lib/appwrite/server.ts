@@ -211,7 +211,7 @@ async function ensureTable(databaseId: string, table: AppwriteTableDefinition) {
         })),
         indexes: (table.indexes ?? []).map((index) => ({
           ...index,
-          orders: index.orders ?? [],
+          orders: normalizeIndexOrders(index),
           lengths: index.lengths ?? []
         }))
       }
@@ -253,7 +253,7 @@ async function ensureIndex(databaseId: string, tableId: string, index: AppwriteI
       key: index.key,
       type: index.type,
       columns: index.attributes,
-      orders: index.orders ?? [],
+      orders: normalizeIndexOrders(index),
       lengths: index.lengths ?? []
     }
   });
@@ -326,6 +326,10 @@ function assertValidAppwriteApiKey(value: string) {
       "Appwrite API key is not a valid key value. Create a fresh API key and copy the one-time 'Copy API key' value into CORSO_APPWRITE_API_KEY."
     );
   }
+}
+
+function normalizeIndexOrders(index: AppwriteIndexDefinition) {
+  return index.orders ?? index.attributes.map(() => "ASC" as const);
 }
 
 function compactRecord(data: Record<string, unknown>) {
