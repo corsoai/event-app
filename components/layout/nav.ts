@@ -13,6 +13,7 @@ export const adminNav: NavItem[] = [
   { label: "Digital IDs", href: "/admin/digital-ids", icon: "IdCard" },
   { label: "Knowledge Base", href: "/admin/knowledge-base", icon: "BookOpen" },
   { label: "Reports", href: "/admin/reports", icon: "BarChart3" },
+  { label: "System Status", href: "/admin/system", icon: "ShieldCheck" },
   { label: "Settings", href: "/admin/settings", icon: "Settings" }
 ];
 
