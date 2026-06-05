@@ -126,6 +126,7 @@ export async function setupAppwriteOnboardingSchema(): Promise<AppwriteSetupResu
 
   result.tables = [];
   for (const table of appwriteOnboardingTables) {
+    validateTableDefinition(table);
     result.tables.push(await ensureTable(config.databaseId, table));
   }
 
@@ -208,19 +209,14 @@ async function ensureTable(databaseId: string, table: AppwriteTableDefinition) {
         columns: table.columns.map((column) => ({
           ...column,
           array: column.array ?? false
-        })),
-        indexes: (table.indexes ?? []).map(buildIndexPayload)
+        }))
       }
     });
   }
 
   const indexes = [];
-  if (existingTable) {
-    for (const index of table.indexes ?? []) {
-      indexes.push(await ensureIndex(databaseId, table.tableId, index));
-    }
-  } else {
-    indexes.push(...(table.indexes ?? []).map((index) => ({ key: index.key, status: "created" as const })));
+  for (const index of table.indexes ?? []) {
+    indexes.push(await ensureIndex(databaseId, table.tableId, index));
   }
 
   return {
@@ -240,7 +236,14 @@ async function ensureIndex(databaseId: string, tableId: string, index: AppwriteI
   );
 
   if (existingIndex) {
-    return { key: index.key, status: "exists" as const };
+    if (isFailedIndex(existingIndex)) {
+      await appwriteRequest(`/tablesdb/${databaseId}/tables/${tableId}/indexes/${index.key}`, {
+        method: "DELETE",
+        allowNotFound: true
+      });
+    } else {
+      return { key: index.key, status: "exists" as const };
+    }
   }
 
   await appwriteRequest(`/tablesdb/${databaseId}/tables/${tableId}/indexes`, {
@@ -319,7 +322,7 @@ function assertValidAppwriteApiKey(value: string) {
 }
 
 function normalizeIndexOrders(index: AppwriteIndexDefinition) {
-  return index.orders ?? index.attributes.map(() => "ASC" as const);
+  return index.orders?.length ? index.orders : index.attributes.map(() => "ASC" as const);
 }
 
 function buildIndexPayload(index: AppwriteIndexDefinition) {
@@ -328,8 +331,36 @@ function buildIndexPayload(index: AppwriteIndexDefinition) {
     type: index.type,
     columns: index.attributes,
     orders: normalizeIndexOrders(index),
-    ...(index.lengths ? { lengths: index.lengths } : {})
+    ...(index.lengths?.length ? { lengths: index.lengths } : {})
   };
+}
+
+function isFailedIndex(value: unknown) {
+  return Boolean(
+    value &&
+    typeof value === "object" &&
+    "status" in value &&
+    String((value as { status?: unknown }).status).toLowerCase() === "failed"
+  );
+}
+
+function validateTableDefinition(table: AppwriteTableDefinition) {
+  const columnKeys = new Set(table.columns.map((column) => column.key));
+
+  for (const index of table.indexes ?? []) {
+    const missingColumns = index.attributes.filter((attribute) => !columnKeys.has(attribute));
+    if (missingColumns.length) {
+      throw new Error(`${table.tableId}.${index.key} indexes missing columns: ${missingColumns.join(", ")}`);
+    }
+
+    if (index.orders?.length && index.orders.length !== index.attributes.length) {
+      throw new Error(`${table.tableId}.${index.key} orders length must match indexed columns.`);
+    }
+
+    if (index.lengths?.length && index.lengths.length !== index.attributes.length) {
+      throw new Error(`${table.tableId}.${index.key} lengths length must match indexed columns.`);
+    }
+  }
 }
 
 function compactRecord(data: Record<string, unknown>) {
