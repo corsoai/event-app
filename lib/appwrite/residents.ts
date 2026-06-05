@@ -119,8 +119,8 @@ async function listAppwriteRows<T>(tableId: string) {
 
 async function listAppwriteRowsPage<T>(databaseId: string, tableId: string, limit: number, offset: number) {
   const query = new URLSearchParams();
-  query.append("queries[0]", `limit(${limit})`);
-  query.append("queries[1]", `offset(${offset})`);
+  query.append("queries[0]", JSON.stringify({ method: "limit", values: [limit] }));
+  query.append("queries[1]", JSON.stringify({ method: "offset", values: [offset] }));
 
   try {
     return await appwriteRequest<AppwriteRowList<T>>(
