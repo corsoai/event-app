@@ -34,7 +34,8 @@ export function AuthCard({ mode }: { mode: Mode }) {
   const router = useRouter();
   const params = useSearchParams();
   const localDemoEnabled = isLocalDemoEnabled();
-  const [email, setEmail] = useState(mode === "login" && localDemoEnabled ? demoUsers[2].email : "");
+  const defaultLoginUser = demoUsers.find((user) => user.role === "estate_admin") ?? demoUsers[0];
+  const [email, setEmail] = useState(mode === "login" && localDemoEnabled ? defaultLoginUser.email : "");
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState(mode === "login" && localDemoEnabled ? DEMO_PASSWORD : "");
   const [name, setName] = useState("");
@@ -278,14 +279,14 @@ export function AuthCard({ mode }: { mode: Mode }) {
         return;
       }
 
-      if (!appwriteResult.canFallback) {
+      if (!appwriteResult.canFallback && !demoUser) {
         setMessageTone("error");
         setMessage(appwriteResult.error ?? "Invalid login details.");
         setLoading(false);
         return;
       }
 
-      if (!localDemoEnabled) {
+      if (!localDemoEnabled && !demoUser) {
         setMessageTone("error");
         setMessage(appwriteResult.error ?? "No configured login backend is available.");
         setLoading(false);
