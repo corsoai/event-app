@@ -48,6 +48,19 @@ const STATE_UPDATED_EVENT = "corso_estate_state_updated";
 const LEGACY_ESTATE_TOKEN = ["lekki", "gardens"].join("");
 const LAGOS_TIME_ZONE = "Africa/Lagos";
 const DEMO_RESIDENT_IDS = new Set(["res-001", "res-002", "res-003", "res-004"]);
+const DEMO_RESIDENT_NAMES = new Set(["amina okafor", "tunde balogun", "ngozi hassan", "chinedu eze"]);
+const DEMO_RESIDENT_EMAILS = new Set([
+  "amina.okafor@example.com",
+  "tunde.balogun@example.com",
+  "ngozi.hassan@example.com",
+  "chinedu.eze@example.com"
+]);
+const DEMO_RESIDENT_PHONES = new Set([
+  "+2348039204412",
+  "+2348051109320",
+  "+2348094402281",
+  "+2348126170031"
+]);
 
 export type LocalVisitorLog = {
   id: string;
@@ -1662,12 +1675,25 @@ function mergeSavedWithDefaultsById<T extends { id: string }>(savedItems: T[] | 
 
 function normalizeLocalEstateState(saved: Partial<LocalEstateState>) {
   const defaults = defaultState();
-  const normalizedProperties = mergeSavedWithDefaultsById(saved.properties, defaults.properties);
-  const normalizedUnits = mergeSavedWithDefaultsById(saved.units, defaults.units).map((unit) =>
-    unit.currentResidentId && DEMO_RESIDENT_IDS.has(unit.currentResidentId)
-      ? { ...unit, currentResidentId: undefined, status: unit.status === "occupied" ? "vacant" : unit.status }
-      : unit
+  const normalizedProperties = mergeSavedWithDefaultsById(saved.properties, defaults.properties).map((property) =>
+    isDemoText(property.legacyName)
+      ? { ...property, legacyName: undefined }
+      : property
   );
+  const normalizedUnits = mergeSavedWithDefaultsById(saved.units, defaults.units).map((unit) => {
+    const hasDemoOccupant = isDemoResidentId(unit.currentResidentId) || isDemoText(unit.legacyName);
+    if (!hasDemoOccupant) {
+      return unit;
+    }
+
+    return {
+      ...unit,
+      currentResidentId: undefined,
+      moveInDate: undefined,
+      legacyName: isDemoText(unit.legacyName) ? undefined : unit.legacyName,
+      status: unit.status === "occupied" || unit.status === "moved out" ? "vacant" : unit.status
+    };
+  });
   const approvedUsers = (saved.approvedUsers ?? defaults.approvedUsers).map((user) =>
     user.role === "resident" && !user.residentId
       ? { ...user, phone: user.phone ?? "", residentId: residentIdForIdentifier(user.phone || user.email) }
@@ -1678,7 +1704,7 @@ function normalizeLocalEstateState(saved: Partial<LocalEstateState>) {
     phone: request.phone ?? ""
   }));
   const savedResidents = saved.residents?.length ? saved.residents : defaults.residents;
-  const normalizedResidents = savedResidents.filter((resident) => !isDemoResidentId(resident.id)).map((resident) => {
+  const normalizedResidents = savedResidents.filter((resident) => !isDemoResidentRecord(resident)).map((resident) => {
     const defaultResident = defaults.residents.find((item) => item.id === resident.id);
     const assignedUnit = normalizedUnits.find((unit) => unit.id === resident.unitId || unit.currentResidentId === resident.id)
       ?? (defaultResident?.unitId ? normalizedUnits.find((unit) => unit.id === defaultResident.unitId) : undefined);
@@ -1761,6 +1787,24 @@ function normalizeLocalEstateState(saved: Partial<LocalEstateState>) {
 
 function isDemoResidentId(value?: string) {
   return Boolean(value && DEMO_RESIDENT_IDS.has(value));
+}
+
+function isDemoResidentRecord(resident: Pick<Resident, "id" | "name" | "email" | "phone">) {
+  return (
+    isDemoResidentId(resident.id)
+    || DEMO_RESIDENT_NAMES.has(resident.name.trim().toLowerCase())
+    || DEMO_RESIDENT_EMAILS.has(resident.email.trim().toLowerCase())
+    || DEMO_RESIDENT_PHONES.has(resident.phone.replace(/\s/g, ""))
+  );
+}
+
+function isDemoText(value?: string) {
+  const normalized = value?.trim().toLowerCase();
+  if (!normalized) {
+    return false;
+  }
+
+  return Array.from(DEMO_RESIDENT_NAMES).some((name) => normalized.includes(name));
 }
 
 function isDemoEntityId(value?: string) {
