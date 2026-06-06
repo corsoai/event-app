@@ -116,14 +116,17 @@ export async function findGuardCheckpointByToken(qrToken: string) {
   const normalizedToken = normalizeCheckpointToken(qrToken);
   const checkpoints = await listGuardCheckpoints();
 
-  return checkpoints.find((checkpoint) => checkpoint.qrToken === normalizedToken) ?? null;
+  return checkpoints.find((checkpoint) => normalizeCheckpointToken(checkpoint.qrToken) === normalizedToken) ?? null;
 }
 
 export async function createGuardCheckpoint(input: CheckpointCreateInput) {
   const now = new Date().toISOString();
-  const checkpointCode = input.checkpointCode.trim().toUpperCase().replace(/\s+/g, "-");
   const checkpointName = input.checkpointName.trim();
-  const qrToken = normalizeCheckpointToken(input.qrToken || checkpointCode);
+  const qrToken = ensureCheckpointQrToken(input.qrToken || input.checkpointCode || checkpointName);
+  const checkpointCode = (input.checkpointCode || normalizeCheckpointToken(qrToken))
+    .trim()
+    .toUpperCase()
+    .replace(/\s+/g, "-");
 
   if (!checkpointCode || !checkpointName || !qrToken) {
     throw new Error("Checkpoint code, name, and QR token are required.");
@@ -194,7 +197,7 @@ export async function listGuardPatrolEvents(limit = 100) {
 }
 
 export async function createGuardPatrolEvent(input: PatrolCreateInput) {
-  const qrToken = normalizeCheckpointToken(input.qrToken);
+  const qrToken = ensureCheckpointQrToken(input.qrToken);
   const checkpoint = await findGuardCheckpointByToken(qrToken);
   const scannedAt = input.scannedAt || new Date().toISOString();
   const guardId = input.guardId.trim() || "unknown-guard";
@@ -220,7 +223,7 @@ export async function createGuardPatrolEvent(input: PatrolCreateInput) {
     checkpointId: checkpoint?.id ?? safeAppwriteId("missing", qrToken),
     checkpointCode: checkpoint?.checkpointCode ?? qrToken,
     checkpointName: checkpoint?.checkpointName ?? "Unknown checkpoint",
-    qrToken,
+    qrToken: checkpoint?.qrToken ?? qrToken,
     guardId,
     guardProfileId: guardId,
     guardName,
@@ -270,6 +273,16 @@ export function normalizeCheckpointToken(value: string) {
   return value.trim().replace(/^CP_/i, "").trim();
 }
 
+export function ensureCheckpointQrToken(value: string) {
+  const normalized = normalizeCheckpointToken(value)
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 96);
+
+  return normalized ? `CP_${normalized}` : "";
+}
+
 export function haversineMeters(
   latitudeA: number,
   longitudeA: number,
@@ -303,7 +316,7 @@ function mapCheckpointRow(row: AppwriteCheckpointRow): GuardCheckpoint {
     name: row.name ?? checkpointName,
     gateName: row.gateName ?? "",
     locationLabel: row.locationLabel ?? "",
-    qrToken: normalizeCheckpointToken(row.qrToken ?? checkpointCode),
+    qrToken: ensureCheckpointQrToken(row.qrToken ?? checkpointCode),
     latitude: finiteNumber(row.latitude),
     longitude: finiteNumber(row.longitude),
     allowedRadius: Math.max(5, Math.round(finiteNumber(row.allowedRadius) ?? 25)),

@@ -3314,6 +3314,9 @@ export function CsoDashboard() {
   const [activeTab, setActiveTab] = useState<"feed" | "checkpoints">("feed");
   const [message, setMessage] = useState("Loading security operations...");
   const [savingCheckpoint, setSavingCheckpoint] = useState(false);
+  const [pinningLocation, setPinningLocation] = useState(false);
+  const [checkpointLatitude, setCheckpointLatitude] = useState("");
+  const [checkpointLongitude, setCheckpointLongitude] = useState("");
   const todayKey = new Date().toISOString().slice(0, 10);
   const patrolsToday = patrols.filter((patrol) => patrol.scannedAt.startsWith(todayKey));
   const activeGuards = new Set(
@@ -3385,6 +3388,8 @@ export function CsoDashboard() {
     setMessage("");
 
     const form = new FormData(event.currentTarget);
+    const checkpointName = String(form.get("checkpointName") ?? "");
+    const qrToken = buildCheckpointQrToken(checkpointName);
     try {
       const response = await fetch("/api/appwrite/security/checkpoints", {
         method: "POST",
@@ -3392,15 +3397,15 @@ export function CsoDashboard() {
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
-          checkpointCode: String(form.get("checkpointCode") ?? ""),
-          checkpointName: String(form.get("checkpointName") ?? ""),
-          gateName: String(form.get("gateName") ?? ""),
-          locationLabel: String(form.get("locationLabel") ?? ""),
-          qrToken: String(form.get("qrToken") ?? ""),
-          latitude: Number(form.get("latitude")),
-          longitude: Number(form.get("longitude")),
+          checkpointCode: qrToken.replace(/^CP_/i, ""),
+          checkpointName,
+          gateName: "",
+          locationLabel: checkpointName,
+          qrToken,
+          latitude: Number(checkpointLatitude),
+          longitude: Number(checkpointLongitude),
           allowedRadius: Number(form.get("allowedRadius") || 25),
-          status: String(form.get("status") ?? "active")
+          status: "active"
         })
       });
       const payload = await response.json().catch(() => null) as { checkpoint?: GuardCheckpoint; error?: string } | null;
@@ -3409,13 +3414,42 @@ export function CsoDashboard() {
       }
 
       setCheckpoints((current) => [payload.checkpoint!, ...current.filter((item) => item.id !== payload.checkpoint!.id)]);
-      setMessage(`${payload.checkpoint.checkpointName} checkpoint is ready. QR value: CP_${payload.checkpoint.qrToken}`);
+      setMessage(`${payload.checkpoint.checkpointName} checkpoint is ready. QR value: ${checkpointQrPayload(payload.checkpoint)}`);
       event.currentTarget.reset();
+      setCheckpointLatitude("");
+      setCheckpointLongitude("");
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Checkpoint could not be saved.");
     } finally {
       setSavingCheckpoint(false);
     }
+  }
+
+  function pinCurrentLocation() {
+    if (!navigator.geolocation) {
+      setMessage("This device does not support GPS location capture.");
+      return;
+    }
+
+    setPinningLocation(true);
+    setMessage("Capturing current GPS location...");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setCheckpointLatitude(position.coords.latitude.toFixed(7));
+        setCheckpointLongitude(position.coords.longitude.toFixed(7));
+        setPinningLocation(false);
+        setMessage("GPS location pinned for this checkpoint.");
+      },
+      () => {
+        setPinningLocation(false);
+        setMessage("GPS capture failed. Allow location access and try again.");
+      },
+      {
+        enableHighAccuracy: true,
+        timeout: 10000,
+        maximumAge: 0
+      }
+    );
   }
 
   async function renameCheckpoint(checkpointId: string, checkpointName: string) {
@@ -3501,26 +3535,23 @@ export function CsoDashboard() {
       ) : (
         <div id="checkpoints" className="mt-5 grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
           <Card>
-            <CardHeader title="Add checkpoint" description="Create the QR token guards will scan as CP_token." />
+            <CardHeader title="Checkpoint Management & QR Form" description="Create patrol locations, pin GPS coordinates, and generate printable checkpoint QR codes." />
             <form className="grid gap-3" onSubmit={saveCheckpoint}>
-              <Field label="Checkpoint code"><Input name="checkpointCode" placeholder="MAIN-GATE-01" required /></Field>
-              <Field label="Checkpoint name"><Input name="checkpointName" placeholder="Main Gate Round" required /></Field>
-              <Field label="QR token"><Input name="qrToken" placeholder="MAIN-GATE-01" required /></Field>
-              <Field label="Location label"><Input name="locationLabel" placeholder="Main Gate, LBS View" /></Field>
-              <div className="grid gap-3 sm:grid-cols-2">
-                <Field label="Latitude"><Input name="latitude" inputMode="decimal" placeholder="6.4698" required /></Field>
-                <Field label="Longitude"><Input name="longitude" inputMode="decimal" placeholder="3.5852" required /></Field>
-              </div>
+              <Field label="Location name"><Input name="checkpointName" placeholder="Main Gate" required /></Field>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Allowed radius"><Input name="allowedRadius" inputMode="numeric" defaultValue="25" /></Field>
-                <Field label="Status">
-                  <Select name="status" defaultValue="active">
-                    <option value="active">Active</option>
-                    <option value="inactive">Inactive</option>
-                  </Select>
-                </Field>
+                <div className="grid content-end">
+                  <Button type="button" variant="secondary" onClick={pinCurrentLocation} disabled={pinningLocation}>
+                    <MapPin className="h-4 w-4" />
+                    {pinningLocation ? "Pinning" : "Pin Current Location"}
+                  </Button>
+                </div>
               </div>
-              <Button disabled={savingCheckpoint}>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Latitude"><Input name="latitude" value={checkpointLatitude} readOnly placeholder="Tap Pin Current Location" required /></Field>
+                <Field label="Longitude"><Input name="longitude" value={checkpointLongitude} readOnly placeholder="Tap Pin Current Location" required /></Field>
+              </div>
+              <Button disabled={savingCheckpoint || !checkpointLatitude || !checkpointLongitude}>
                 <MapPin className="h-4 w-4" />
                 {savingCheckpoint ? "Saving" : "Save checkpoint"}
               </Button>
@@ -3615,6 +3646,32 @@ function CsoReviewCard({ review }: { review: CsoReview }) {
   );
 }
 
+function checkpointQrPayload(checkpoint: GuardCheckpoint) {
+  return checkpoint.qrToken.toUpperCase().startsWith("CP_") ? checkpoint.qrToken : `CP_${checkpoint.qrToken}`;
+}
+
+function buildCheckpointQrToken(checkpointName: string) {
+  const slug = checkpointName
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "")
+    .slice(0, 24) || "CHECKPOINT";
+  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
+
+  return `CP_${slug}_${suffix}`;
+}
+
+function escapeHtml(value: string) {
+  return value
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
+}
+
+
 function CheckpointCard({
   checkpoint,
   onRename
@@ -3627,10 +3684,11 @@ function CheckpointCard({
   const [name, setName] = useState(checkpoint.checkpointName);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
+  const qrPayload = checkpointQrPayload(checkpoint);
 
   useEffect(() => {
     let active = true;
-    QRCode.toDataURL(`CP_${checkpoint.qrToken}`, {
+    QRCode.toDataURL(qrPayload, {
       margin: 2,
       scale: 6,
       color: {
@@ -3652,7 +3710,7 @@ function CheckpointCard({
     return () => {
       active = false;
     };
-  }, [checkpoint.qrToken]);
+  }, [qrPayload]);
 
   useEffect(() => {
     setName(checkpoint.checkpointName);
@@ -3675,12 +3733,50 @@ function CheckpointCard({
     }
   }
 
+  function printQrCode() {
+    if (!qrDataUrl) {
+      setMessage("QR is still loading.");
+      return;
+    }
+
+    const printWindow = window.open("", "_blank", "width=420,height=620");
+    if (!printWindow) {
+      setMessage("Allow popups to print this QR code.");
+      return;
+    }
+
+    const safeName = escapeHtml(checkpoint.checkpointName);
+    const safePayload = escapeHtml(qrPayload);
+    printWindow.document.write(`
+      <html>
+        <head>
+          <title>${safeName} QR</title>
+          <style>
+            body { font-family: Arial, sans-serif; margin: 0; padding: 24px; text-align: center; }
+            img { width: 280px; height: 280px; }
+            h1 { font-size: 22px; margin: 12px 0 6px; }
+            p { font-size: 14px; margin: 6px 0; }
+            .token { font-family: monospace; font-size: 18px; font-weight: 700; }
+          </style>
+        </head>
+        <body>
+          <img src="${qrDataUrl}" alt="Checkpoint QR" />
+          <h1>${safeName}</h1>
+          <p class="token">${safePayload}</p>
+          <p>LBS View Estate Guard Tour Checkpoint</p>
+          <script>window.onload = () => { window.print(); window.close(); };</script>
+        </body>
+      </html>
+    `);
+    printWindow.document.close();
+  }
+
   return (
     <article className="rounded-lg border border-white/10 bg-black/20 p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="font-semibold text-white">{checkpoint.checkpointName}</p>
-          <p className="mt-1 font-mono text-xs text-smart">CP_{checkpoint.qrToken}</p>
+          <p className="mt-1 font-mono text-xs text-smart">{qrPayload}</p>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <span className={`rounded-full px-3 py-1 text-xs font-semibold ${checkpoint.status === "active" ? "bg-smart/15 text-smart" : "bg-white/10 text-slate-300"}`}>
@@ -3689,6 +3785,10 @@ function CheckpointCard({
           <Button type="button" variant="secondary" className="min-h-8 px-2.5 py-1 text-xs" onClick={() => setEditing((value) => !value)}>
             <Pencil className="h-3.5 w-3.5" />
             Rename
+          </Button>
+          <Button type="button" variant="secondary" className="min-h-8 px-2.5 py-1 text-xs" onClick={printQrCode}>
+            <Download className="h-3.5 w-3.5" />
+            Print QR
           </Button>
         </div>
       </div>
@@ -3705,7 +3805,7 @@ function CheckpointCard({
         </div>
         <div className="grid content-start gap-3">
           <p className="rounded-lg border border-smart/20 bg-smart/10 px-3 py-2 font-mono text-xs text-smart">
-            QR payload: CP_{checkpoint.qrToken}
+            QR payload: {qrPayload}
           </p>
           {editing ? (
             <form className="grid gap-2" onSubmit={submitRename}>
