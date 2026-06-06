@@ -17,7 +17,26 @@ export function DataTable({
   return (
     <Card>
       <CardHeader title={title} description={description} action={action} />
-      <div className="max-w-full overflow-x-auto overscroll-x-contain rounded-lg border border-white/10 bg-black/10">
+      <div className="grid gap-3 md:hidden">
+        {rows.length ? rows.map((row, index) => (
+          <div key={index} className="rounded-lg border border-white/10 bg-black/20 p-3">
+            <div className="text-sm font-semibold text-white">{row[0]}</div>
+            <div className="mt-3 grid gap-2">
+              {row.slice(1).map((cell, cellIndex) => (
+                <div key={headers[cellIndex + 1] ?? cellIndex} className="grid grid-cols-[6.5rem_1fr] gap-3 border-t border-white/10 pt-2 text-xs">
+                  <span className="text-slate-500">{headers[cellIndex + 1] ?? ""}</span>
+                  <span className="min-w-0 text-slate-100">{cell}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )) : (
+          <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-4 text-sm text-slate-400">
+            No records to show.
+          </div>
+        )}
+      </div>
+      <div className="hidden max-w-full overflow-x-auto overscroll-x-contain rounded-lg border border-white/10 bg-black/10 md:block">
         <table className="w-full table-auto border-separate border-spacing-0 text-left text-xs sm:text-sm">
           <thead>
             <tr>

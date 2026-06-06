@@ -380,6 +380,35 @@ export function ResidentsAdminPage() {
         residents: appwriteDirectory.residents
       }
     : state;
+  const residentDirectoryRows = (directoryState.residents.length ? directoryState.residents : []).map((resident) => {
+    const unit = getResidentUnit(directoryState, resident);
+    const property = getResidentProperty(directoryState, resident);
+    const isLocalResident = state.residents.some((item) => item.id === resident.id);
+
+    return [
+      <div key={resident.id}>
+        <p className="font-medium text-white">{resident.name}</p>
+        <p className="text-xs text-slate-500">{resident.email}</p>
+      </div>,
+      <div key={`${resident.id}-unit`}>
+        <p className="font-mono text-smart">{residentUnitLabel(directoryState, resident)}</p>
+        <p className="text-xs text-slate-500">{unit?.apartmentType ?? "Unit pending"}{property?.legacyName ? ` - Legacy: ${property.legacyName}` : ""}</p>
+      </div>,
+      resident.type,
+      resident.phone,
+      <StatusBadge key={resident.status} status={resident.status} />,
+      isLocalResident ? (
+        <Button key={`${resident.id}-edit`} variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={() => setEditingResident(resident)}>
+          <Pencil className="h-3.5 w-3.5" />
+          Edit
+        </Button>
+      ) : (
+        <span key={`${resident.id}-source`} className="inline-flex rounded-full border border-smart/30 bg-smart/10 px-3 py-1 text-xs font-semibold text-smart">
+          Appwrite
+        </span>
+      )
+    ];
+  });
 
   useEffect(() => {
     void refreshAppwriteResidentDirectory();
@@ -481,30 +510,6 @@ export function ResidentsAdminPage() {
       />
       {residentMessage ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{residentMessage}</p> : null}
       {onboardingMessage ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{onboardingMessage}</p> : null}
-      <ResidentOnboardingPanel
-        state={state}
-        appwriteDirectory={appwriteDirectory}
-        onCreateProperty={(input) => {
-          const property = addProperty(input);
-          setOnboardingMessage(`${property.propertyCode} property group is ready.`);
-        }}
-        onCreateUnit={(input) => {
-          try {
-            const unit = addUnit(input);
-            setOnboardingMessage(`${unit.unitCode} unit is ready.`);
-          } catch (error) {
-            setOnboardingMessage(error instanceof Error ? error.message : "Unit could not be saved.");
-          }
-        }}
-        onCreateResident={(input) => {
-          try {
-            const resident = onboardResident(input);
-            setOnboardingMessage(`${resident.name} has been attached to ${resident.houseNumber}.`);
-          } catch (error) {
-            setOnboardingMessage(error instanceof Error ? error.message : "Resident could not be onboarded.");
-          }
-        }}
-      />
       {editingResident ? (
         <ResidentEditCard
           resident={editingResident}
@@ -524,33 +529,34 @@ export function ResidentsAdminPage() {
             {loadingAppwriteDirectory ? "Loading" : "Refresh"}
           </Button>
         }
-        rows={(directoryState.residents.length ? directoryState.residents : []).map((resident) => {
-          const unit = getResidentUnit(directoryState, resident);
-          const property = getResidentProperty(directoryState, resident);
-          const isLocalResident = state.residents.some((item) => item.id === resident.id);
-
-          return [
-          <div key={resident.id}><p className="font-medium text-white">{resident.name}</p><p className="text-xs text-slate-500">{resident.email}</p></div>,
-          <div key={`${resident.id}-unit`}>
-            <p className="font-mono text-smart">{residentUnitLabel(directoryState, resident)}</p>
-            <p className="text-xs text-slate-500">{unit?.apartmentType ?? "Unit pending"}{property?.legacyName ? ` - Legacy: ${property.legacyName}` : ""}</p>
-          </div>,
-          resident.type,
-          resident.phone,
-          <StatusBadge key={resident.status} status={resident.status} />,
-          isLocalResident ? (
-            <Button key={`${resident.id}-edit`} variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={() => setEditingResident(resident)}>
-              <Pencil className="h-3.5 w-3.5" />
-              Edit
-            </Button>
-          ) : (
-            <span key={`${resident.id}-source`} className="inline-flex rounded-full border border-smart/30 bg-smart/10 px-3 py-1 text-xs font-semibold text-smart">
-              Appwrite
-            </span>
-          )
-        ];
-        })}
+        rows={residentDirectoryRows}
       />
+      <div className="mt-6">
+        <ResidentOnboardingPanel
+          state={state}
+          appwriteDirectory={appwriteDirectory}
+          onCreateProperty={(input) => {
+            const property = addProperty(input);
+            setOnboardingMessage(`${property.propertyCode} property group is ready.`);
+          }}
+          onCreateUnit={(input) => {
+            try {
+              const unit = addUnit(input);
+              setOnboardingMessage(`${unit.unitCode} unit is ready.`);
+            } catch (error) {
+              setOnboardingMessage(error instanceof Error ? error.message : "Unit could not be saved.");
+            }
+          }}
+          onCreateResident={(input) => {
+            try {
+              const resident = onboardResident(input);
+              setOnboardingMessage(`${resident.name} has been attached to ${resident.houseNumber}.`);
+            } catch (error) {
+              setOnboardingMessage(error instanceof Error ? error.message : "Resident could not be onboarded.");
+            }
+          }}
+        />
+      </div>
       <div className="mt-6">
         <DataTable
           title="Approved local login accounts"
