@@ -3684,8 +3684,7 @@ function buildCheckpointQrToken(checkpointName: string, suffix = createCheckpoin
   const slug = checkpointName
     .trim()
     .toUpperCase()
-    .replace(/[^A-Z0-9]+/g, "_")
-    .replace(/^_+|_+$/g, "")
+    .replace(/[^A-Z0-9]+/g, "")
     .slice(0, 24) || "CHECKPOINT";
 
   return `CP_${slug}_${suffix}`;
