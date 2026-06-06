@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { UserRole } from "@/lib/types";
 import { AppwriteRestError } from "@/lib/appwrite/server";
-import { createGuardPatrolEvent, listGuardPatrolEvents } from "@/lib/appwrite/tour";
+import { createGuardPatrolEvent, listCsoReviews, listGuardPatrolEvents, listSecurityIncidents } from "@/lib/appwrite/tour";
 
 const readerRoles = new Set<UserRole>(["cso", "estate_admin", "super_admin", "security_guard"]);
 const scannerRoles = new Set<UserRole>(["security_guard", "estate_admin", "super_admin"]);
@@ -13,8 +13,12 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const patrols = await listGuardPatrolEvents(150);
-    return NextResponse.json({ patrols });
+    const [patrols, incidents, reviews] = await Promise.all([
+      listGuardPatrolEvents(150),
+      listSecurityIncidents(100),
+      listCsoReviews(100)
+    ]);
+    return NextResponse.json({ patrols, incidents, reviews });
   } catch (error) {
     return errorResponse(error, "Unable to load patrol events.");
   }

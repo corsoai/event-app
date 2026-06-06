@@ -1,9 +1,8 @@
-import type { GuardCheckpoint, GuardPatrolEvent } from "@/lib/types";
+import type { CsoReview, GuardCheckpoint, GuardPatrolEvent, SecurityIncident } from "@/lib/types";
 import {
   APPWRITE_LBSVIEW_ESTATE_ID,
   appwriteUpsertRow,
-  safeAppwriteId,
-  setupAppwriteOnboardingSchema
+  safeAppwriteId
 } from "@/lib/appwrite/server";
 import { listAppwriteTableRows } from "@/lib/appwrite/residents";
 
@@ -49,6 +48,34 @@ type AppwritePatrolRow = {
   note?: string;
 };
 
+type AppwriteSecurityIncidentRow = {
+  $id?: string;
+  estateId?: string;
+  incidentType?: string;
+  severity?: string;
+  status?: string;
+  reportedByRole?: string;
+  reportedByProfileId?: string;
+  assignedToProfileId?: string;
+  locationLabel?: string;
+  summary?: string;
+  details?: string;
+  openedAt?: string;
+  resolvedAt?: string;
+};
+
+type AppwriteCsoReviewRow = {
+  $id?: string;
+  estateId?: string;
+  incidentId?: string;
+  csoProfileId?: string;
+  decision?: string;
+  note?: string;
+  reviewedAt?: string;
+  followUpDate?: string;
+  status?: string;
+};
+
 export type PatrolCreateInput = {
   qrToken: string;
   guardId: string;
@@ -73,7 +100,6 @@ export type CheckpointCreateInput = {
 };
 
 export async function listGuardCheckpoints() {
-  await setupAppwriteOnboardingSchema();
   const rows = await listAppwriteTableRows<AppwriteCheckpointRow>("guard_checkpoints");
 
   return rows
@@ -89,7 +115,6 @@ export async function findGuardCheckpointByToken(qrToken: string) {
 }
 
 export async function createGuardCheckpoint(input: CheckpointCreateInput) {
-  await setupAppwriteOnboardingSchema();
   const now = new Date().toISOString();
   const checkpointCode = input.checkpointCode.trim().toUpperCase().replace(/\s+/g, "-");
   const checkpointName = input.checkpointName.trim();
@@ -123,7 +148,6 @@ export async function createGuardCheckpoint(input: CheckpointCreateInput) {
 }
 
 export async function listGuardPatrolEvents(limit = 100) {
-  await setupAppwriteOnboardingSchema();
   const rows = await listAppwriteTableRows<AppwritePatrolRow>("guard_patrol_events");
 
   return rows
@@ -133,7 +157,6 @@ export async function listGuardPatrolEvents(limit = 100) {
 }
 
 export async function createGuardPatrolEvent(input: PatrolCreateInput) {
-  await setupAppwriteOnboardingSchema();
   const qrToken = normalizeCheckpointToken(input.qrToken);
   const checkpoint = await findGuardCheckpointByToken(qrToken);
   const scannedAt = input.scannedAt || new Date().toISOString();
@@ -186,6 +209,24 @@ export async function createGuardPatrolEvent(input: PatrolCreateInput) {
   });
 
   return mapPatrolRow(row);
+}
+
+export async function listSecurityIncidents(limit = 100) {
+  const rows = await listAppwriteTableRows<AppwriteSecurityIncidentRow>("security_incidents");
+
+  return rows
+    .map(mapSecurityIncidentRow)
+    .sort((left, right) => right.openedAt.localeCompare(left.openedAt))
+    .slice(0, limit);
+}
+
+export async function listCsoReviews(limit = 100) {
+  const rows = await listAppwriteTableRows<AppwriteCsoReviewRow>("cso_reviews");
+
+  return rows
+    .map(mapCsoReviewRow)
+    .sort((left, right) => right.reviewedAt.localeCompare(left.reviewedAt))
+    .slice(0, limit);
 }
 
 export function normalizeCheckpointToken(value: string) {
@@ -270,6 +311,67 @@ function mapPatrolStatus(value?: string): GuardPatrolEvent["status"] {
   }
 
   return "gps_violation";
+}
+
+function mapSecurityIncidentRow(row: AppwriteSecurityIncidentRow): SecurityIncident {
+  return {
+    id: row.$id ?? safeAppwriteId("incident", `${row.summary}:${row.openedAt}`),
+    estateId: row.estateId ?? APPWRITE_LBSVIEW_ESTATE_ID,
+    incidentType: row.incidentType ?? "security",
+    severity: mapIncidentSeverity(row.severity),
+    status: mapIncidentStatus(row.status),
+    reportedByRole: row.reportedByRole ?? "security_guard",
+    reportedByProfileId: optionalText(row.reportedByProfileId),
+    assignedToProfileId: optionalText(row.assignedToProfileId),
+    locationLabel: optionalText(row.locationLabel),
+    summary: row.summary ?? "Security incident",
+    details: optionalText(row.details),
+    openedAt: row.openedAt ?? "",
+    resolvedAt: optionalText(row.resolvedAt)
+  };
+}
+
+function mapCsoReviewRow(row: AppwriteCsoReviewRow): CsoReview {
+  return {
+    id: row.$id ?? safeAppwriteId("review", `${row.incidentId}:${row.reviewedAt}`),
+    estateId: row.estateId ?? APPWRITE_LBSVIEW_ESTATE_ID,
+    incidentId: row.incidentId ?? "",
+    csoProfileId: row.csoProfileId ?? "",
+    decision: row.decision ?? "pending",
+    note: optionalText(row.note),
+    reviewedAt: row.reviewedAt ?? "",
+    followUpDate: optionalText(row.followUpDate),
+    status: mapCsoReviewStatus(row.status)
+  };
+}
+
+function mapIncidentSeverity(value?: string): SecurityIncident["severity"] {
+  if (value === "low" || value === "medium" || value === "high" || value === "critical") {
+    return value;
+  }
+
+  return "medium";
+}
+
+function mapIncidentStatus(value?: string): SecurityIncident["status"] {
+  if (value === "acknowledged" || value === "resolved" || value === "closed") {
+    return value;
+  }
+
+  return "open";
+}
+
+function mapCsoReviewStatus(value?: string): CsoReview["status"] {
+  if (value === "open" || value === "approved" || value === "rejected" || value === "closed") {
+    return value;
+  }
+
+  return "pending";
+}
+
+function optionalText(value?: string) {
+  const trimmed = value?.trim();
+  return trimmed || undefined;
 }
 
 function finiteNumber(value: unknown) {

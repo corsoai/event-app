@@ -16,8 +16,7 @@
       "entrypoint": "index.js",
       "execute": [],
       "events": [
-        "databases.*.tables.guard_patrol_events.rows.*.create",
-        "databases.*.collections.tourLogs.documents.*.create"
+        "databases.*.tables.guard_patrol_events.rows.*.create"
       ],
       "timeout": 15,
       "enabled": true,

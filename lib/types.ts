@@ -228,3 +228,31 @@ export type GuardPatrolEvent = {
   deviceLabel?: string;
   note?: string;
 };
+
+export type SecurityIncident = {
+  id: string;
+  estateId: string;
+  incidentType: string;
+  severity: "low" | "medium" | "high" | "critical";
+  status: "open" | "acknowledged" | "resolved" | "closed";
+  reportedByRole: string;
+  reportedByProfileId?: string;
+  assignedToProfileId?: string;
+  locationLabel?: string;
+  summary: string;
+  details?: string;
+  openedAt: string;
+  resolvedAt?: string;
+};
+
+export type CsoReview = {
+  id: string;
+  estateId: string;
+  incidentId: string;
+  csoProfileId: string;
+  decision: string;
+  note?: string;
+  reviewedAt: string;
+  followUpDate?: string;
+  status: "open" | "pending" | "approved" | "rejected" | "closed";
+};

@@ -1,8 +1,15 @@
 import { Client, Messaging, ID } from "node-appwrite";
 
+const patrolEventsTableId = "guard_patrol_events";
+
 export default async function ({ req, res, log, error }) {
   const event = req.bodyJson ?? {};
   const patrol = event.$id ? event : event.payload ?? event.document ?? {};
+  const tableId = patrol.$tableId || patrol.$collectionId || event.tableId || event.collectionId || "";
+
+  if (tableId && tableId !== patrolEventsTableId) {
+    return res.json({ success: true, skipped: true, reason: "not_guard_patrol_events" });
+  }
 
   if (patrol.isGpsVerified === true) {
     return res.json({ success: true, skipped: true });

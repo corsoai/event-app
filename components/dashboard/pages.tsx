@@ -77,7 +77,7 @@ import {
   submitGuardCheckpointScan,
   syncPendingTourLogs
 } from "@/lib/guard-tour";
-import type { Bill, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, Payment, Property, Resident, Unit, UserRole, Visitor } from "@/lib/types";
+import type { Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, Payment, Property, Resident, SecurityIncident, Unit, UserRole, Visitor } from "@/lib/types";
 import { contactLabel, makeDigitalIdNumber, money } from "@/lib/utils";
 import { getVisitorWindowState, VISITOR_CODE_VALIDITY_HOURS } from "@/lib/visitor-window";
 
@@ -3309,6 +3309,8 @@ export function SecurityDashboard() {
 export function CsoDashboard() {
   const [patrols, setPatrols] = useState<GuardPatrolEvent[]>([]);
   const [checkpoints, setCheckpoints] = useState<GuardCheckpoint[]>([]);
+  const [incidents, setIncidents] = useState<SecurityIncident[]>([]);
+  const [reviews, setReviews] = useState<CsoReview[]>([]);
   const [activeTab, setActiveTab] = useState<"feed" | "checkpoints">("feed");
   const [message, setMessage] = useState("Loading security operations...");
   const [savingCheckpoint, setSavingCheckpoint] = useState(false);
@@ -3321,6 +3323,8 @@ export function CsoDashboard() {
   );
   const gpsViolations = patrols.filter((patrol) => !patrol.isGpsVerified);
   const offlineLogs = patrols.filter((patrol) => patrol.isOfflineLog);
+  const openIncidents = incidents.filter((incident) => incident.status === "open" || incident.status === "acknowledged");
+  const pendingReviews = reviews.filter((review) => review.status === "open" || review.status === "pending");
 
   useEffect(() => {
     let active = true;
@@ -3331,7 +3335,12 @@ export function CsoDashboard() {
           fetch("/api/appwrite/security/patrols", { cache: "no-store" }),
           fetch("/api/appwrite/security/checkpoints", { cache: "no-store" })
         ]);
-        const patrolPayload = await patrolResponse.json().catch(() => null) as { patrols?: GuardPatrolEvent[]; error?: string } | null;
+        const patrolPayload = await patrolResponse.json().catch(() => null) as {
+          patrols?: GuardPatrolEvent[];
+          incidents?: SecurityIncident[];
+          reviews?: CsoReview[];
+          error?: string;
+        } | null;
         const checkpointPayload = await checkpointResponse.json().catch(() => null) as { checkpoints?: GuardCheckpoint[]; error?: string } | null;
 
         if (!patrolResponse.ok) {
@@ -3344,6 +3353,8 @@ export function CsoDashboard() {
 
         if (!active) return;
         setPatrols(patrolPayload?.patrols ?? []);
+        setIncidents(patrolPayload?.incidents ?? []);
+        setReviews(patrolPayload?.reviews ?? []);
         setCheckpoints(checkpointPayload?.checkpoints ?? []);
         setMessage("Security operations are synced.");
       } catch (error) {
@@ -3416,11 +3427,13 @@ export function CsoDashboard() {
 
       {message ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{message}</p> : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
         <StatCard label="Patrols today" value={String(patrolsToday.length)} helper="Checkpoint scans recorded" icon={<ShieldCheck className="h-5 w-5" />} />
         <StatCard label="Active guards" value={String(activeGuards.size)} helper="Seen in last 24 hours" icon={<Users className="h-5 w-5" />} />
         <StatCard label="GPS violations" value={String(gpsViolations.length)} helper="Needs CSO review" icon={<AlertTriangle className="h-5 w-5" />} />
         <StatCard label="Offline synced" value={String(offlineLogs.length)} helper="Saved during network gaps" icon={<RefreshCw className="h-5 w-5" />} />
+        <StatCard label="Open incidents" value={String(openIncidents.length)} helper="From security_incidents" icon={<Siren className="h-5 w-5" />} />
+        <StatCard label="CSO reviews" value={String(pendingReviews.length)} helper="Pending sign-off" icon={<BadgeCheck className="h-5 w-5" />} />
       </div>
 
       <div className="mt-5 grid grid-cols-2 gap-2 rounded-lg border border-white/10 bg-black/20 p-1">
@@ -3444,6 +3457,13 @@ export function CsoDashboard() {
         <Card id="patrol-feed" className="mt-5">
           <CardHeader title="Live patrol feed" description="Latest checkpoint scans. GPS warnings stay visible for audit." />
           <div className="grid gap-3">
+            {openIncidents.length ? (
+              <div className="grid gap-3">
+                {openIncidents.slice(0, 5).map((incident) => (
+                  <SecurityIncidentCard key={incident.id} incident={incident} />
+                ))}
+              </div>
+            ) : null}
             {patrols.length ? patrols.map((patrol) => (
               <PatrolEventCard key={patrol.id} patrol={patrol} />
             )) : (
@@ -3451,6 +3471,13 @@ export function CsoDashboard() {
                 No guard tour scans have been logged yet.
               </div>
             )}
+            {reviews.length ? (
+              <div className="grid gap-3">
+                {reviews.slice(0, 5).map((review) => (
+                  <CsoReviewCard key={review.id} review={review} />
+                ))}
+              </div>
+            ) : null}
           </div>
         </Card>
       ) : (
@@ -3519,6 +3546,52 @@ function PatrolEventCard({ patrol }: { patrol: GuardPatrolEvent }) {
         <PatrolFact label="Source" value={patrol.isOfflineLog ? "Offline sync" : "Live scan"} />
       </dl>
       {patrol.note ? <p className="mt-3 text-sm text-slate-300">{patrol.note}</p> : null}
+    </article>
+  );
+}
+
+function SecurityIncidentCard({ incident }: { incident: SecurityIncident }) {
+  const critical = incident.severity === "high" || incident.severity === "critical";
+  return (
+    <article className={`rounded-lg border p-4 ${critical ? "border-danger/30 bg-danger/10" : "border-yellow-300/25 bg-yellow-300/10"}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold text-white">{incident.summary}</p>
+          <p className="mt-1 text-xs text-slate-400">{incident.locationLabel ?? "Estate security"} - {formatDateTime(incident.openedAt)}</p>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${critical ? "bg-danger/15 text-red-200" : "bg-yellow-300/15 text-yellow-100"}`}>
+          {incident.severity}
+        </span>
+      </div>
+      <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+        <PatrolFact label="Source" value="security_incidents" />
+        <PatrolFact label="Status" value={incident.status} />
+        <PatrolFact label="Type" value={incident.incidentType} />
+        <PatrolFact label="Reporter" value={incident.reportedByRole} />
+      </dl>
+      {incident.details ? <p className="mt-3 text-sm text-slate-300">{incident.details}</p> : null}
+    </article>
+  );
+}
+
+function CsoReviewCard({ review }: { review: CsoReview }) {
+  return (
+    <article className="rounded-lg border border-smart/25 bg-smart/10 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold text-white">{review.decision}</p>
+          <p className="mt-1 text-xs text-slate-400">Incident {review.incidentId || "pending"} - {formatDateTime(review.reviewedAt)}</p>
+        </div>
+        <span className="rounded-full bg-smart/15 px-3 py-1 text-xs font-semibold text-smart">
+          {review.status}
+        </span>
+      </div>
+      <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+        <PatrolFact label="Source" value="cso_reviews" />
+        <PatrolFact label="CSO" value={review.csoProfileId || "Unassigned"} />
+        <PatrolFact label="Follow-up" value={review.followUpDate ?? "None"} />
+      </dl>
+      {review.note ? <p className="mt-3 text-sm text-slate-300">{review.note}</p> : null}
     </article>
   );
 }
