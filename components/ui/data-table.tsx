@@ -14,22 +14,44 @@ export function DataTable({
   rows: ReactNode[][];
   action?: ReactNode;
 }) {
+  const statusIndex = headers.findIndex((header) => /status|state|decision/i.test(header));
+  const secondaryIndex = headers.length > 1 ? 1 : -1;
+
   return (
     <Card>
       <CardHeader title={title} description={description} action={action} />
       <div className="grid gap-3 md:hidden">
         {rows.length ? rows.map((row, index) => (
-          <div key={index} className="rounded-lg border border-white/10 bg-black/20 p-3">
-            <div className="text-sm font-semibold text-white">{row[0]}</div>
+          <details key={index} className="group rounded-lg border border-white/10 bg-black/20 p-3">
+            <summary className="flex cursor-pointer list-none items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="text-sm font-semibold text-white">{row[0]}</div>
+                {secondaryIndex > 0 && row[secondaryIndex] ? (
+                  <div className="mt-2 text-xs text-slate-300">{row[secondaryIndex]}</div>
+                ) : null}
+              </div>
+              <div className="flex shrink-0 flex-col items-end gap-2">
+                {statusIndex > -1 && row[statusIndex] ? row[statusIndex] : null}
+                <span className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] font-semibold text-slate-400 group-open:bg-smart/10 group-open:text-smart">
+                  More
+                </span>
+              </div>
+            </summary>
             <div className="mt-3 grid gap-2">
-              {row.slice(1).map((cell, cellIndex) => (
-                <div key={headers[cellIndex + 1] ?? cellIndex} className="grid grid-cols-[6.5rem_1fr] gap-3 border-t border-white/10 pt-2 text-xs">
-                  <span className="text-slate-500">{headers[cellIndex + 1] ?? ""}</span>
-                  <span className="min-w-0 text-slate-100">{cell}</span>
-                </div>
-              ))}
+              {row.map((cell, cellIndex) => {
+                if (cellIndex === 0 || cellIndex === secondaryIndex || cellIndex === statusIndex) {
+                  return null;
+                }
+
+                return (
+                  <div key={headers[cellIndex] ?? cellIndex} className="grid grid-cols-[6.5rem_1fr] gap-3 border-t border-white/10 pt-2 text-xs">
+                    <span className="text-slate-500">{headers[cellIndex] ?? ""}</span>
+                    <span className="min-w-0 text-slate-100">{cell}</span>
+                  </div>
+                );
+              })}
             </div>
-          </div>
+          </details>
         )) : (
           <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-4 text-sm text-slate-400">
             No records to show.
