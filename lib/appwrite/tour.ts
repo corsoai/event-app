@@ -99,6 +99,11 @@ export type CheckpointCreateInput = {
   status?: GuardCheckpoint["status"];
 };
 
+export type CheckpointRenameInput = {
+  checkpointId: string;
+  checkpointName: string;
+};
+
 export async function listGuardCheckpoints() {
   const rows = await listAppwriteTableRows<AppwriteCheckpointRow>("guard_checkpoints");
 
@@ -144,6 +149,38 @@ export async function createGuardCheckpoint(input: CheckpointCreateInput) {
   };
 
   const row = await appwriteUpsertRow<AppwriteCheckpointRow>("guard_checkpoints", rowId, payload);
+  return mapCheckpointRow(row);
+}
+
+export async function renameGuardCheckpoint(input: CheckpointRenameInput) {
+  const checkpointName = input.checkpointName.trim();
+  if (!input.checkpointId || !checkpointName) {
+    throw new Error("Checkpoint ID and new name are required.");
+  }
+
+  const checkpoints = await listGuardCheckpoints();
+  const checkpoint = checkpoints.find((item) => item.id === input.checkpointId || item.checkpointId === input.checkpointId);
+  if (!checkpoint) {
+    throw new Error("Checkpoint was not found.");
+  }
+
+  const row = await appwriteUpsertRow<AppwriteCheckpointRow>("guard_checkpoints", checkpoint.id, {
+    estateId: checkpoint.estateId,
+    checkpointId: checkpoint.checkpointId || checkpoint.id,
+    checkpointCode: checkpoint.checkpointCode,
+    checkpointName,
+    name: checkpointName,
+    gateName: checkpoint.gateName,
+    locationLabel: checkpoint.locationLabel,
+    qrToken: checkpoint.qrToken,
+    latitude: checkpoint.latitude,
+    longitude: checkpoint.longitude,
+    allowedRadius: checkpoint.allowedRadius,
+    status: checkpoint.status,
+    sortOrder: checkpoint.sortOrder ?? 0,
+    updatedAt: new Date().toISOString()
+  });
+
   return mapCheckpointRow(row);
 }
 

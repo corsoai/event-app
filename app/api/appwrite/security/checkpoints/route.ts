@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { UserRole } from "@/lib/types";
 import { AppwriteRestError } from "@/lib/appwrite/server";
-import { createGuardCheckpoint, findGuardCheckpointByToken, listGuardCheckpoints } from "@/lib/appwrite/tour";
+import { createGuardCheckpoint, findGuardCheckpointByToken, listGuardCheckpoints, renameGuardCheckpoint } from "@/lib/appwrite/tour";
 
 const readerRoles = new Set<UserRole>(["security_guard", "cso", "estate_admin", "super_admin"]);
 const writerRoles = new Set<UserRole>(["cso", "estate_admin", "super_admin"]);
@@ -51,6 +51,29 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ checkpoint });
   } catch (error) {
     return errorResponse(error, "Unable to save checkpoint.");
+  }
+}
+
+export async function PATCH(request: NextRequest) {
+  const role = request.cookies.get("corso_role")?.value as UserRole | undefined;
+  if (!role || !writerRoles.has(role)) {
+    return NextResponse.json({ error: "CSO access is required." }, { status: 403 });
+  }
+
+  const body = await request.json().catch(() => null);
+  if (!body) {
+    return NextResponse.json({ error: "Invalid checkpoint rename request." }, { status: 400 });
+  }
+
+  try {
+    const checkpoint = await renameGuardCheckpoint({
+      checkpointId: String(body.checkpointId ?? ""),
+      checkpointName: String(body.checkpointName ?? "")
+    });
+
+    return NextResponse.json({ checkpoint });
+  } catch (error) {
+    return errorResponse(error, "Unable to rename checkpoint.");
   }
 }
 
