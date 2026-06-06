@@ -83,7 +83,7 @@ export async function GET(request: NextRequest) {
       liveTableIds = tableResults.filter(Boolean);
 
       const countResults = await Promise.all(
-        ["properties", "units", "residents", "profiles", "visitors", "payments"].map(async (tableId) => {
+        ["properties", "units", "residents", "profiles", "visitors", "payments", "guard_checkpoints", "guard_patrol_events"].map(async (tableId) => {
           if (!liveTableIds.includes(tableId)) {
             return [tableId, 0] as const;
           }

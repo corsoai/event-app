@@ -23,8 +23,8 @@ type TargetProfile = AdminProfile & {
   phone: string | null;
 };
 
-const superAdminRoles: UserRole[] = ["super_admin", "estate_admin", "security_guard", "resident", "vendor"];
-const estateAdminRoles: UserRole[] = ["security_guard", "resident", "vendor"];
+const superAdminRoles: UserRole[] = ["super_admin", "estate_admin", "cso", "security_guard", "resident", "vendor"];
+const estateAdminRoles: UserRole[] = ["cso", "security_guard", "resident", "vendor"];
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdmin(request);

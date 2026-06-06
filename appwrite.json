@@ -1,0 +1,32 @@
+{
+  "projectId": "fra-lbsview-estate",
+  "projectName": "LBS View Estate",
+  "teams": [
+    {
+      "teamId": "cso",
+      "name": "Chief Security Officers"
+    }
+  ],
+  "functions": [
+    {
+      "$id": "cso-patrol-alert",
+      "name": "CSO Patrol Alert",
+      "runtime": "node-20.0",
+      "path": "functions/cso-patrol-alert",
+      "entrypoint": "index.js",
+      "execute": [],
+      "events": [
+        "databases.*.tables.guard_patrol_events.rows.*.create",
+        "databases.*.collections.tourLogs.documents.*.create"
+      ],
+      "timeout": 15,
+      "enabled": true,
+      "logging": true,
+      "vars": {
+        "APPWRITE_FUNCTION_PROJECT_ID": "",
+        "APPWRITE_API_KEY": "",
+        "MANAGEMENT_TEAM_ID": "cso"
+      }
+    }
+  ]
+}

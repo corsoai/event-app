@@ -9,8 +9,8 @@ import {
 } from "@/lib/appwrite/users";
 
 const adminRoles = new Set(["estate_admin", "super_admin"]);
-const superAdminRoles: UserRole[] = ["super_admin", "estate_admin", "security_guard", "resident", "vendor"];
-const estateAdminRoles: UserRole[] = ["security_guard", "resident", "vendor"];
+const superAdminRoles: UserRole[] = ["super_admin", "estate_admin", "cso", "security_guard", "resident", "vendor"];
+const estateAdminRoles: UserRole[] = ["cso", "security_guard", "resident", "vendor"];
 
 export async function GET(request: NextRequest) {
   const adminRole = request.cookies.get("corso_role")?.value ?? "";

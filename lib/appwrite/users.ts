@@ -22,6 +22,7 @@ import {
 const roleLabels: Record<UserRole, string> = {
   super_admin: "Super Admin",
   estate_admin: "Estate Admin",
+  cso: "Chief Security Officer",
   resident: "Resident",
   security_guard: "Security Guard",
   vendor: "Vendor / Domestic Staff"
@@ -111,8 +112,8 @@ export async function listAppwriteManagedUsers(scope: "admin" | "super-admin"): 
     `/tablesdb/${config.databaseId}/tables/profiles/rows`
   );
   const allowedRoles = scope === "super-admin"
-    ? new Set<UserRole>(["super_admin", "estate_admin", "security_guard", "resident", "vendor"])
-    : new Set<UserRole>(["security_guard", "resident", "vendor"]);
+    ? new Set<UserRole>(["super_admin", "estate_admin", "cso", "security_guard", "resident", "vendor"])
+    : new Set<UserRole>(["cso", "security_guard", "resident", "vendor"]);
 
   return (payload.rows ?? payload.documents ?? [])
     .filter((row) => row.role && allowedRoles.has(row.role))
@@ -597,5 +598,5 @@ function makeTemporaryPassword() {
 }
 
 function isUserRole(value: unknown): value is UserRole {
-  return typeof value === "string" && ["super_admin", "estate_admin", "resident", "security_guard", "vendor"].includes(value);
+  return typeof value === "string" && ["super_admin", "estate_admin", "cso", "resident", "security_guard", "vendor"].includes(value);
 }

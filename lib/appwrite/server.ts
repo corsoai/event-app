@@ -36,6 +36,7 @@ export type AppwriteSetupResult = {
   tables: Array<{
     tableId: string;
     status: "created" | "exists" | "skipped";
+    columns?: Array<{ key: string; status: "created" | "exists" | "skipped" }>;
     indexes: Array<{ key: string; status: "created" | "exists" | "skipped" }>;
   }>;
 };
@@ -97,6 +98,7 @@ export async function setupAppwriteOnboardingSchema(): Promise<AppwriteSetupResu
     tables: appwriteOnboardingTables.map((table) => ({
       tableId: table.tableId,
       status: "skipped",
+      columns: table.columns.map((column) => ({ key: column.key, status: "skipped" })),
       indexes: (table.indexes ?? []).map((index) => ({ key: index.key, status: "skipped" }))
     }))
   };
@@ -197,6 +199,8 @@ async function ensureTable(databaseId: string, table: AppwriteTableDefinition) {
   });
   const tableStatus: "exists" | "created" = existingTable ? "exists" : "created";
 
+  let columns: Array<{ key: string; status: "created" | "exists" }> = [];
+
   if (!existingTable) {
     await appwriteRequest(`/tablesdb/${databaseId}/tables`, {
       method: "POST",
@@ -209,6 +213,9 @@ async function ensureTable(databaseId: string, table: AppwriteTableDefinition) {
         columns: table.columns.map(buildColumnPayload)
       }
     });
+    columns = table.columns.map((column) => ({ key: column.key, status: "created" as const }));
+  } else {
+    columns = await ensureMissingColumns(databaseId, table);
   }
 
   const indexes = [];
@@ -219,8 +226,36 @@ async function ensureTable(databaseId: string, table: AppwriteTableDefinition) {
   return {
     tableId: table.tableId,
     status: tableStatus,
+    columns,
     indexes
   };
+}
+
+async function ensureMissingColumns(databaseId: string, table: AppwriteTableDefinition) {
+  const columns = [];
+
+  for (const column of table.columns) {
+    const existingColumn = await appwriteRequest<unknown>(
+      `/tablesdb/${databaseId}/tables/${table.tableId}/columns/${column.key}`,
+      {
+        method: "GET",
+        allowNotFound: true
+      }
+    );
+
+    if (existingColumn) {
+      columns.push({ key: column.key, status: "exists" as const });
+      continue;
+    }
+
+    await appwriteRequest(`/tablesdb/${databaseId}/tables/${table.tableId}/columns/${columnCreateType(column)}`, {
+      method: "POST",
+      body: buildColumnCreatePayload(column)
+    });
+    columns.push({ key: column.key, status: "created" as const });
+  }
+
+  return columns;
 }
 
 async function ensureIndex(databaseId: string, tableId: string, index: AppwriteIndexDefinition) {
@@ -338,6 +373,15 @@ function buildColumnPayload(column: AppwriteTableDefinition["columns"][number]) 
     type: column.type === "float" ? "double" : column.type,
     array: column.array ?? false
   };
+}
+
+function buildColumnCreatePayload(column: AppwriteTableDefinition["columns"][number]) {
+  const { type: _type, ...payload } = buildColumnPayload(column);
+  return payload;
+}
+
+function columnCreateType(column: AppwriteTableDefinition["columns"][number]) {
+  return column.type === "float" ? "double" : column.type;
 }
 
 function isFailedIndex(value: unknown) {

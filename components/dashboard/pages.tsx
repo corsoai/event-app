@@ -71,7 +71,13 @@ import {
 } from "@/lib/local-store";
 import { getSupabaseBrowserClient } from "@/lib/supabase/client";
 import { createSupabaseResidentVisitor, findSupabaseVisitorByCode } from "@/lib/supabase/data";
-import type { Bill, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, Payment, Property, Resident, Unit, UserRole, Visitor } from "@/lib/types";
+import {
+  installGuardTourSync,
+  isGuardCheckpointQr,
+  submitGuardCheckpointScan,
+  syncPendingTourLogs
+} from "@/lib/guard-tour";
+import type { Bill, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, Payment, Property, Resident, Unit, UserRole, Visitor } from "@/lib/types";
 import { contactLabel, makeDigitalIdNumber, money } from "@/lib/utils";
 import { getVisitorWindowState, VISITOR_CODE_VALIDITY_HOURS } from "@/lib/visitor-window";
 
@@ -1889,8 +1895,8 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const allowedRoles = useMemo<UserRole[]>(
     () => scope === "super-admin"
-      ? ["super_admin", "estate_admin", "security_guard", "resident", "vendor"]
-      : ["security_guard", "resident", "vendor"],
+      ? ["super_admin", "estate_admin", "cso", "security_guard", "resident", "vendor"]
+      : ["cso", "security_guard", "resident", "vendor"],
     [scope]
   );
   const selectedUsers = users.filter((user) => selectedUserIds.includes(user.id));
@@ -2293,8 +2299,8 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
       <PageHeader
         title="Users and roles"
         description={scope === "super-admin"
-          ? "Create platform, estate admin, security, resident, and vendor users from Corso."
-          : "Create security, resident, and vendor users for your assigned estate."}
+          ? "Create platform, estate admin, CSO, security, resident, and vendor users from Corso."
+          : "Create CSO, security, resident, and vendor users for your assigned estate."}
       />
       <AccessRequestsPanel
         requests={pendingRequests}
@@ -2303,7 +2309,7 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
         onRefresh={() => void refreshRequestsAndUsers()}
       />
       <Card className="mb-6">
-        <CardHeader title="Create user" description="Estate admins can create security, resident, and vendor users for their assigned estate, then share the login details privately." />
+        <CardHeader title="Create user" description="Estate admins can create CSO, security, resident, and vendor users for their assigned estate, then share the login details privately." />
         <form className="grid gap-4" onSubmit={submitUser}>
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Full name"><Input name="fullName" placeholder="Full name" required /></Field>
@@ -3300,6 +3306,261 @@ export function SecurityDashboard() {
   );
 }
 
+export function CsoDashboard() {
+  const [patrols, setPatrols] = useState<GuardPatrolEvent[]>([]);
+  const [checkpoints, setCheckpoints] = useState<GuardCheckpoint[]>([]);
+  const [activeTab, setActiveTab] = useState<"feed" | "checkpoints">("feed");
+  const [message, setMessage] = useState("Loading security operations...");
+  const [savingCheckpoint, setSavingCheckpoint] = useState(false);
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const patrolsToday = patrols.filter((patrol) => patrol.scannedAt.startsWith(todayKey));
+  const activeGuards = new Set(
+    patrols
+      .filter((patrol) => Date.now() - new Date(patrol.scannedAt).getTime() <= 24 * 60 * 60 * 1000)
+      .map((patrol) => patrol.guardId || patrol.guardProfileId)
+  );
+  const gpsViolations = patrols.filter((patrol) => !patrol.isGpsVerified);
+  const offlineLogs = patrols.filter((patrol) => patrol.isOfflineLog);
+
+  useEffect(() => {
+    let active = true;
+
+    async function refresh() {
+      try {
+        const [patrolResponse, checkpointResponse] = await Promise.all([
+          fetch("/api/appwrite/security/patrols", { cache: "no-store" }),
+          fetch("/api/appwrite/security/checkpoints", { cache: "no-store" })
+        ]);
+        const patrolPayload = await patrolResponse.json().catch(() => null) as { patrols?: GuardPatrolEvent[]; error?: string } | null;
+        const checkpointPayload = await checkpointResponse.json().catch(() => null) as { checkpoints?: GuardCheckpoint[]; error?: string } | null;
+
+        if (!patrolResponse.ok) {
+          throw new Error(patrolPayload?.error ?? "Unable to load patrol events.");
+        }
+
+        if (!checkpointResponse.ok) {
+          throw new Error(checkpointPayload?.error ?? "Unable to load checkpoints.");
+        }
+
+        if (!active) return;
+        setPatrols(patrolPayload?.patrols ?? []);
+        setCheckpoints(checkpointPayload?.checkpoints ?? []);
+        setMessage("Security operations are synced.");
+      } catch (error) {
+        if (!active) return;
+        setMessage(error instanceof Error ? error.message : "Unable to load security operations.");
+      }
+    }
+
+    void refresh();
+    const interval = window.setInterval(refresh, 15000);
+    const refreshWhenVisible = () => {
+      if (document.visibilityState === "visible") {
+        void refresh();
+      }
+    };
+    document.addEventListener("visibilitychange", refreshWhenVisible);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+      document.removeEventListener("visibilitychange", refreshWhenVisible);
+    };
+  }, []);
+
+  async function saveCheckpoint(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSavingCheckpoint(true);
+    setMessage("");
+
+    const form = new FormData(event.currentTarget);
+    try {
+      const response = await fetch("/api/appwrite/security/checkpoints", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          checkpointCode: String(form.get("checkpointCode") ?? ""),
+          checkpointName: String(form.get("checkpointName") ?? ""),
+          gateName: String(form.get("gateName") ?? ""),
+          locationLabel: String(form.get("locationLabel") ?? ""),
+          qrToken: String(form.get("qrToken") ?? ""),
+          latitude: Number(form.get("latitude")),
+          longitude: Number(form.get("longitude")),
+          allowedRadius: Number(form.get("allowedRadius") || 25),
+          status: String(form.get("status") ?? "active")
+        })
+      });
+      const payload = await response.json().catch(() => null) as { checkpoint?: GuardCheckpoint; error?: string } | null;
+      if (!response.ok || !payload?.checkpoint) {
+        throw new Error(payload?.error ?? "Checkpoint could not be saved.");
+      }
+
+      setCheckpoints((current) => [payload.checkpoint!, ...current.filter((item) => item.id !== payload.checkpoint!.id)]);
+      setMessage(`${payload.checkpoint.checkpointName} checkpoint is ready. QR value: CP_${payload.checkpoint.qrToken}`);
+      event.currentTarget.reset();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Checkpoint could not be saved.");
+    } finally {
+      setSavingCheckpoint(false);
+    }
+  }
+
+  return (
+    <>
+      <PageHeader
+        title="CSO command"
+        description="Monitor patrols, GPS exceptions, checkpoint coverage, and guard activity."
+      />
+
+      {message ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{message}</p> : null}
+
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <StatCard label="Patrols today" value={String(patrolsToday.length)} helper="Checkpoint scans recorded" icon={<ShieldCheck className="h-5 w-5" />} />
+        <StatCard label="Active guards" value={String(activeGuards.size)} helper="Seen in last 24 hours" icon={<Users className="h-5 w-5" />} />
+        <StatCard label="GPS violations" value={String(gpsViolations.length)} helper="Needs CSO review" icon={<AlertTriangle className="h-5 w-5" />} />
+        <StatCard label="Offline synced" value={String(offlineLogs.length)} helper="Saved during network gaps" icon={<RefreshCw className="h-5 w-5" />} />
+      </div>
+
+      <div className="mt-5 grid grid-cols-2 gap-2 rounded-lg border border-white/10 bg-black/20 p-1">
+        <button
+          className={`rounded-md px-3 py-2 text-sm font-semibold ${activeTab === "feed" ? "bg-smart text-ink" : "text-slate-300"}`}
+          onClick={() => setActiveTab("feed")}
+          type="button"
+        >
+          Patrol feed
+        </button>
+        <button
+          className={`rounded-md px-3 py-2 text-sm font-semibold ${activeTab === "checkpoints" ? "bg-smart text-ink" : "text-slate-300"}`}
+          onClick={() => setActiveTab("checkpoints")}
+          type="button"
+        >
+          Checkpoints
+        </button>
+      </div>
+
+      {activeTab === "feed" ? (
+        <Card id="patrol-feed" className="mt-5">
+          <CardHeader title="Live patrol feed" description="Latest checkpoint scans. GPS warnings stay visible for audit." />
+          <div className="grid gap-3">
+            {patrols.length ? patrols.map((patrol) => (
+              <PatrolEventCard key={patrol.id} patrol={patrol} />
+            )) : (
+              <div className="rounded-lg border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
+                No guard tour scans have been logged yet.
+              </div>
+            )}
+          </div>
+        </Card>
+      ) : (
+        <div id="checkpoints" className="mt-5 grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
+          <Card>
+            <CardHeader title="Add checkpoint" description="Create the QR token guards will scan as CP_token." />
+            <form className="grid gap-3" onSubmit={saveCheckpoint}>
+              <Field label="Checkpoint code"><Input name="checkpointCode" placeholder="MAIN-GATE-01" required /></Field>
+              <Field label="Checkpoint name"><Input name="checkpointName" placeholder="Main Gate Round" required /></Field>
+              <Field label="QR token"><Input name="qrToken" placeholder="MAIN-GATE-01" required /></Field>
+              <Field label="Location label"><Input name="locationLabel" placeholder="Main Gate, LBS View" /></Field>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Latitude"><Input name="latitude" inputMode="decimal" placeholder="6.4698" required /></Field>
+                <Field label="Longitude"><Input name="longitude" inputMode="decimal" placeholder="3.5852" required /></Field>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <Field label="Allowed radius"><Input name="allowedRadius" inputMode="numeric" defaultValue="25" /></Field>
+                <Field label="Status">
+                  <Select name="status" defaultValue="active">
+                    <option value="active">Active</option>
+                    <option value="inactive">Inactive</option>
+                  </Select>
+                </Field>
+              </div>
+              <Button disabled={savingCheckpoint}>
+                <MapPin className="h-4 w-4" />
+                {savingCheckpoint ? "Saving" : "Save checkpoint"}
+              </Button>
+            </form>
+          </Card>
+          <Card>
+            <CardHeader title="Checkpoint list" description="Coordinates and QR tokens for guard tour points." />
+            <div className="grid gap-3">
+              {checkpoints.length ? checkpoints.map((checkpoint) => (
+                <CheckpointCard key={checkpoint.id} checkpoint={checkpoint} />
+              )) : (
+                <div className="rounded-lg border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
+                  No checkpoints have been configured yet.
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
+      )}
+    </>
+  );
+}
+
+function PatrolEventCard({ patrol }: { patrol: GuardPatrolEvent }) {
+  const warning = !patrol.isGpsVerified || patrol.isOfflineLog;
+  return (
+    <article className={`rounded-lg border p-4 ${warning ? "border-danger/30 bg-danger/10" : "border-smart/25 bg-smart/10"}`}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold text-white">{patrol.checkpointName}</p>
+          <p className="mt-1 text-xs text-slate-400">{patrol.guardName} - {formatDateTime(patrol.scannedAt)}</p>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${warning ? "bg-danger/15 text-red-200" : "bg-smart/15 text-smart"}`}>
+          {patrol.isGpsVerified ? "GPS OK" : "GPS warning"}
+        </span>
+      </div>
+      <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+        <PatrolFact label="Distance" value={patrol.distanceMeters === undefined ? "Unknown" : `${patrol.distanceMeters}m`} />
+        <PatrolFact label="Radius" value={patrol.allowedRadius === undefined ? "25m" : `${patrol.allowedRadius}m`} />
+        <PatrolFact label="Status" value={patrol.status.replaceAll("_", " ")} />
+        <PatrolFact label="Source" value={patrol.isOfflineLog ? "Offline sync" : "Live scan"} />
+      </dl>
+      {patrol.note ? <p className="mt-3 text-sm text-slate-300">{patrol.note}</p> : null}
+    </article>
+  );
+}
+
+function CheckpointCard({ checkpoint }: { checkpoint: GuardCheckpoint }) {
+  return (
+    <article className="rounded-lg border border-white/10 bg-black/20 p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div>
+          <p className="font-semibold text-white">{checkpoint.checkpointName}</p>
+          <p className="mt-1 font-mono text-xs text-smart">CP_{checkpoint.qrToken}</p>
+        </div>
+        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${checkpoint.status === "active" ? "bg-smart/15 text-smart" : "bg-white/10 text-slate-300"}`}>
+          {checkpoint.status}
+        </span>
+      </div>
+      <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
+        <PatrolFact label="Code" value={checkpoint.checkpointCode} />
+        <PatrolFact label="Radius" value={`${checkpoint.allowedRadius}m`} />
+        <PatrolFact label="Latitude" value={checkpoint.latitude?.toString() ?? "Unset"} />
+        <PatrolFact label="Longitude" value={checkpoint.longitude?.toString() ?? "Unset"} />
+      </dl>
+      {checkpoint.locationLabel ? <p className="mt-3 text-sm text-slate-300">{checkpoint.locationLabel}</p> : null}
+    </article>
+  );
+}
+
+function PatrolFact({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[5rem_1fr] gap-3">
+      <dt className="text-slate-500">{label}</dt>
+      <dd className="min-w-0 break-words text-slate-200">{value}</dd>
+    </div>
+  );
+}
+
+function formatDateTime(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value || "Unknown time";
+  return date.toLocaleString();
+}
+
 export function EmergencyAlertsPage({ audience = "security" }: { audience?: "security" | "admin" }) {
   return (
     <PausedSosFeaturePage
@@ -3397,9 +3658,12 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
   const { state, addVisitorRecord, updateVisitorStatus } = useLocalEstateStore();
   const [code, setCode] = useState("");
   const [message, setMessage] = useState("");
+  const [tourMessage, setTourMessage] = useState("");
+  const [tourMessageTone, setTourMessageTone] = useState<"ok" | "warn" | "error">("ok");
   const [lookupResident, setLookupResident] = useState<Resident | null>(null);
   const [lookupVisitor, setLookupVisitor] = useState<Visitor | null>(null);
   const [searching, setSearching] = useState(false);
+  const [savingTour, setSavingTour] = useState(false);
   const [hasSearched, setHasSearched] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const autoVerifiedVisitors = useRef(new Set<string>());
@@ -3426,6 +3690,8 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
 
     autoVerifyPendingVisitor(found);
   }, [code, found]);
+
+  useEffect(() => installGuardTourSync(), []);
 
   async function verifyCode(nextCode = code) {
     const targetCode = nextCode.replace(/\D/g, "").slice(0, 6);
@@ -3474,7 +3740,27 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
     }
   }
 
-  function handleVisitorQrScan(rawValue: string) {
+  async function handleVisitorQrScan(rawValue: string) {
+    if (isGuardCheckpointQr(rawValue)) {
+      setSavingTour(true);
+      setTourMessage("Checkpoint scanned. Checking GPS and saving patrol log...");
+      setTourMessageTone("ok");
+
+      try {
+        const result = await submitGuardCheckpointScan(rawValue);
+        setTourMessage(result.message);
+        setTourMessageTone(result.offline ? "warn" : result.ok ? "ok" : "error");
+        void syncPendingTourLogs();
+      } catch (error) {
+        setTourMessage(error instanceof Error ? error.message : "Checkpoint scan could not be saved.");
+        setTourMessageTone("error");
+      } finally {
+        setSavingTour(false);
+      }
+
+      return;
+    }
+
     try {
       const payload = parseVisitorQrPayload(rawValue);
       if (payload) {
@@ -3599,11 +3885,12 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
         <QrScannerPanel
           active={scannerOpen}
           title="Scan QR"
-          helper="Camera ready. Scanning QR code."
-          onResult={handleVisitorQrScan}
+          helper={savingTour ? "Saving checkpoint scan..." : "Camera ready. Scanning QR code."}
+          onResult={(value) => void handleVisitorQrScan(value)}
           onClose={() => setScannerOpen(false)}
         />
         <div className="mt-5">
+          {tourMessage ? <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${guardTourMessageClassName(tourMessageTone)}`}>{tourMessage}</p> : null}
           {message ? <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${visitorLookupMessageClassName(message)}`}>{message}</p> : null}
           {found ? (
           <VisitorVerificationCard
@@ -3909,6 +4196,18 @@ function visitorLookupMessageClassName(message: string) {
   return isError
     ? "border border-danger/30 bg-danger/10 text-danger"
     : "border border-smart/30 bg-smart/10 text-smart";
+}
+
+function guardTourMessageClassName(tone: "ok" | "warn" | "error") {
+  if (tone === "warn") {
+    return "border border-warn/30 bg-warn/10 text-warn";
+  }
+
+  if (tone === "error") {
+    return "border border-danger/30 bg-danger/10 text-danger";
+  }
+
+  return "border border-smart/30 bg-smart/10 text-smart";
 }
 
 function gateLookupMessage(visitor: Visitor) {

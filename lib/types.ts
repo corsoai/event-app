@@ -1,6 +1,7 @@
 export type UserRole =
   | "super_admin"
   | "estate_admin"
+  | "cso"
   | "resident"
   | "security_guard"
   | "vendor";
@@ -184,4 +185,46 @@ export type EmergencyAlert = {
   acknowledgedBy?: string;
   siren: boolean;
   locationLabel: string;
+};
+
+export type GuardCheckpoint = {
+  id: string;
+  estateId: string;
+  checkpointId: string;
+  checkpointCode: string;
+  checkpointName: string;
+  name: string;
+  gateName: string;
+  locationLabel: string;
+  qrToken: string;
+  latitude?: number;
+  longitude?: number;
+  allowedRadius: number;
+  status: "active" | "inactive";
+  sortOrder?: number;
+};
+
+export type GuardPatrolEvent = {
+  id: string;
+  estateId: string;
+  checkpointId: string;
+  checkpointCode: string;
+  checkpointName: string;
+  qrToken: string;
+  guardId: string;
+  guardProfileId: string;
+  guardName: string;
+  scanType: "checkpoint";
+  scannedAt: string;
+  status: "verified" | "gps_violation" | "offline_pending" | "checkpoint_missing";
+  deviceLatitude?: number;
+  deviceLongitude?: number;
+  checkpointLatitude?: number;
+  checkpointLongitude?: number;
+  allowedRadius?: number;
+  distanceMeters?: number;
+  isGpsVerified: boolean;
+  isOfflineLog: boolean;
+  deviceLabel?: string;
+  note?: string;
 };

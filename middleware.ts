@@ -3,6 +3,7 @@ import { NextRequest, NextResponse } from "next/server";
 const protectedRoutes = [
   { path: "/admin", roles: ["estate_admin", "super_admin"] },
   { path: "/super-admin", roles: ["super_admin"] },
+  { path: "/cso", roles: ["cso", "estate_admin", "super_admin"] },
   { path: "/resident", roles: ["resident"] },
   { path: "/security", roles: ["security_guard"] }
 ];
@@ -10,6 +11,7 @@ const protectedRoutes = [
 const roleHome: Record<string, string> = {
   super_admin: "/super-admin",
   estate_admin: "/admin",
+  cso: "/cso",
   resident: "/resident",
   security_guard: "/security",
   vendor: "/resident/digital-id"
@@ -39,5 +41,5 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin/:path*", "/super-admin/:path*", "/resident/:path*", "/security/:path*"]
+  matcher: ["/admin/:path*", "/super-admin/:path*", "/cso/:path*", "/resident/:path*", "/security/:path*"]
 };
