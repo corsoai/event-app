@@ -77,6 +77,7 @@ import {
   submitGuardCheckpointScan,
   syncPendingTourLogs
 } from "@/lib/guard-tour";
+import { APPWRITE_ONBOARDING_DATABASE_ID } from "@/lib/appwrite/schema";
 import type { Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, Payment, Property, Resident, SecurityIncident, Unit, UserRole, Visitor } from "@/lib/types";
 import { contactLabel, makeDigitalIdNumber, money } from "@/lib/utils";
 import { getVisitorWindowState, VISITOR_CODE_VALIDITY_HOURS } from "@/lib/visitor-window";
@@ -3388,6 +3389,17 @@ export function CsoDashboard() {
     };
   }, []);
 
+  useEffect(() => {
+    const unsubscribe = subscribeToGuardPatrolEvents((patrol) => {
+      setPatrols((current) => [
+        patrol,
+        ...current.filter((item) => item.id !== patrol.id)
+      ]);
+    });
+
+    return unsubscribe;
+  }, []);
+
   async function saveCheckpoint(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSavingCheckpoint(true);
@@ -3678,6 +3690,118 @@ function checkpointQrPayload(checkpoint: GuardCheckpoint) {
 
 function createCheckpointQrSuffix() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
+}
+
+function subscribeToGuardPatrolEvents(onCreate: (patrol: GuardPatrolEvent) => void) {
+  const endpoint = normalizeRealtimeEndpoint(
+    process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT ?? "https://fra.cloud.appwrite.io/v1"
+  );
+  const projectId = (process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID ?? "").trim();
+  const databaseId = (process.env.NEXT_PUBLIC_APPWRITE_DATABASE_ID ?? APPWRITE_ONBOARDING_DATABASE_ID).trim();
+
+  if (!endpoint || !projectId || !databaseId || typeof WebSocket === "undefined") {
+    return () => undefined;
+  }
+
+  const collectionChannel = `databases.${databaseId}.collections.guard_patrol_events.documents`;
+  const tableChannel = `databases.${databaseId}.tables.guard_patrol_events.rows`;
+  const params = new URLSearchParams({ project: projectId });
+  [collectionChannel, tableChannel].forEach((channel) => params.append("channels[]", channel));
+  const socket = new WebSocket(`${endpoint}/realtime?${params.toString()}`);
+
+  socket.addEventListener("message", (event) => {
+    const message = parseRealtimeMessage(event.data);
+    if (!message || !message.events.some(isGuardPatrolCreateEvent)) {
+      return;
+    }
+
+    onCreate(mapRealtimePatrolEvent(message.payload));
+  });
+
+  return () => {
+    socket.close();
+  };
+}
+
+function normalizeRealtimeEndpoint(endpoint: string) {
+  return endpoint
+    .trim()
+    .replace(/^https:/i, "wss:")
+    .replace(/^http:/i, "ws:")
+    .replace(/\/+$/g, "");
+}
+
+function parseRealtimeMessage(data: unknown) {
+  if (typeof data !== "string") {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(data) as { events?: unknown; payload?: unknown };
+    return {
+      events: Array.isArray(parsed.events) ? parsed.events.filter((event): event is string => typeof event === "string") : [],
+      payload: parsed.payload
+    };
+  } catch {
+    return null;
+  }
+}
+
+function isGuardPatrolCreateEvent(event: string) {
+  return event.includes("guard_patrol_events")
+    && (event.endsWith(".create") || event.includes(".documents.") && event.includes(".create") || event.includes(".rows.") && event.includes(".create"));
+}
+
+function mapRealtimePatrolEvent(payload: unknown): GuardPatrolEvent {
+  const row = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  const id = textValue(row.$id) || textValue(row.id) || `patrol-${Date.now().toString(36)}`;
+  const guardId = textValue(row.guardId) || textValue(row.guardProfileId);
+
+  return {
+    id,
+    estateId: textValue(row.estateId) || "lbsview-estate",
+    checkpointId: textValue(row.checkpointId),
+    checkpointCode: textValue(row.checkpointCode),
+    checkpointName: textValue(row.checkpointName) || textValue(row.checkpointCode) || "Checkpoint",
+    qrToken: textValue(row.qrToken),
+    guardId,
+    guardProfileId: textValue(row.guardProfileId) || guardId,
+    guardName: textValue(row.guardName) || "Security Guard",
+    scanType: "checkpoint",
+    scannedAt: textValue(row.scannedAt) || new Date().toISOString(),
+    status: patrolStatusValue(row.status),
+    deviceLatitude: optionalNumber(row.deviceLatitude),
+    deviceLongitude: optionalNumber(row.deviceLongitude),
+    checkpointLatitude: optionalNumber(row.checkpointLatitude),
+    checkpointLongitude: optionalNumber(row.checkpointLongitude),
+    allowedRadius: optionalNumber(row.allowedRadius),
+    distanceMeters: optionalNumber(row.distanceMeters),
+    isGpsVerified: booleanValue(row.isGpsVerified),
+    isOfflineLog: booleanValue(row.isOfflineLog),
+    deviceLabel: textValue(row.deviceLabel),
+    note: textValue(row.note)
+  };
+}
+
+function textValue(value: unknown) {
+  return typeof value === "string" ? value : "";
+}
+
+function optionalNumber(value: unknown) {
+  const numberValue = typeof value === "number" ? value : Number(value);
+  return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
+function booleanValue(value: unknown) {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function patrolStatusValue(value: unknown): GuardPatrolEvent["status"] {
+  if (value === "verified" || value === "gps_violation" || value === "offline_pending" || value === "checkpoint_missing") {
+    return value;
+  }
+
+  return "gps_violation";
 }
 
 function buildCheckpointQrToken(checkpointName: string, suffix = createCheckpointQrSuffix()) {
