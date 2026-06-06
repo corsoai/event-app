@@ -324,9 +324,10 @@ export async function appwriteRequest<T>(path: string, options: AppwriteRequestO
     : await response.text().catch(() => "");
 
   if (!response.ok) {
-    const message = payload && typeof payload === "object" && "message" in payload
+    const baseMessage = payload && typeof payload === "object" && "message" in payload
       ? String((payload as { message?: unknown }).message)
       : `Appwrite request failed with HTTP ${response.status}`;
+    const message = `${baseMessage} (${options.method ?? "GET"} ${path})`;
     throw new AppwriteRestError(message, response.status, payload);
   }
 
