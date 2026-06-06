@@ -3321,8 +3321,8 @@ export function CsoDashboard() {
       .filter((patrol) => Date.now() - new Date(patrol.scannedAt).getTime() <= 24 * 60 * 60 * 1000)
       .map((patrol) => patrol.guardId || patrol.guardProfileId)
   );
-  const gpsViolations = patrols.filter((patrol) => !patrol.isGpsVerified);
-  const offlineLogs = patrols.filter((patrol) => patrol.isOfflineLog);
+  const gpsViolations = patrols.filter((patrol) => patrol.isGpsVerified === false || patrol.status === "gps_violation");
+  const offlineLogs = patrols.filter((patrol) => patrol.isOfflineLog === true);
   const openIncidents = incidents.filter((incident) => incident.status === "open" || incident.status === "acknowledged");
   const pendingReviews = reviews.filter((review) => review.status === "open" || review.status === "pending");
 
@@ -3527,7 +3527,8 @@ export function CsoDashboard() {
 }
 
 function PatrolEventCard({ patrol }: { patrol: GuardPatrolEvent }) {
-  const warning = !patrol.isGpsVerified || patrol.isOfflineLog;
+  const gpsWarning = patrol.isGpsVerified === false || patrol.status === "gps_violation";
+  const warning = gpsWarning || patrol.isOfflineLog === true;
   return (
     <article className={`rounded-lg border p-4 ${warning ? "border-danger/30 bg-danger/10" : "border-smart/25 bg-smart/10"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
@@ -3536,14 +3537,14 @@ function PatrolEventCard({ patrol }: { patrol: GuardPatrolEvent }) {
           <p className="mt-1 text-xs text-slate-400">{patrol.guardName} - {formatDateTime(patrol.scannedAt)}</p>
         </div>
         <span className={`rounded-full px-3 py-1 text-xs font-semibold ${warning ? "bg-danger/15 text-red-200" : "bg-smart/15 text-smart"}`}>
-          {patrol.isGpsVerified ? "GPS OK" : "GPS warning"}
+          {gpsWarning ? "GPS warning" : "GPS OK"}
         </span>
       </div>
       <dl className="mt-3 grid gap-2 text-xs sm:grid-cols-2">
         <PatrolFact label="Distance" value={patrol.distanceMeters === undefined ? "Unknown" : `${patrol.distanceMeters}m`} />
         <PatrolFact label="Radius" value={patrol.allowedRadius === undefined ? "25m" : `${patrol.allowedRadius}m`} />
         <PatrolFact label="Status" value={patrol.status.replaceAll("_", " ")} />
-        <PatrolFact label="Source" value={patrol.isOfflineLog ? "Offline sync" : "Live scan"} />
+        <PatrolFact label="Source" value={patrol.isOfflineLog === true ? "Offline sync" : "Live scan"} />
       </dl>
       {patrol.note ? <p className="mt-3 text-sm text-slate-300">{patrol.note}</p> : null}
     </article>

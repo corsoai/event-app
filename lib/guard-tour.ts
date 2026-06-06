@@ -62,14 +62,15 @@ export async function submitGuardCheckpointScan(rawValue: string): Promise<Guard
       ...pendingPayload,
       isOfflineLog: false
     });
+    const savedGpsVerified = patrol.isGpsVerified === true;
 
     return {
-      ok: patrol.isGpsVerified,
+      ok: savedGpsVerified,
       checkpoint,
       patrol,
       distanceMeters,
       isGpsVerified,
-      message: patrol.isGpsVerified
+      message: savedGpsVerified
         ? `${checkpoint.checkpointName} verified. Distance ${distanceMeters ?? 0}m.`
         : `${checkpoint.checkpointName} saved with GPS warning. CSO can review it.`
     };

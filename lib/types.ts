@@ -223,8 +223,8 @@ export type GuardPatrolEvent = {
   checkpointLongitude?: number;
   allowedRadius?: number;
   distanceMeters?: number;
-  isGpsVerified: boolean;
-  isOfflineLog: boolean;
+  isGpsVerified?: boolean;
+  isOfflineLog?: boolean;
   deviceLabel?: string;
   note?: string;
 };

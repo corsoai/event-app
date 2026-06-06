@@ -120,7 +120,7 @@ export type LocalSessionUser = {
   email: string;
   phone?: string;
   name: string;
-  role: UserRole;
+  role?: UserRole;
   estate: string;
 };
 
