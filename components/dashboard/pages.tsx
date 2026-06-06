@@ -3315,8 +3315,14 @@ export function CsoDashboard() {
   const [message, setMessage] = useState("Loading security operations...");
   const [savingCheckpoint, setSavingCheckpoint] = useState(false);
   const [pinningLocation, setPinningLocation] = useState(false);
+  const [checkpointName, setCheckpointName] = useState("");
   const [checkpointLatitude, setCheckpointLatitude] = useState("");
   const [checkpointLongitude, setCheckpointLongitude] = useState("");
+  const [checkpointTokenSeed, setCheckpointTokenSeed] = useState(() => createCheckpointQrSuffix());
+  const checkpointQrToken = useMemo(
+    () => buildCheckpointQrToken(checkpointName, checkpointTokenSeed),
+    [checkpointName, checkpointTokenSeed]
+  );
   const todayKey = new Date().toISOString().slice(0, 10);
   const patrolsToday = patrols.filter((patrol) => patrol.scannedAt.startsWith(todayKey));
   const activeGuards = new Set(
@@ -3388,8 +3394,8 @@ export function CsoDashboard() {
     setMessage("");
 
     const form = new FormData(event.currentTarget);
-    const checkpointName = String(form.get("checkpointName") ?? "");
-    const qrToken = buildCheckpointQrToken(checkpointName);
+    const trimmedCheckpointName = checkpointName.trim();
+    const qrToken = checkpointQrToken;
     try {
       const response = await fetch("/api/appwrite/security/checkpoints", {
         method: "POST",
@@ -3398,9 +3404,9 @@ export function CsoDashboard() {
         },
         body: JSON.stringify({
           checkpointCode: qrToken.replace(/^CP_/i, ""),
-          checkpointName,
+          checkpointName: trimmedCheckpointName,
           gateName: "",
-          locationLabel: checkpointName,
+          locationLabel: trimmedCheckpointName,
           qrToken,
           latitude: Number(checkpointLatitude),
           longitude: Number(checkpointLongitude),
@@ -3416,8 +3422,10 @@ export function CsoDashboard() {
       setCheckpoints((current) => [payload.checkpoint!, ...current.filter((item) => item.id !== payload.checkpoint!.id)]);
       setMessage(`${payload.checkpoint.checkpointName} checkpoint is ready. QR value: ${checkpointQrPayload(payload.checkpoint)}`);
       event.currentTarget.reset();
+      setCheckpointName("");
       setCheckpointLatitude("");
       setCheckpointLongitude("");
+      setCheckpointTokenSeed(createCheckpointQrSuffix());
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Checkpoint could not be saved.");
     } finally {
@@ -3537,7 +3545,15 @@ export function CsoDashboard() {
           <Card>
             <CardHeader title="Checkpoint Management & QR Form" description="Create patrol locations, pin GPS coordinates, and generate printable checkpoint QR codes." />
             <form className="grid gap-3" onSubmit={saveCheckpoint}>
-              <Field label="Location name"><Input name="checkpointName" placeholder="Main Gate" required /></Field>
+              <Field label="Location name">
+                <Input
+                  name="checkpointName"
+                  onChange={(event) => setCheckpointName(event.target.value)}
+                  placeholder="Main Gate"
+                  required
+                  value={checkpointName}
+                />
+              </Field>
               <div className="grid gap-3 sm:grid-cols-2">
                 <Field label="Allowed radius"><Input name="allowedRadius" inputMode="numeric" defaultValue="25" /></Field>
                 <div className="grid content-end">
@@ -3551,7 +3567,17 @@ export function CsoDashboard() {
                 <Field label="Latitude"><Input name="latitude" value={checkpointLatitude} readOnly placeholder="Tap Pin Current Location" required /></Field>
                 <Field label="Longitude"><Input name="longitude" value={checkpointLongitude} readOnly placeholder="Tap Pin Current Location" required /></Field>
               </div>
-              <Button disabled={savingCheckpoint || !checkpointLatitude || !checkpointLongitude}>
+              <div className="grid gap-3 rounded-lg border border-smart/20 bg-smart/10 p-3 sm:grid-cols-[12rem_1fr]">
+                <div className="rounded-lg border border-white/10 bg-white p-2">
+                  <QRCodeImage value={checkpointQrToken} />
+                </div>
+                <div className="grid content-center gap-2">
+                  <p className="text-sm font-semibold text-white">New checkpoint QR</p>
+                  <p className="font-mono text-xs text-smart break-all">{checkpointQrToken}</p>
+                  <p className="text-xs text-slate-400">This is the QR value that will be saved and printed for this patrol location.</p>
+                </div>
+              </div>
+              <Button disabled={savingCheckpoint || !checkpointName.trim() || !checkpointLatitude || !checkpointLongitude}>
                 <MapPin className="h-4 w-4" />
                 {savingCheckpoint ? "Saving" : "Save checkpoint"}
               </Button>
@@ -3650,14 +3676,17 @@ function checkpointQrPayload(checkpoint: GuardCheckpoint) {
   return checkpoint.qrToken.toUpperCase().startsWith("CP_") ? checkpoint.qrToken : `CP_${checkpoint.qrToken}`;
 }
 
-function buildCheckpointQrToken(checkpointName: string) {
+function createCheckpointQrSuffix() {
+  return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
+}
+
+function buildCheckpointQrToken(checkpointName: string, suffix = createCheckpointQrSuffix()) {
   const slug = checkpointName
     .trim()
     .toUpperCase()
     .replace(/[^A-Z0-9]+/g, "_")
     .replace(/^_+|_+$/g, "")
     .slice(0, 24) || "CHECKPOINT";
-  const suffix = `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
 
   return `CP_${slug}_${suffix}`;
 }
