@@ -3393,27 +3393,15 @@ export function CsoDashboard() {
   useEffect(() => {
     const unsubscribe = subscribeToCsoSecurityRealtime({
       onPatrolCreate: (patrol) => {
-        setPatrols((current) => [
-          patrol,
-          ...current.filter((item) => item.id !== patrol.id)
-        ]);
+        setPatrols((current) => prependUniqueById(current, patrol));
 
         if (patrol.isGpsVerified === false) {
-          setSecurityAlerts((current) => [
-            patrolAlertFromRealtime(patrol),
-            ...current.filter((item) => item.sourceId !== patrol.id)
-          ].slice(0, 20));
+          setSecurityAlerts((current) => prependSecurityAlert(current, patrolAlertFromRealtime(patrol)));
         }
       },
       onIncidentCreate: (incident) => {
-        setIncidents((current) => [
-          incident,
-          ...current.filter((item) => item.id !== incident.id)
-        ]);
-        setSecurityAlerts((current) => [
-          incidentAlertFromRealtime(incident),
-          ...current.filter((item) => item.sourceId !== incident.id)
-        ].slice(0, 20));
+        setIncidents((current) => prependUniqueById(current, incident));
+        setSecurityAlerts((current) => prependSecurityAlert(current, incidentAlertFromRealtime(incident)));
       }
     });
 
@@ -3659,9 +3647,10 @@ type CsoSecurityAlert = {
 
 function SecurityAlertCapsule({ alert }: { alert: CsoSecurityAlert }) {
   const urgent = alert.severity === "urgent";
+  const fresh = Date.now() - new Date(alert.createdAt).getTime() < 15000;
 
   return (
-    <article className={`rounded-lg border p-3 ${urgent ? "border-danger/30 bg-danger/10" : "border-yellow-300/30 bg-yellow-300/10"}`}>
+    <article className={`rounded-lg border p-3 transition ${fresh ? "animate-pulse ring-1 ring-smart/40" : ""} ${urgent ? "border-danger/30 bg-danger/10" : "border-yellow-300/30 bg-yellow-300/10"}`}>
       <div className="flex items-start gap-2">
         <div className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md ${urgent ? "bg-danger/15 text-red-100" : "bg-yellow-300/15 text-yellow-100"}`}>
           {urgent ? <Siren className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
@@ -3843,6 +3832,7 @@ function mapRealtimePatrolEvent(payload: unknown): GuardPatrolEvent {
   const row = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
   const id = textValue(row.$id) || textValue(row.id) || `patrol-${Date.now().toString(36)}`;
   const guardId = textValue(row.guardId) || textValue(row.guardProfileId);
+  const scannedAt = normalizeRealtimeTimestamp(row.scannedAt);
 
   return {
     id,
@@ -3855,7 +3845,7 @@ function mapRealtimePatrolEvent(payload: unknown): GuardPatrolEvent {
     guardProfileId: textValue(row.guardProfileId) || guardId,
     guardName: textValue(row.guardName) || "Security Guard",
     scanType: "checkpoint",
-    scannedAt: textValue(row.scannedAt) || new Date().toISOString(),
+    scannedAt,
     status: patrolStatusValue(row.status),
     deviceLatitude: optionalNumber(row.deviceLatitude),
     deviceLongitude: optionalNumber(row.deviceLongitude),
@@ -3873,6 +3863,7 @@ function mapRealtimePatrolEvent(payload: unknown): GuardPatrolEvent {
 function mapRealtimeSecurityIncident(payload: unknown): SecurityIncident {
   const row = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
   const id = textValue(row.$id) || textValue(row.id) || `incident-${Date.now().toString(36)}`;
+  const openedAt = normalizeRealtimeTimestamp(row.openedAt);
 
   return {
     id,
@@ -3886,9 +3877,27 @@ function mapRealtimeSecurityIncident(payload: unknown): SecurityIncident {
     locationLabel: optionalTextValue(row.locationLabel),
     summary: textValue(row.summary) || "Security incident",
     details: optionalTextValue(row.details),
-    openedAt: textValue(row.openedAt) || new Date().toISOString(),
+    openedAt,
     resolvedAt: optionalTextValue(row.resolvedAt)
   };
+}
+
+function prependUniqueById<T extends { id: string }>(current: T[], incoming: T) {
+  if (current.some((item) => item.id === incoming.id)) {
+    return current.map((item) => item.id === incoming.id ? incoming : item);
+  }
+
+  return [incoming, ...current];
+}
+
+function prependSecurityAlert(current: CsoSecurityAlert[], incoming: CsoSecurityAlert) {
+  const merged = current.some((item) => item.sourceId === incoming.sourceId)
+    ? current.map((item) => item.sourceId === incoming.sourceId ? incoming : item)
+    : [incoming, ...current];
+
+  return merged
+    .sort((left, right) => new Date(right.createdAt).getTime() - new Date(left.createdAt).getTime())
+    .slice(0, 20);
 }
 
 function patrolAlertFromRealtime(patrol: GuardPatrolEvent): CsoSecurityAlert {
@@ -3898,7 +3907,7 @@ function patrolAlertFromRealtime(patrol: GuardPatrolEvent): CsoSecurityAlert {
     kind: "gps",
     title: "GPS violation",
     detail: `${patrol.guardName || "Security guard"} breached ${patrol.checkpointName || patrol.checkpointCode || "a checkpoint"}.`,
-    createdAt: patrol.scannedAt || new Date().toISOString(),
+    createdAt: normalizeRealtimeTimestamp(patrol.scannedAt),
     severity: "warning"
   };
 }
@@ -3910,7 +3919,7 @@ function incidentAlertFromRealtime(incident: SecurityIncident): CsoSecurityAlert
     kind: "incident",
     title: incident.summary || "Security incident",
     detail: `${incident.locationLabel ?? "Estate security"} - ${incident.severity} priority.`,
-    createdAt: incident.openedAt || new Date().toISOString(),
+    createdAt: normalizeRealtimeTimestamp(incident.openedAt),
     severity: "urgent"
   };
 }
@@ -3927,6 +3936,16 @@ function optionalTextValue(value: unknown) {
 function optionalNumber(value: unknown) {
   const numberValue = typeof value === "number" ? value : Number(value);
   return Number.isFinite(numberValue) ? numberValue : undefined;
+}
+
+function normalizeRealtimeTimestamp(value: unknown) {
+  const fallback = new Date().toISOString();
+  if (typeof value !== "string" || !value.trim()) {
+    return fallback;
+  }
+
+  const timestamp = new Date(value);
+  return Number.isNaN(timestamp.getTime()) ? fallback : timestamp.toISOString();
 }
 
 function booleanValue(value: unknown) {
