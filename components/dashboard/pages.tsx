@@ -3312,6 +3312,7 @@ export function CsoDashboard() {
   const [checkpoints, setCheckpoints] = useState<GuardCheckpoint[]>([]);
   const [incidents, setIncidents] = useState<SecurityIncident[]>([]);
   const [reviews, setReviews] = useState<CsoReview[]>([]);
+  const [securityAlerts, setSecurityAlerts] = useState<CsoSecurityAlert[]>([]);
   const [activeTab, setActiveTab] = useState<"feed" | "checkpoints">("feed");
   const [message, setMessage] = useState("Loading security operations...");
   const [savingCheckpoint, setSavingCheckpoint] = useState(false);
@@ -3390,11 +3391,30 @@ export function CsoDashboard() {
   }, []);
 
   useEffect(() => {
-    const unsubscribe = subscribeToGuardPatrolEvents((patrol) => {
-      setPatrols((current) => [
-        patrol,
-        ...current.filter((item) => item.id !== patrol.id)
-      ]);
+    const unsubscribe = subscribeToCsoSecurityRealtime({
+      onPatrolCreate: (patrol) => {
+        setPatrols((current) => [
+          patrol,
+          ...current.filter((item) => item.id !== patrol.id)
+        ]);
+
+        if (patrol.isGpsVerified === false) {
+          setSecurityAlerts((current) => [
+            patrolAlertFromRealtime(patrol),
+            ...current.filter((item) => item.sourceId !== patrol.id)
+          ].slice(0, 20));
+        }
+      },
+      onIncidentCreate: (incident) => {
+        setIncidents((current) => [
+          incident,
+          ...current.filter((item) => item.id !== incident.id)
+        ]);
+        setSecurityAlerts((current) => [
+          incidentAlertFromRealtime(incident),
+          ...current.filter((item) => item.sourceId !== incident.id)
+        ].slice(0, 20));
+      }
     });
 
     return unsubscribe;
@@ -3526,32 +3546,46 @@ export function CsoDashboard() {
       </div>
 
       {activeTab === "feed" ? (
-        <Card id="patrol-feed" className="mt-5">
-          <CardHeader title="Live patrol feed" description="Latest checkpoint scans. GPS warnings stay visible for audit." />
-          <div className="grid gap-3">
-            {openIncidents.length ? (
-              <div className="grid gap-3">
-                {openIncidents.slice(0, 5).map((incident) => (
-                  <SecurityIncidentCard key={incident.id} incident={incident} />
-                ))}
-              </div>
-            ) : null}
-            {patrols.length ? patrols.map((patrol) => (
-              <PatrolEventCard key={patrol.id} patrol={patrol} />
-            )) : (
-              <div className="rounded-lg border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
-                No guard tour scans have been logged yet.
-              </div>
-            )}
-            {reviews.length ? (
-              <div className="grid gap-3">
-                {reviews.slice(0, 5).map((review) => (
-                  <CsoReviewCard key={review.id} review={review} />
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </Card>
+        <div className="mt-5 grid gap-5 xl:grid-cols-[1fr_22rem]">
+          <Card id="patrol-feed">
+            <CardHeader title="Live patrol feed" description="Latest checkpoint scans. GPS warnings stay visible for audit." />
+            <div className="grid gap-3">
+              {openIncidents.length ? (
+                <div className="grid gap-3">
+                  {openIncidents.slice(0, 5).map((incident) => (
+                    <SecurityIncidentCard key={incident.id} incident={incident} />
+                  ))}
+                </div>
+              ) : null}
+              {patrols.length ? patrols.map((patrol) => (
+                <PatrolEventCard key={patrol.id} patrol={patrol} />
+              )) : (
+                <div className="rounded-lg border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
+                  No guard tour scans have been logged yet.
+                </div>
+              )}
+              {reviews.length ? (
+                <div className="grid gap-3">
+                  {reviews.slice(0, 5).map((review) => (
+                    <CsoReviewCard key={review.id} review={review} />
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </Card>
+          <Card id="alerts">
+            <CardHeader title="Security alerts" description="Realtime GPS and incident warnings." />
+            <div className="grid gap-3">
+              {securityAlerts.length ? securityAlerts.map((alert) => (
+                <SecurityAlertCapsule key={alert.id} alert={alert} />
+              )) : (
+                <div className="rounded-lg border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
+                  Realtime alerts will appear here.
+                </div>
+              )}
+            </div>
+          </Card>
+        </div>
       ) : (
         <div id="checkpoints" className="mt-5 grid gap-5 xl:grid-cols-[0.85fr_1.15fr]">
           <Card>
@@ -3610,6 +3644,35 @@ export function CsoDashboard() {
         </div>
       )}
     </>
+  );
+}
+
+type CsoSecurityAlert = {
+  id: string;
+  sourceId: string;
+  kind: "gps" | "incident";
+  title: string;
+  detail: string;
+  createdAt: string;
+  severity: "warning" | "urgent";
+};
+
+function SecurityAlertCapsule({ alert }: { alert: CsoSecurityAlert }) {
+  const urgent = alert.severity === "urgent";
+
+  return (
+    <article className={`rounded-lg border p-3 ${urgent ? "border-danger/30 bg-danger/10" : "border-yellow-300/30 bg-yellow-300/10"}`}>
+      <div className="flex items-start gap-2">
+        <div className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md ${urgent ? "bg-danger/15 text-red-100" : "bg-yellow-300/15 text-yellow-100"}`}>
+          {urgent ? <Siren className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
+        </div>
+        <div className="min-w-0">
+          <p className="text-sm font-semibold text-white">{alert.title}</p>
+          <p className="mt-1 text-xs text-slate-300">{alert.detail}</p>
+          <p className="mt-2 text-[11px] text-slate-500">{formatDateTime(alert.createdAt)}</p>
+        </div>
+      </div>
+    </article>
   );
 }
 
@@ -3692,7 +3755,13 @@ function createCheckpointQrSuffix() {
   return `${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`.toUpperCase();
 }
 
-function subscribeToGuardPatrolEvents(onCreate: (patrol: GuardPatrolEvent) => void) {
+function subscribeToCsoSecurityRealtime({
+  onPatrolCreate,
+  onIncidentCreate
+}: {
+  onPatrolCreate: (patrol: GuardPatrolEvent) => void;
+  onIncidentCreate: (incident: SecurityIncident) => void;
+}) {
   const endpoint = normalizeRealtimeEndpoint(
     process.env.NEXT_PUBLIC_APPWRITE_ENDPOINT ?? "https://fra.cloud.appwrite.io/v1"
   );
@@ -3703,19 +3772,32 @@ function subscribeToGuardPatrolEvents(onCreate: (patrol: GuardPatrolEvent) => vo
     return () => undefined;
   }
 
-  const collectionChannel = `databases.${databaseId}.collections.guard_patrol_events.documents`;
-  const tableChannel = `databases.${databaseId}.tables.guard_patrol_events.rows`;
+  const collectionChannels = [
+    `databases.${databaseId}.collections.guard_patrol_events.documents`,
+    `databases.${databaseId}.collections.security_incidents.documents`
+  ];
+  const tableChannels = [
+    `databases.${databaseId}.tables.guard_patrol_events.rows`,
+    `databases.${databaseId}.tables.security_incidents.rows`
+  ];
   const params = new URLSearchParams({ project: projectId });
-  [collectionChannel, tableChannel].forEach((channel) => params.append("channels[]", channel));
+  [...collectionChannels, ...tableChannels].forEach((channel) => params.append("channels[]", channel));
   const socket = new WebSocket(`${endpoint}/realtime?${params.toString()}`);
 
   socket.addEventListener("message", (event) => {
     const message = parseRealtimeMessage(event.data);
-    if (!message || !message.events.some(isGuardPatrolCreateEvent)) {
+    if (!message) {
       return;
     }
 
-    onCreate(mapRealtimePatrolEvent(message.payload));
+    if (message.events.some(isGuardPatrolCreateEvent)) {
+      onPatrolCreate(mapRealtimePatrolEvent(message.payload));
+      return;
+    }
+
+    if (message.events.some(isSecurityIncidentCreateEvent)) {
+      onIncidentCreate(mapRealtimeSecurityIncident(message.payload));
+    }
   });
 
   return () => {
@@ -3752,6 +3834,11 @@ function isGuardPatrolCreateEvent(event: string) {
     && (event.endsWith(".create") || event.includes(".documents.") && event.includes(".create") || event.includes(".rows.") && event.includes(".create"));
 }
 
+function isSecurityIncidentCreateEvent(event: string) {
+  return event.includes("security_incidents")
+    && (event.endsWith(".create") || event.includes(".documents.") && event.includes(".create") || event.includes(".rows.") && event.includes(".create"));
+}
+
 function mapRealtimePatrolEvent(payload: unknown): GuardPatrolEvent {
   const row = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
   const id = textValue(row.$id) || textValue(row.id) || `patrol-${Date.now().toString(36)}`;
@@ -3783,8 +3870,58 @@ function mapRealtimePatrolEvent(payload: unknown): GuardPatrolEvent {
   };
 }
 
+function mapRealtimeSecurityIncident(payload: unknown): SecurityIncident {
+  const row = payload && typeof payload === "object" ? payload as Record<string, unknown> : {};
+  const id = textValue(row.$id) || textValue(row.id) || `incident-${Date.now().toString(36)}`;
+
+  return {
+    id,
+    estateId: textValue(row.estateId) || "lbsview-estate",
+    incidentType: textValue(row.incidentType) || "security",
+    severity: incidentSeverityValue(row.severity),
+    status: incidentStatusValue(row.status),
+    reportedByRole: textValue(row.reportedByRole) || "security_guard",
+    reportedByProfileId: optionalTextValue(row.reportedByProfileId),
+    assignedToProfileId: optionalTextValue(row.assignedToProfileId),
+    locationLabel: optionalTextValue(row.locationLabel),
+    summary: textValue(row.summary) || "Security incident",
+    details: optionalTextValue(row.details),
+    openedAt: textValue(row.openedAt) || new Date().toISOString(),
+    resolvedAt: optionalTextValue(row.resolvedAt)
+  };
+}
+
+function patrolAlertFromRealtime(patrol: GuardPatrolEvent): CsoSecurityAlert {
+  return {
+    id: `gps-${patrol.id}`,
+    sourceId: patrol.id,
+    kind: "gps",
+    title: "GPS violation",
+    detail: `${patrol.guardName || "Security guard"} breached ${patrol.checkpointName || patrol.checkpointCode || "a checkpoint"}.`,
+    createdAt: patrol.scannedAt || new Date().toISOString(),
+    severity: "warning"
+  };
+}
+
+function incidentAlertFromRealtime(incident: SecurityIncident): CsoSecurityAlert {
+  return {
+    id: `incident-${incident.id}`,
+    sourceId: incident.id,
+    kind: "incident",
+    title: incident.summary || "Security incident",
+    detail: `${incident.locationLabel ?? "Estate security"} - ${incident.severity} priority.`,
+    createdAt: incident.openedAt || new Date().toISOString(),
+    severity: "urgent"
+  };
+}
+
 function textValue(value: unknown) {
   return typeof value === "string" ? value : "";
+}
+
+function optionalTextValue(value: unknown) {
+  const text = textValue(value).trim();
+  return text || undefined;
 }
 
 function optionalNumber(value: unknown) {
@@ -3802,6 +3939,22 @@ function patrolStatusValue(value: unknown): GuardPatrolEvent["status"] {
   }
 
   return "gps_violation";
+}
+
+function incidentSeverityValue(value: unknown): SecurityIncident["severity"] {
+  if (value === "low" || value === "medium" || value === "high" || value === "critical") {
+    return value;
+  }
+
+  return "medium";
+}
+
+function incidentStatusValue(value: unknown): SecurityIncident["status"] {
+  if (value === "open" || value === "acknowledged" || value === "resolved" || value === "closed") {
+    return value;
+  }
+
+  return "open";
 }
 
 function buildCheckpointQrToken(checkpointName: string, suffix = createCheckpointQrSuffix()) {
