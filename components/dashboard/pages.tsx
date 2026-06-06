@@ -379,6 +379,7 @@ export function ResidentsAdminPage() {
   const [appwriteDirectoryStatus, setAppwriteDirectoryStatus] = useState("Loading Appwrite residents...");
   const [loadingAppwriteDirectory, setLoadingAppwriteDirectory] = useState(false);
   const [exportingScope, setExportingScope] = useState<"" | "residents" | "all">("");
+  const [selectedResidentId, setSelectedResidentId] = useState("");
   const directoryState = appwriteDirectory?.residents.length
     ? {
         ...state,
@@ -387,35 +388,7 @@ export function ResidentsAdminPage() {
         residents: appwriteDirectory.residents
       }
     : state;
-  const residentDirectoryRows = (directoryState.residents.length ? directoryState.residents : []).map((resident) => {
-    const unit = getResidentUnit(directoryState, resident);
-    const property = getResidentProperty(directoryState, resident);
-    const isLocalResident = state.residents.some((item) => item.id === resident.id);
-
-    return [
-      <div key={resident.id}>
-        <p className="font-medium text-white">{resident.name}</p>
-        <p className="text-xs text-slate-500">{resident.email}</p>
-      </div>,
-      <div key={`${resident.id}-unit`}>
-        <p className="font-mono text-smart">{residentUnitLabel(directoryState, resident)}</p>
-        <p className="text-xs text-slate-500">{unit?.apartmentType ?? "Unit pending"}{property?.legacyName ? ` - Legacy: ${property.legacyName}` : ""}</p>
-      </div>,
-      resident.type,
-      resident.phone,
-      <StatusBadge key={resident.status} status={resident.status} />,
-      isLocalResident ? (
-        <Button key={`${resident.id}-edit`} variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={() => setEditingResident(resident)}>
-          <Pencil className="h-3.5 w-3.5" />
-          Edit
-        </Button>
-      ) : (
-        <span key={`${resident.id}-source`} className="inline-flex rounded-full border border-smart/30 bg-smart/10 px-3 py-1 text-xs font-semibold text-smart">
-          Appwrite
-        </span>
-      )
-    ];
-  });
+  const directoryResidents = directoryState.residents.length ? directoryState.residents : [];
 
   useEffect(() => {
     void refreshAppwriteResidentDirectory();
@@ -526,17 +499,16 @@ export function ResidentsAdminPage() {
           onCancel={() => setEditingResident(null)}
         />
       ) : null}
-      <DataTable
-        title="Resident directory"
+      <ResidentDirectoryPanel
+        residents={directoryResidents}
+        state={directoryState}
+        localResidents={state.residents}
+        selectedResidentId={selectedResidentId}
         description={appwriteDirectoryStatus}
-        headers={["Name", "Property / Unit", "Type", "Phone", "Status", "Action"]}
-        action={
-          <Button type="button" variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={() => void refreshAppwriteResidentDirectory()} disabled={loadingAppwriteDirectory}>
-            <RefreshCw className="h-3.5 w-3.5" />
-            {loadingAppwriteDirectory ? "Loading" : "Refresh"}
-          </Button>
-        }
-        rows={residentDirectoryRows}
+        loading={loadingAppwriteDirectory}
+        onRefresh={() => void refreshAppwriteResidentDirectory()}
+        onSelect={setSelectedResidentId}
+        onEdit={(resident) => setEditingResident(resident)}
       />
       <div className="mt-6">
         <ResidentOnboardingPanel
@@ -612,6 +584,252 @@ type ResidentOnboardingInput = Pick<Resident, "name" | "phone" | "email" | "type
   openingBalance?: number;
   monthlyCharge?: number;
 };
+
+function ResidentDirectoryPanel({
+  residents,
+  state,
+  localResidents,
+  selectedResidentId,
+  description,
+  loading,
+  onRefresh,
+  onSelect,
+  onEdit
+}: {
+  residents: Resident[];
+  state: LocalEstateState;
+  localResidents: Resident[];
+  selectedResidentId: string;
+  description: string;
+  loading: boolean;
+  onRefresh: () => void;
+  onSelect: (residentId: string) => void;
+  onEdit: (resident: Resident) => void;
+}) {
+  const selectedResident = residents.find((resident) => resident.id === selectedResidentId) ?? residents[0];
+  const selectedIsLocal = selectedResident ? localResidents.some((resident) => resident.id === selectedResident.id) : false;
+
+  return (
+    <Card>
+      <CardHeader
+        title="Resident directory"
+        description={description}
+        action={
+          <Button type="button" variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={onRefresh} disabled={loading}>
+            <RefreshCw className="h-3.5 w-3.5" />
+            {loading ? "Loading" : "Refresh"}
+          </Button>
+        }
+      />
+
+      <div className="grid gap-4 xl:grid-cols-[1fr_24rem]">
+        <div className="grid gap-3 md:hidden">
+          {residents.length ? residents.map((resident) => (
+            <ResidentDirectoryCard
+              key={resident.id}
+              resident={resident}
+              state={state}
+              selected={selectedResident?.id === resident.id}
+              source={localResidents.some((item) => item.id === resident.id) ? "Local" : "Database"}
+              onSelect={() => onSelect(resident.id)}
+            />
+          )) : (
+            <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-4 text-sm text-slate-400">
+              No resident records to show.
+            </div>
+          )}
+        </div>
+
+        <div className="hidden max-w-full overflow-x-auto overscroll-x-contain rounded-lg border border-white/10 bg-black/10 md:block">
+          <table className="w-full table-auto border-separate border-spacing-0 text-left text-sm">
+            <thead>
+              <tr>
+                {["Name", "Property / Unit", "Type", "Phone", "Status", "Source"].map((header) => (
+                  <th key={header} className="border-b border-white/10 bg-white/[0.04] px-3 py-3 align-top font-semibold text-slate-300">
+                    {header}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {residents.length ? residents.map((resident) => {
+                const unit = getResidentUnit(state, resident);
+                const property = getResidentProperty(state, resident);
+                const selected = selectedResident?.id === resident.id;
+                const source = localResidents.some((item) => item.id === resident.id) ? "Local" : "Database";
+
+                return (
+                  <tr
+                    key={resident.id}
+                    className={`cursor-pointer transition hover:bg-white/[0.05] ${selected ? "bg-smart/10" : ""}`}
+                    onClick={() => onSelect(resident.id)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" || event.key === " ") {
+                        event.preventDefault();
+                        onSelect(resident.id);
+                      }
+                    }}
+                    role="button"
+                    tabIndex={0}
+                  >
+                    <td className="border-b border-white/10 px-3 py-4 align-top">
+                      <p className="font-medium text-white">{resident.name}</p>
+                      <p className="text-xs text-slate-500">{resident.email || "No email"}</p>
+                    </td>
+                    <td className="border-b border-white/10 px-3 py-4 align-top">
+                      <p className="font-mono text-smart">{residentUnitLabel(state, resident)}</p>
+                      <p className="text-xs text-slate-500">{unit?.apartmentType ?? "Unit pending"}{property?.legacyName ? ` - Legacy: ${property.legacyName}` : ""}</p>
+                    </td>
+                    <td className="border-b border-white/10 px-3 py-4 align-top capitalize text-slate-100">{resident.type}</td>
+                    <td className="border-b border-white/10 px-3 py-4 align-top font-mono text-slate-100">{resident.phone || "No phone"}</td>
+                    <td className="border-b border-white/10 px-3 py-4 align-top"><StatusBadge status={resident.status} /></td>
+                    <td className="border-b border-white/10 px-3 py-4 align-top">
+                      <span className="inline-flex rounded-full border border-smart/30 bg-smart/10 px-3 py-1 text-xs font-semibold text-smart">
+                        {source}
+                      </span>
+                    </td>
+                  </tr>
+                );
+              }) : (
+                <tr>
+                  <td className="px-3 py-4 text-sm text-slate-400" colSpan={6}>No resident records to show.</td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        <ResidentDetailsPanel
+          resident={selectedResident}
+          state={state}
+          source={selectedIsLocal ? "Local" : "Database"}
+          onEdit={selectedResident && selectedIsLocal ? () => onEdit(selectedResident) : undefined}
+        />
+      </div>
+    </Card>
+  );
+}
+
+function ResidentDirectoryCard({
+  resident,
+  state,
+  selected,
+  source,
+  onSelect
+}: {
+  resident: Resident;
+  state: LocalEstateState;
+  selected: boolean;
+  source: string;
+  onSelect: () => void;
+}) {
+  const unit = getResidentUnit(state, resident);
+
+  return (
+    <button
+      className={`rounded-lg border p-3 text-left transition ${selected ? "border-smart/40 bg-smart/10" : "border-white/10 bg-black/20"}`}
+      onClick={onSelect}
+      type="button"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-semibold text-white">{resident.name}</p>
+          <p className="mt-1 font-mono text-xs text-smart">{residentUnitLabel(state, resident)}</p>
+          <p className="mt-1 text-xs text-slate-400">{unit?.apartmentType ?? resident.type}</p>
+        </div>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <StatusBadge status={resident.status} />
+          <span className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] font-semibold text-slate-400">
+            {source}
+          </span>
+        </div>
+      </div>
+    </button>
+  );
+}
+
+function ResidentDetailsPanel({
+  resident,
+  state,
+  source,
+  onEdit
+}: {
+  resident?: Resident;
+  state: LocalEstateState;
+  source: string;
+  onEdit?: () => void;
+}) {
+  if (!resident) {
+    return (
+      <aside className="rounded-lg border border-white/10 bg-black/20 p-4 text-sm text-slate-400">
+        Select a resident to view more information and actions.
+      </aside>
+    );
+  }
+
+  const unit = getResidentUnit(state, resident);
+  const property = getResidentProperty(state, resident);
+
+  return (
+    <aside className="rounded-lg border border-white/10 bg-black/20 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <p className="text-xs uppercase tracking-[0.18em] text-smart">Resident</p>
+          <h2 className="mt-1 text-xl font-semibold text-white">{resident.name}</h2>
+          <p className="mt-1 font-mono text-sm text-smart">{residentUnitLabel(state, resident)}</p>
+        </div>
+        <StatusBadge status={resident.status} />
+      </div>
+
+      <div className="mt-4 grid gap-2 text-sm">
+        <ResidentDetailLine label="Source" value={source} />
+        <ResidentDetailLine label="Type" value={resident.type} />
+        <ResidentDetailLine label="Phone" value={resident.phone || "No phone"} />
+        <ResidentDetailLine label="Email" value={resident.email || "No email"} />
+        <ResidentDetailLine label="Property" value={property ? `${property.propertyCode} - ${property.name}` : "Property pending"} />
+        <ResidentDetailLine label="Unit" value={unit ? `${unit.unitCode} - ${unit.apartmentType}` : "Unit pending"} />
+        <ResidentDetailLine label="Move-in" value={resident.moveInDate || "Not recorded"} />
+        <ResidentDetailLine label="Legacy name" value={resident.legacyName || "None"} />
+        <ResidentDetailLine label="Legacy address" value={resident.legacyAddress || "None"} />
+      </div>
+
+      <div className="mt-5 grid gap-2">
+        {onEdit ? (
+          <Button type="button" onClick={onEdit}>
+            <Pencil className="h-4 w-4" />
+            Edit resident
+          </Button>
+        ) : (
+          <Button type="button" variant="secondary" disabled>
+            <Pencil className="h-4 w-4" />
+            Database edit pending
+          </Button>
+        )}
+        <Link href="/admin/users">
+          <Button type="button" variant="secondary" className="w-full">
+            <Users className="h-4 w-4" />
+            Create login account
+          </Button>
+        </Link>
+        <Link href="/admin/payments">
+          <Button type="button" variant="secondary" className="w-full">
+            <WalletCards className="h-4 w-4" />
+            View bills / payments
+          </Button>
+        </Link>
+      </div>
+    </aside>
+  );
+}
+
+function ResidentDetailLine({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="grid grid-cols-[6.75rem_1fr] gap-3 border-t border-white/10 pt-2 first:border-t-0 first:pt-0">
+      <span className="text-xs text-slate-500">{label}</span>
+      <span className="min-w-0 text-slate-100">{value}</span>
+    </div>
+  );
+}
 
 function ResidentOnboardingPanel({
   state,
