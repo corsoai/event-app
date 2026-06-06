@@ -381,7 +381,7 @@ function buildColumnCreatePayload(column: AppwriteTableDefinition["columns"][num
 }
 
 function columnCreateType(column: AppwriteTableDefinition["columns"][number]) {
-  return column.type === "float" ? "double" : column.type;
+  return column.type;
 }
 
 function isFailedIndex(value: unknown) {
