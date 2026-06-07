@@ -34,6 +34,11 @@ if (!(Test-Path $npmCli)) {
   throw "Could not find npm CLI at $npmCli"
 }
 
+$processEnvironment = [Environment]::GetEnvironmentVariables("Process")
+if ($processEnvironment.Contains("Path") -and $processEnvironment.Contains("PATH")) {
+  [Environment]::SetEnvironmentVariable("PATH", $null, "Process")
+}
+
 $arguments = "`"$npmCli`" run dev:local"
 Start-Process `
   -FilePath $node `

@@ -171,6 +171,16 @@ type AppwriteResidentDirectory = {
   };
 };
 
+type AppwriteAccountingDirectory = AppwriteResidentDirectory & {
+  bills: Bill[];
+  payments: Payment[];
+  auditLogs: LocalEstateState["auditLogs"];
+  total: AppwriteResidentDirectory["total"] & {
+    bills: number;
+    payments: number;
+  };
+};
+
 type LbsviewOnboardingPreviewRow = {
   sourceRow: number;
   fullName: string;
@@ -290,6 +300,61 @@ function mergeRecordsById<T extends { id: string }>(localRecords: T[], liveRecor
   return Array.from(merged.values());
 }
 
+function mergeAccountingState(state: LocalEstateState, accounting: AppwriteAccountingDirectory | null): LocalEstateState {
+  if (!accounting?.bills.length && !accounting?.payments.length) {
+    return state;
+  }
+
+  return {
+    ...state,
+    properties: mergeRecordsById(state.properties, accounting?.properties ?? []),
+    units: mergeRecordsById(state.units, accounting?.units ?? []),
+    residents: accounting?.residents.length ? accounting.residents : state.residents,
+    bills: accounting?.bills.length ? accounting.bills : state.bills,
+    payments: accounting?.payments.length ? accounting.payments : state.payments,
+    auditLogs: accounting?.auditLogs.length ? accounting.auditLogs : state.auditLogs
+  };
+}
+
+function useAdminAccountingState(state: LocalEstateState) {
+  const [accounting, setAccounting] = useState<AppwriteAccountingDirectory | null>(null);
+  const [loadingAccounting, setLoadingAccounting] = useState(false);
+  const [accountingStatus, setAccountingStatus] = useState("Loading Appwrite accounting...");
+
+  async function refreshAccounting() {
+    setLoadingAccounting(true);
+    setAccountingStatus("Loading Appwrite accounting...");
+
+    try {
+      const response = await fetch("/api/appwrite/admin/accounting", { cache: "no-store" });
+      const payload = await response.json().catch(() => null) as (AppwriteAccountingDirectory & { error?: string }) | null;
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error ?? "Unable to load Appwrite accounting.");
+      }
+
+      setAccounting(payload);
+      setAccountingStatus(`Loaded ${payload.bills.length} bills and ${payload.payments.length} payments from Appwrite TablesDB.`);
+    } catch (error) {
+      setAccounting(null);
+      setAccountingStatus(error instanceof Error ? error.message : "Using local accounting records.");
+    } finally {
+      setLoadingAccounting(false);
+    }
+  }
+
+  useEffect(() => {
+    void refreshAccounting();
+  }, []);
+
+  return {
+    accountingState: mergeAccountingState(state, accounting),
+    accounting,
+    accountingStatus,
+    loadingAccounting,
+    refreshAccounting
+  };
+}
+
 function filenameFromContentDisposition(value: string | null) {
   const match = value?.match(/filename="?([^"]+)"?/i);
   return match?.[1];
@@ -297,13 +362,14 @@ function filenameFromContentDisposition(value: string | null) {
 
 export function AdminDashboard() {
   const { state } = useLocalEstateStore();
-  const confirmedPayments = state.payments.filter((payment) => payment.status === "confirmed");
+  const { accountingState } = useAdminAccountingState(state);
+  const confirmedPayments = accountingState.payments.filter((payment) => payment.status === "confirmed");
   const paid = confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
-  const expected = state.bills.reduce((sum, bill) => sum + bill.amount, 0);
-  const outstanding = state.bills.reduce((sum, bill) => sum + billOutstandingAmount(state, bill), 0);
+  const expected = accountingState.bills.reduce((sum, bill) => sum + bill.amount, 0);
+  const outstanding = accountingState.bills.reduce((sum, bill) => sum + billOutstandingAmount(accountingState, bill), 0);
   const onlinePayments = confirmedPayments.filter((payment) => payment.channel === "online").reduce((sum, payment) => sum + payment.amount, 0);
   const manualPayments = confirmedPayments.filter((payment) => payment.channel !== "online").reduce((sum, payment) => sum + payment.amount, 0);
-  const pendingPayments = state.payments.filter((payment) => payment.status === "pending").reduce((sum, payment) => sum + payment.amount, 0);
+  const pendingPayments = accountingState.payments.filter((payment) => payment.status === "pending").reduce((sum, payment) => sum + payment.amount, 0);
 
   return (
     <>
@@ -1972,16 +2038,80 @@ export function BillsAdminPage() {
 }
 
 export function PaymentsAdminPage() {
-  const { state, confirmPayment } = useLocalEstateStore();
-  const expected = state.bills.reduce((sum, bill) => sum + bill.amount, 0);
-  const confirmed = state.payments.filter((payment) => payment.status === "confirmed").reduce((sum, payment) => sum + payment.amount, 0);
-  const pendingReview = state.payments.filter((payment) => payment.status === "pending").reduce((sum, payment) => sum + payment.amount, 0);
-  const outstanding = state.bills.reduce((sum, bill) => sum + billOutstandingAmount(state, bill), 0);
-  const debtors = state.bills.filter((bill) => billOutstandingAmount(state, bill) > 0).length;
+  const { state, addPayment, confirmPayment } = useLocalEstateStore();
+  const { accountingState, accounting, accountingStatus, loadingAccounting, refreshAccounting } = useAdminAccountingState(state);
+  const [paymentMessage, setPaymentMessage] = useState("");
+  const [savingPayment, setSavingPayment] = useState(false);
+  const expected = accountingState.bills.reduce((sum, bill) => sum + bill.amount, 0);
+  const confirmed = accountingState.payments.filter((payment) => payment.status === "confirmed").reduce((sum, payment) => sum + payment.amount, 0);
+  const pendingReview = accountingState.payments.filter((payment) => payment.status === "pending").reduce((sum, payment) => sum + payment.amount, 0);
+  const outstanding = accountingState.bills.reduce((sum, bill) => sum + billOutstandingAmount(accountingState, bill), 0);
+  const debtors = accountingState.bills.filter((bill) => billOutstandingAmount(accountingState, bill) > 0).length;
+  const payableBills = accountingState.bills.filter((bill) => billOutstandingAmount(accountingState, bill) > 0);
+
+  async function submitAdminPayment(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setSavingPayment(true);
+    setPaymentMessage("");
+
+    const form = new FormData(event.currentTarget);
+    const billId = String(form.get("billId") ?? "");
+    const bill = accountingState.bills.find((item) => item.id === billId);
+    const amount = Number(form.get("amount") ?? 0);
+    const reference = String(form.get("reference") || `ADMIN-${Date.now()}`);
+    const channel = String(form.get("channel") ?? "bank_transfer") as Payment["channel"];
+    const date = String(form.get("date") || dateInputValue());
+
+    if (!bill || amount <= 0) {
+      setPaymentMessage("Select a bill and enter a payment amount.");
+      setSavingPayment(false);
+      return;
+    }
+
+    try {
+      const isLocalBill = state.bills.some((item) => item.id === bill.id);
+      if (accounting?.bills.some((item) => item.id === bill.id) && !isLocalBill) {
+        const response = await fetch("/api/appwrite/admin/accounting", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ billId: bill.id, amount, reference, channel, date })
+        });
+        const payload = await response.json().catch(() => null) as { error?: string } | null;
+        if (!response.ok) {
+          throw new Error(payload?.error ?? "Unable to record Appwrite payment.");
+        }
+        await refreshAccounting();
+      } else {
+        addPayment({
+          billId: bill.id,
+          amount,
+          reference,
+          channel,
+          processor: "manual",
+          source: "admin",
+          date
+        });
+      }
+
+      setPaymentMessage(`Payment ${reference} has been recorded and the reports have been updated.`);
+      event.currentTarget.reset();
+    } catch (error) {
+      setPaymentMessage(error instanceof Error ? error.message : "Payment could not be recorded.");
+    } finally {
+      setSavingPayment(false);
+    }
+  }
 
   return (
     <>
-      <PageHeader title="Payments" description="Online payments confirm automatically through processor webhooks. Manual bank transfers, cash, POS, and WhatsApp receipts stay available as admin-reviewed fallback." />
+      <PageHeader title="Payments" description="Online payments confirm automatically through processor webhooks. Manual bank transfers, cash, POS, and WhatsApp receipts stay available as admin-reviewed fallback.">
+        <Button type="button" variant="secondary" onClick={() => void refreshAccounting()} disabled={loadingAccounting}>
+          <RefreshCw className="h-4 w-4" />
+          {loadingAccounting ? "Refreshing" : "Refresh accounting"}
+        </Button>
+      </PageHeader>
+      <p className="mb-4 rounded-lg border border-line bg-ink/50 px-3 py-2 text-sm text-slate-300">{accountingStatus}</p>
+      {paymentMessage ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{paymentMessage}</p> : null}
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
         <StatCard label="Expected revenue" value={money(expected)} helper="All issued bills" icon={<ReceiptText className="h-5 w-5" />} />
         <StatCard label="Confirmed paid" value={money(confirmed)} helper="Webhook and admin confirmed" icon={<WalletCards className="h-5 w-5" />} />
@@ -1989,19 +2119,55 @@ export function PaymentsAdminPage() {
         <StatCard label="Pending review" value={money(pendingReview)} helper="Manual proofs awaiting admin" icon={<ShieldCheck className="h-5 w-5" />} />
         <StatCard label="Debtors" value={String(debtors)} helper="Bills with balance" icon={<Users className="h-5 w-5" />} />
       </div>
+      <Card className="mb-6">
+        <CardHeader title="Record resident payment" description="Use this for bank transfers, POS, cash, WhatsApp receipts, and other manual updates before automatic payment processing goes live." />
+        <form onSubmit={submitAdminPayment}>
+          <div className="grid gap-4 md:grid-cols-6">
+            <Field label="Resident bill">
+              <Select name="billId" defaultValue={payableBills[0]?.id ?? ""} required>
+                {payableBills.length ? payableBills.map((bill) => {
+                  const resident = accountingState.residents.find((item) => item.id === bill.residentId);
+                  return (
+                    <option key={bill.id} value={bill.id}>
+                      {resident?.name ?? "Unknown"} - {resident ? residentUnitLabel(accountingState, resident) : bill.unitId ?? "Unit"} - {money(billOutstandingAmount(accountingState, bill))}
+                    </option>
+                  );
+                }) : <option value="">No outstanding bills</option>}
+              </Select>
+            </Field>
+            <Field label="Amount"><Input name="amount" type="number" min="1" step="0.01" placeholder="50000" required /></Field>
+            <Field label="Reference"><Input name="reference" placeholder={`ADMIN-${Date.now()}`} required /></Field>
+            <Field label="Channel">
+              <Select name="channel" defaultValue="bank_transfer">
+                <option value="bank_transfer">Bank transfer</option>
+                <option value="pos">POS</option>
+                <option value="cash">Cash</option>
+                <option value="whatsapp_receipt">WhatsApp receipt</option>
+              </Select>
+            </Field>
+            <Field label="Payment date"><Input name="date" type="date" defaultValue={dateInputValue()} /></Field>
+            <div className="flex items-end">
+              <Button className="w-full" disabled={savingPayment || !payableBills.length}>
+                <WalletCards className="h-4 w-4" />
+                {savingPayment ? "Saving" : "Record"}
+              </Button>
+            </div>
+          </div>
+        </form>
+      </Card>
       <DataTable
         title="Payment queue"
         headers={["Reference", "Resident / unit", "Bill", "Amount", "Channel", "Status", "Action"]}
-        rows={state.payments.map((payment) => {
-          const resident = state.residents.find((item) => item.id === payment.residentId);
+        rows={accountingState.payments.map((payment) => {
+          const resident = accountingState.residents.find((item) => item.id === payment.residentId);
 
           return [
           <span key={payment.reference} className="font-mono text-smart">{payment.reference}</span>,
           <div key={`${payment.id}-resident`}>
             <p className="font-medium text-white">{resident?.name ?? "Unknown"}</p>
-            <p className="text-xs font-mono text-smart">{resident ? residentUnitLabel(state, resident) : payment.unitId ?? "Unit pending"}</p>
+            <p className="text-xs font-mono text-smart">{resident ? residentUnitLabel(accountingState, resident) : payment.unitId ?? "Unit pending"}</p>
           </div>,
-          state.bills.find((bill) => bill.id === payment.billId)?.title ?? "Unknown bill",
+          accountingState.bills.find((bill) => bill.id === payment.billId)?.title ?? "Unknown bill",
           money(payment.amount),
           <div key={`${payment.id}-channel`}>
             <p className="capitalize text-slate-200">{paymentChannelLabel(payment)}</p>
@@ -2023,7 +2189,7 @@ export function PaymentsAdminPage() {
           title="Recent audit trail"
           description="Payment and billing changes should always leave a trace of who or what updated the record."
           headers={["Time", "Actor", "Action", "Entity"]}
-          rows={state.auditLogs.slice(0, 8).map((log) => [
+          rows={accountingState.auditLogs.slice(0, 8).map((log) => [
             formatAuditTime(log.createdAt),
             log.actor,
             log.action,
@@ -2185,17 +2351,18 @@ function KnowledgeBasePage({ manager = false }: { manager?: boolean }) {
 
 export function ReportsPage() {
   const { state } = useLocalEstateStore();
-  const expectedRevenue = state.bills.reduce((sum, bill) => sum + bill.amount, 0);
-  const confirmedPayments = state.payments.filter((payment) => payment.status === "confirmed");
+  const { accountingState, accountingStatus, loadingAccounting, refreshAccounting } = useAdminAccountingState(state);
+  const expectedRevenue = accountingState.bills.reduce((sum, bill) => sum + bill.amount, 0);
+  const confirmedPayments = accountingState.payments.filter((payment) => payment.status === "confirmed");
   const paidAmount = confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
-  const outstandingBalance = state.bills.reduce((sum, bill) => sum + billOutstandingAmount(state, bill), 0);
-  const debtorBills = state.bills.filter((bill) => billOutstandingAmount(state, bill) > 0);
+  const outstandingBalance = accountingState.bills.reduce((sum, bill) => sum + billOutstandingAmount(accountingState, bill), 0);
+  const debtorBills = accountingState.bills.filter((bill) => billOutstandingAmount(accountingState, bill) > 0);
   const channelTotals = confirmedPayments.reduce<Record<string, number>>((totals, payment) => {
     const channel = paymentChannelLabel(payment);
     totals[channel] = (totals[channel] ?? 0) + payment.amount;
     return totals;
   }, {});
-  const paymentStatusTotals = state.payments.reduce<Record<string, { count: number; amount: number }>>((totals, payment) => {
+  const paymentStatusTotals = accountingState.payments.reduce<Record<string, { count: number; amount: number }>>((totals, payment) => {
     const confirmation = payment.status === "confirmed"
       ? "Confirmed"
       : payment.status === "pending"
@@ -2211,7 +2378,7 @@ export function ReportsPage() {
 
     return totals;
   }, {});
-  const categoryTotals = state.bills.reduce<Record<string, number>>((totals, bill) => {
+  const categoryTotals = accountingState.bills.reduce<Record<string, number>>((totals, bill) => {
     const category = bill.category ?? "Service charge";
     totals[category] = (totals[category] ?? 0) + bill.amount;
     return totals;
@@ -2219,7 +2386,13 @@ export function ReportsPage() {
 
   return (
     <>
-      <PageHeader title="Reports" description="Accounting and operations analytics for expected revenue, confirmed payments, outstanding balances, debtors, channels, categories, and audit trail." />
+      <PageHeader title="Reports" description="Accounting and operations analytics for expected revenue, confirmed payments, outstanding balances, debtors, channels, categories, and audit trail.">
+        <Button type="button" variant="secondary" onClick={() => void refreshAccounting()} disabled={loadingAccounting}>
+          <RefreshCw className="h-4 w-4" />
+          {loadingAccounting ? "Refreshing" : "Refresh reports"}
+        </Button>
+      </PageHeader>
+      <p className="mb-4 rounded-lg border border-line bg-ink/50 px-3 py-2 text-sm text-slate-300">{accountingStatus}</p>
       <div className="grid gap-4 md:grid-cols-4">
         <StatCard label="Expected revenue" value={money(expectedRevenue)} helper="All bills issued" icon={<ReceiptText className="h-5 w-5" />} />
         <StatCard label="Paid amount" value={money(paidAmount)} helper="Confirmed payments" icon={<WalletCards className="h-5 w-5" />} />
@@ -2231,13 +2404,13 @@ export function ReportsPage() {
           title="Debtors"
           headers={["Resident", "Unit", "Bill", "Outstanding"]}
           rows={debtorBills.map((bill) => {
-            const resident = state.residents.find((item) => item.id === bill.residentId);
+            const resident = accountingState.residents.find((item) => item.id === bill.residentId);
 
             return [
               resident?.name ?? "Unknown",
-              resident ? residentUnitLabel(state, resident) : bill.unitId ?? "Unit pending",
+              resident ? residentUnitLabel(accountingState, resident) : bill.unitId ?? "Unit pending",
               bill.title,
-              money(billOutstandingAmount(state, bill))
+              money(billOutstandingAmount(accountingState, bill))
             ];
           })}
         />
@@ -2274,7 +2447,7 @@ export function ReportsPage() {
         <DataTable
           title="Audit trail"
           headers={["Time", "Actor", "Action", "Entity"]}
-          rows={state.auditLogs.slice(0, 8).map((log) => [
+          rows={accountingState.auditLogs.slice(0, 8).map((log) => [
             formatAuditTime(log.createdAt),
             log.actor,
             log.action,

@@ -147,6 +147,7 @@ type PaymentInput = {
   channel?: PaymentChannel;
   processor?: PaymentProcessor;
   source?: Payment["source"];
+  date?: string;
 };
 
 type EmergencyAlertInput = {
@@ -840,6 +841,7 @@ export function useLocalEstateStore() {
     const bill = state.bills.find((item) => item.id === input.billId) ?? state.bills[0];
     const resident = getCurrentResident(state);
     const paymentResident = state.residents.find((item) => item.id === bill.residentId) ?? resident;
+    const confirmedImmediately = input.source === "webhook" || input.source === "admin";
     const payment: Payment = {
       id: `pay-${Date.now()}`,
       billId: bill.id,
@@ -851,11 +853,15 @@ export function useLocalEstateStore() {
       reference: input.reference,
       processor: input.processor ?? "manual",
       channel: input.channel ?? "bank_transfer",
-      date: today(),
-      status: input.source === "webhook" ? "confirmed" : "pending",
+      date: input.date || today(),
+      status: confirmedImmediately ? "confirmed" : "pending",
       source: input.source ?? "resident",
-      confirmedAt: input.source === "webhook" ? new Date().toISOString() : undefined,
-      confirmedBy: input.source === "webhook" ? `${input.processor ?? "payment"} webhook` : undefined
+      confirmedAt: confirmedImmediately ? new Date().toISOString() : undefined,
+      confirmedBy: input.source === "webhook"
+        ? `${input.processor ?? "payment"} webhook`
+        : input.source === "admin"
+          ? "Estate admin"
+          : undefined
     };
 
     commit((current) => {
@@ -880,8 +886,16 @@ export function useLocalEstateStore() {
         }),
         auditLogs: addAuditLog(current, {
           estateId: payment.estateId ?? bill.estateId,
-          actor: payment.source === "webhook" ? `${payment.processor ?? "payment"} webhook` : "Resident upload",
-          action: payment.source === "webhook" ? "confirmed online payment" : "submitted manual payment proof",
+          actor: payment.source === "webhook"
+            ? `${payment.processor ?? "payment"} webhook`
+            : payment.source === "admin"
+              ? "Estate admin"
+              : "Resident upload",
+          action: payment.source === "webhook"
+            ? "confirmed online payment"
+            : payment.source === "admin"
+              ? "recorded manual payment"
+              : "submitted manual payment proof",
           entityType: "payment",
           entityId: payment.id,
           metadata: {
