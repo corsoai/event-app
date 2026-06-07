@@ -156,29 +156,31 @@ export function AppShell({
         ) : null}
       </div>
 
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-white/10 bg-black/40 px-3 py-5 shadow-[10px_0_40px_rgba(0,0,0,0.2)] backdrop-blur-2xl lg:block">
-        <Link href={dashboardHref} className="flex items-center gap-3 px-2 text-white">
-          <BrandMark className="h-11 w-11" />
-          <span>
-            <span className="block text-base font-semibold">Corso</span>
-            <span className="text-xs text-slate-400">{roleLabel}</span>
-          </span>
-        </Link>
-        <div className="mt-4 px-1">
-          <ThemeToggleButton theme={theme} onToggle={() => setTheme((value) => value === "dark" ? "light" : "dark")} wide />
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-white/10 bg-black/40 px-3 py-5 shadow-[10px_0_40px_rgba(0,0,0,0.2)] backdrop-blur-2xl lg:flex">
+        <div className="shrink-0">
+          <Link href={dashboardHref} className="flex items-center gap-3 px-2 text-white">
+            <BrandMark className="h-11 w-11" />
+            <span>
+              <span className="block text-base font-semibold">Corso</span>
+              <span className="text-xs text-slate-400">{roleLabel}</span>
+            </span>
+          </Link>
+          <div className="mt-4 grid grid-cols-2 gap-2 px-1">
+            <ThemeToggleButton theme={theme} onToggle={() => setTheme((value) => value === "dark" ? "light" : "dark")} compact />
+            <button
+              onClick={logout}
+              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3 text-sm font-semibold text-slate-100 transition hover:bg-white/15 hover:text-white"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Sign out</span>
+            </button>
+          </div>
         </div>
-        <nav className="mt-8 grid gap-1">
+        <nav className="mt-6 grid flex-1 gap-1 overflow-y-auto overscroll-contain pr-1">
           {navItems.map((item) => (
             <NavLink key={item.href} item={item} active={pathname === item.href} />
           ))}
         </nav>
-        <button
-          onClick={logout}
-          className="absolute bottom-5 left-4 right-4 inline-flex items-center gap-2 rounded-lg px-3 py-3 text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white"
-        >
-          <LogOut className="h-4 w-4" />
-          Sign out
-        </button>
       </aside>
 
       <main className={cn("px-4 pb-24 pt-20 lg:ml-64 lg:px-5 lg:py-7 xl:px-6", bottomNav && "pb-28")}>
@@ -213,11 +215,13 @@ export function AppShell({
 function ThemeToggleButton({
   theme,
   onToggle,
-  wide = false
+  wide = false,
+  compact = false
 }: {
   theme: ThemeMode;
   onToggle: () => void;
   wide?: boolean;
+  compact?: boolean;
 }) {
   const showingDark = theme === "dark";
   const Icon = showingDark ? Sun : Moon;
@@ -229,11 +233,12 @@ function ThemeToggleButton({
       onClick={onToggle}
       className={cn(
         "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3 text-sm font-semibold text-slate-100 transition hover:bg-white/15 hover:text-white",
-        wide && "w-full justify-start"
+        wide && "w-full justify-start",
+        compact && "w-full"
       )}
     >
       <Icon className="h-4 w-4" />
-      <span className={cn("hidden", wide ? "lg:inline" : "sm:inline")}>{showingDark ? "Light" : "Dark"}</span>
+      <span className={cn("hidden", wide || compact ? "lg:inline" : "sm:inline")}>{showingDark ? "Light" : "Dark"}</span>
     </button>
   );
 }
