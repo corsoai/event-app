@@ -13,5 +13,7 @@ coverage
 tsconfig.tsbuildinfo
 .next-dev*.log
 .next-start*.log
+.local-next-3012.*.log
+.local-dev/
 .local-import/
 appwrite.config.json
