@@ -45,6 +45,12 @@ export type AppwriteImportResult = {
   dryRun: boolean;
   imported: boolean;
   summary: AppwriteImportSummary;
+  progress?: {
+    importedRows: number;
+    totalRows: number;
+    nextOffset: number | null;
+    done: boolean;
+  };
 };
 
 type ImportPlanRow = {
@@ -67,12 +73,21 @@ type ImportPlan = {
   skippedReasonCounts: Map<string, number>;
 };
 
+type ImportOptions = {
+  offset?: number;
+  limit?: number;
+};
+
 export function summarizeOnboardingPreview(rows: LbsviewOnboardingPreviewRow[]): AppwriteImportSummary {
   return buildImportPlan(rows).summary;
 }
 
-export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreviewRow[]): Promise<AppwriteImportResult> {
+export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreviewRow[], options: ImportOptions = {}): Promise<AppwriteImportResult> {
   const plan = buildImportPlan(rows);
+  const offset = Math.max(0, Math.min(Math.floor(options.offset ?? 0), plan.rows.length));
+  const limit = Math.max(1, Math.floor(options.limit ?? (plan.rows.length || 1)));
+  const chunkRows = plan.rows.slice(offset, offset + limit);
+  const nextOffset = offset + chunkRows.length < plan.rows.length ? offset + chunkRows.length : null;
   const now = new Date().toISOString();
   const today = now.slice(0, 10);
 
@@ -87,7 +102,7 @@ export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreview
   });
 
   const properties = uniqueBy(
-    plan.rows,
+    chunkRows,
     (row) => row.propertyCode
   );
   for (const row of properties) {
@@ -112,7 +127,7 @@ export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreview
     }
   }
 
-  const units = uniqueBy(plan.rows, (row) => row.unitId);
+  const units = uniqueBy(chunkRows, (row) => row.unitId);
   for (const row of units) {
     const source = row.source;
     await appwriteUpsertRow("units", row.unitId, {
@@ -129,7 +144,7 @@ export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreview
     });
   }
 
-  for (const row of plan.rows) {
+  for (const row of chunkRows) {
     const source = row.source;
     const status = normalizedStatus(source.residentStatus);
     await appwriteUpsertRow("residents", row.residentId, {
@@ -211,21 +226,29 @@ export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreview
     }
   }
 
-  await appwriteUpsertRow("audit_logs", safeAppwriteId("audit", `legacy-import-${now}`), {
-    estateId: APPWRITE_LBSVIEW_ESTATE_ID,
-    actor: "Estate admin",
-    action: "imported legacy resident preview",
-    entityType: "system",
-    entityId: APPWRITE_LBSVIEW_ESTATE_ID,
-    metadata: JSON.stringify(plan.summary),
-    createdAt: now,
-    updatedAt: now
-  });
+  if (nextOffset === null) {
+    await appwriteUpsertRow("audit_logs", safeAppwriteId("audit", `legacy-import-${now}`), {
+      estateId: APPWRITE_LBSVIEW_ESTATE_ID,
+      actor: "Estate admin",
+      action: "imported legacy resident preview",
+      entityType: "system",
+      entityId: APPWRITE_LBSVIEW_ESTATE_ID,
+      metadata: JSON.stringify(plan.summary),
+      createdAt: now,
+      updatedAt: now
+    });
+  }
 
   return {
     dryRun: false,
     imported: true,
-    summary: plan.summary
+    summary: plan.summary,
+    progress: {
+      importedRows: offset + chunkRows.length,
+      totalRows: plan.rows.length,
+      nextOffset,
+      done: nextOffset === null
+    }
   };
 }
 

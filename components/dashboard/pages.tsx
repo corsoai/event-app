@@ -127,6 +127,12 @@ type AppwriteImportResponse = {
   dryRun: boolean;
   imported: boolean;
   summary: AppwriteImportSummary;
+  progress?: {
+    importedRows: number;
+    totalRows: number;
+    nextOffset: number | null;
+    done: boolean;
+  };
   error?: string;
 };
 
@@ -1309,6 +1315,7 @@ function AppwriteOnboardingPanel() {
   const [busy, setBusy] = useState<"" | "status" | "setup" | "dry-run" | "import" | "billing-dry-run" | "billing-import">("");
   const ready = Boolean(status?.configured);
   const hasRows = rows.length > 0;
+  const importChunkSize = 12;
 
   useEffect(() => {
     void refreshStatus();
@@ -1412,8 +1419,29 @@ function AppwriteOnboardingPanel() {
     setMessage("");
 
     try {
-      const result = await sendImportRequest(rows, false);
-      setMessage(`Imported ${result.summary.residents} residents, including ${result.summary.reviewRows} review records, plus ${result.summary.openingBills} opening bills.`);
+      let offset = 0;
+      let latest: AppwriteImportResponse | null = null;
+
+      while (true) {
+        latest = await sendImportRequest(rows, false, offset, importChunkSize);
+        const progress = latest.progress;
+        if (!progress) {
+          break;
+        }
+
+        setMessage(`Importing residents ${progress.importedRows} of ${progress.totalRows}...`);
+        if (progress.done || progress.nextOffset === null) {
+          break;
+        }
+
+        offset = progress.nextOffset;
+      }
+
+      const result = latest;
+      setMessage(result
+        ? `Imported ${result.summary.residents} residents, including ${result.summary.reviewRows} review records, plus ${result.summary.openingBills} opening bills.`
+        : "Import completed."
+      );
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Import failed.");
     } finally {
@@ -1459,11 +1487,11 @@ function AppwriteOnboardingPanel() {
     }
   }
 
-  async function sendImportRequest(previewRows: LbsviewOnboardingPreviewRow[], dryRun: boolean) {
+  async function sendImportRequest(previewRows: LbsviewOnboardingPreviewRow[], dryRun: boolean, offset?: number, limit?: number) {
     const response = await fetch("/api/appwrite/onboarding/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dryRun, rows: previewRows })
+      body: JSON.stringify({ dryRun, offset, limit, rows: previewRows })
     });
     const payload = await readJsonResponse<AppwriteImportResponse>(response);
     if (!response.ok) {

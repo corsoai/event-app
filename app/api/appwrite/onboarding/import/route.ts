@@ -10,6 +10,8 @@ const adminRoles = new Set(["estate_admin", "super_admin"]);
 
 type ImportRequest = {
   dryRun?: boolean;
+  offset?: number;
+  limit?: number;
   rows?: LbsviewOnboardingPreviewRow[];
 };
 
@@ -28,8 +30,11 @@ export async function POST(request: NextRequest) {
   if (!rows.length) {
     return NextResponse.json({ error: "Upload the generated onboarding preview JSON first." }, { status: 400 });
   }
+  const requestBody = Array.isArray(body) ? null : body;
+  const offset = typeof requestBody?.offset === "number" ? requestBody.offset : 0;
+  const limit = typeof requestBody?.limit === "number" ? requestBody.limit : undefined;
 
-  if (Array.isArray(body) || body?.dryRun !== false) {
+  if (Array.isArray(body) || requestBody?.dryRun !== false) {
     return NextResponse.json({
       dryRun: true,
       imported: false,
@@ -46,21 +51,32 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const schema = await setupAppwriteOnboardingSchema();
-    if (!schema.ok) {
-      return NextResponse.json(
-        { error: `Appwrite server configuration is missing: ${schema.missing.join(", ")}` },
-        { status: 400 }
-      );
+    let schema: Awaited<ReturnType<typeof setupAppwriteOnboardingSchema>> | null = null;
+    if (offset <= 0) {
+      schema = await setupAppwriteOnboardingSchema();
+      if (!schema.ok) {
+        return NextResponse.json(
+          { error: `Appwrite server configuration is missing: ${schema.missing.join(", ")}` },
+          { status: 400 }
+        );
+      }
     }
 
-    const result = await importOnboardingPreviewRows(rows);
+    const result = await importOnboardingPreviewRows(rows, {
+      offset,
+      limit
+    });
     return NextResponse.json({
       ...result,
-      schema: {
-        database: schema.database,
-        tables: schema.tables.length
-      }
+      schema: schema
+        ? {
+            database: schema.database,
+            tables: schema.tables.length
+          }
+        : {
+            database: "skipped",
+            tables: 0
+          }
     });
   } catch (error) {
     return NextResponse.json(
