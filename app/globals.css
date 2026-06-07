@@ -4,13 +4,13 @@
 
 :root {
   color-scheme: light;
-  background: #f8fafc;
-  --color-ink: 248 250 252;
-  --color-panel: 255 255 255;
-  --color-panel-soft: 226 232 240;
-  --color-line: 232 238 245;
-  --color-smart: 125 196 55;
-  --color-sky: 43 140 163;
+  background: #eaf2f6;
+  --color-ink: 234 242 246;
+  --color-panel: 248 251 253;
+  --color-panel-soft: 220 231 238;
+  --color-line: 217 227 235;
+  --color-smart: 109 190 48;
+  --color-sky: 40 133 158;
   --color-gold: 245 176 65;
   --color-warn: 245 176 65;
   --color-danger: 255 99 114;
@@ -48,9 +48,10 @@ body {
   overflow-x: clip;
   overscroll-behavior-x: none;
   background:
-    radial-gradient(circle at 15% 0%, rgba(168, 224, 99, 0.18), transparent 30%),
-    linear-gradient(180deg, #ffffff 0%, #f8fafc 46%, #f1f5f9 100%);
-  color: #1f2937;
+    radial-gradient(circle at 12% 0%, rgba(181, 222, 236, 0.42), transparent 30%),
+    radial-gradient(circle at 90% 8%, rgba(109, 190, 48, 0.12), transparent 28%),
+    linear-gradient(180deg, #f4f8fb 0%, #eaf2f6 48%, #e3edf3 100%);
+  color: #1d2937;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -129,7 +130,7 @@ table td {
 :root:not([data-theme="dark"]) [class~="bg-black/40"],
 :root:not([data-theme="dark"]) [class~="bg-black/55"],
 :root:not([data-theme="dark"]) [class~="bg-black/65"] {
-  background-color: rgba(255, 255, 255, 0.84) !important;
+  background-color: rgba(246, 250, 252, 0.9) !important;
 }
 
 :root:not([data-theme="dark"]) [class~="bg-white/10"],
@@ -140,7 +141,7 @@ table td {
 :root:not([data-theme="dark"]) [class~="bg-white/[0.06]"],
 :root:not([data-theme="dark"]) [class~="bg-white/[0.08]"],
 :root:not([data-theme="dark"]) [class~="bg-white/[0.12]"] {
-  background-color: rgba(255, 255, 255, 0.9) !important;
+  background-color: rgba(248, 251, 253, 0.94) !important;
 }
 
 :root:not([data-theme="dark"]) [class*="border-white/"],
@@ -156,44 +157,46 @@ table td {
 :root:not([data-theme="dark"]) .text-white,
 :root:not([data-theme="dark"]) .text-slate-100,
 :root:not([data-theme="dark"]) .text-slate-200 {
-  color: #1f2937 !important;
+  color: #1d2937 !important;
 }
 
 :root:not([data-theme="dark"]) .text-slate-300 {
-  color: #475569 !important;
+  color: #3f5167 !important;
 }
 
 :root:not([data-theme="dark"]) .text-slate-400,
 :root:not([data-theme="dark"]) .text-slate-500 {
-  color: #64748b !important;
+  color: #60758d !important;
+}
+
+:root:not([data-theme="dark"]) [class~="text-slate-300/80"],
+:root:not([data-theme="dark"]) [class~="text-slate-400/80"],
+:root:not([data-theme="dark"]) [class~="text-slate-500/80"] {
+  color: rgba(79, 97, 119, 0.86) !important;
 }
 
 :root:not([data-theme="dark"]) input,
 :root:not([data-theme="dark"]) select,
 :root:not([data-theme="dark"]) textarea {
   background-color: rgba(255, 255, 255, 0.94);
-  border-color: rgba(148, 163, 184, 0.2);
-  color: #1f2937;
+  border-color: rgba(119, 140, 163, 0.26);
+  color: #1d2937;
 }
 
 :root:not([data-theme="dark"]) input::placeholder,
 :root:not([data-theme="dark"]) textarea::placeholder {
-  color: #94a3b8;
+  color: #71849b;
 }
 
 :root:not([data-theme="dark"]) .shadow-glow {
   box-shadow: 0 18px 46px rgba(15, 23, 42, 0.08), 0 1px 0 rgba(255, 255, 255, 0.92) inset !important;
 }
 
-:root:not([data-theme="dark"]) .estate-auth-bg .text-white,
-:root:not([data-theme="dark"]) .estate-auth-bg .text-slate-100,
 :root:not([data-theme="dark"]) .estate-photo-bg .text-white,
 :root:not([data-theme="dark"]) .estate-photo-bg .text-slate-100 {
   color: #f8fafc !important;
 }
 
-:root:not([data-theme="dark"]) .estate-auth-bg .text-slate-200,
-:root:not([data-theme="dark"]) .estate-auth-bg .text-slate-300,
 :root:not([data-theme="dark"]) .estate-photo-bg .text-slate-200,
 :root:not([data-theme="dark"]) .estate-photo-bg .text-slate-300 {
   color: #cbd5e1 !important;
