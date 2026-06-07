@@ -670,8 +670,8 @@ function ResidentDirectoryPanel({
         }
       />
 
-      <div className="grid gap-4 xl:grid-cols-[1fr_24rem]">
-        <div className="grid gap-3 xl:hidden">
+      <div className="grid gap-4 lg:grid-cols-[1fr_24rem]">
+        <div className="grid gap-3 lg:hidden">
           {residents.length ? residents.map((resident) => {
             const source = localResidents.some((item) => item.id === resident.id) ? "Local" : "Database";
             const selected = explicitlySelectedResident?.id === resident.id;
@@ -693,7 +693,7 @@ function ResidentDirectoryPanel({
           )}
         </div>
 
-        <div className="hidden max-w-full overflow-x-auto overscroll-x-contain rounded-lg border border-white/10 bg-black/10 xl:block">
+        <div className="hidden max-w-full overflow-x-auto overscroll-x-contain rounded-lg border border-white/10 bg-black/10 lg:block">
           <table className="w-full table-auto border-separate border-spacing-0 text-left text-sm">
             <thead>
               <tr>
@@ -752,7 +752,7 @@ function ResidentDirectoryPanel({
           </table>
         </div>
 
-        <div className="hidden xl:sticky xl:top-24 xl:block xl:self-start">
+        <div className="hidden lg:sticky lg:top-24 lg:block lg:self-start">
           <ResidentDetailsPanel
             resident={selectedResident}
             state={state}
@@ -763,8 +763,11 @@ function ResidentDirectoryPanel({
       </div>
 
       {explicitlySelectedResident ? (
-        <div className="fixed inset-x-3 bottom-3 z-50 xl:hidden">
-          <div className="mx-auto max-h-[78dvh] max-w-md overflow-y-auto rounded-xl border border-smart/30 bg-ink/95 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur">
+        <div className="fixed inset-0 z-[9999] bg-black/55 px-3 py-4 backdrop-blur-sm lg:hidden" onClick={() => onSelect("")}>
+          <div
+            className="fixed left-1/2 top-1/2 z-[10000] max-h-[85dvh] w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-smart/30 bg-ink/95 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.65)]"
+            onClick={(event) => event.stopPropagation()}
+          >
             <div className="mb-2 flex items-center justify-between gap-3">
               <span className="rounded-full border border-smart/25 bg-smart/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-smart">
                 Resident details

@@ -1,4 +1,4 @@
-const CACHE_NAME = "corso-estate-v8";
+const CACHE_NAME = "corso-estate-v9-resident-overlay";
 const OFFLINE_URL = "/offline.html";
 const APP_SHELL = [
   OFFLINE_URL,
@@ -58,8 +58,12 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
+  if (requestUrl.pathname.startsWith("/_next/static/")) {
+    event.respondWith(networkFirst(event.request));
+    return;
+  }
+
   const cacheableAsset =
-    requestUrl.pathname.startsWith("/_next/static/") ||
     requestUrl.pathname.startsWith("/icons/") ||
     requestUrl.pathname.startsWith("/brand/") ||
     requestUrl.pathname === "/favicon.ico" ||
