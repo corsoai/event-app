@@ -1,5 +1,6 @@
 import type { Property, Resident, Unit } from "@/lib/types";
 import {
+  appwriteUpsertRow,
   appwriteRequest,
   getAppwriteServerConfig,
   setupAppwriteOnboardingSchema
@@ -48,6 +49,25 @@ type AppwriteResidentRow = {
   moveInDate?: string;
   legacyName?: string;
   legacyAddress?: string;
+  sourceRow?: number;
+  openingOutstanding?: number;
+  expectedMonthly?: number;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type AppwriteResidentUpdateInput = {
+  residentId: string;
+  name: string;
+  propertyId?: string;
+  unitId?: string;
+  phone?: string;
+  email?: string;
+  type: Resident["type"];
+  status: Resident["status"];
+  moveInDate?: string;
+  legacyName?: string;
+  legacyAddress?: string;
 };
 
 export type AppwriteResidentDirectory = {
@@ -93,6 +113,49 @@ export async function listAppwriteResidentDirectory(): Promise<AppwriteResidentD
       residents: residents.length
     }
   };
+}
+
+export async function updateAppwriteResident(input: AppwriteResidentUpdateInput): Promise<Resident> {
+  const residentId = input.residentId.trim();
+  const fullName = input.name.trim();
+  if (!residentId || !fullName) {
+    throw new Error("Resident ID and full name are required.");
+  }
+
+  const config = getAppwriteServerConfig();
+  if (!config.configured) {
+    throw new Error(`Appwrite server configuration is missing: ${config.missing.join(", ")}`);
+  }
+
+  const existing = await appwriteRequest<AppwriteResidentRow>(
+    `/tablesdb/${config.databaseId}/tables/residents/rows/${encodeURIComponent(residentId)}`,
+    { method: "GET" }
+  );
+  const units = await listAppwriteTableRows<AppwriteUnitRow>("units");
+  const selectedUnit = units.find((unit) => unit.$id === (input.unitId ?? existing.unitId));
+  const now = new Date().toISOString();
+
+  const payload: AppwriteResidentRow = {
+    estateId: existing.estateId ?? selectedUnit?.estateId ?? "",
+    propertyId: input.propertyId ?? selectedUnit?.propertyId ?? existing.propertyId,
+    unitId: input.unitId ?? existing.unitId,
+    fullName,
+    phone: input.phone?.trim() ?? "",
+    email: input.email?.trim() ?? "",
+    residentType: input.type,
+    status: appwriteResidentStatus(input.status),
+    moveInDate: input.moveInDate?.trim() ?? "",
+    legacyName: input.legacyName?.trim() ?? "",
+    legacyAddress: input.legacyAddress?.trim() ?? "",
+    sourceRow: existing.sourceRow,
+    openingOutstanding: existing.openingOutstanding,
+    expectedMonthly: existing.expectedMonthly,
+    createdAt: existing.createdAt,
+    updatedAt: now
+  };
+
+  const row = await appwriteUpsertRow<AppwriteResidentRow>("residents", residentId, payload);
+  return mapResidentRow(row, selectedUnit ? mapUnitRow(selectedUnit) : undefined);
 }
 
 export async function listAppwriteTableRows<T>(tableId: string) {
@@ -199,6 +262,10 @@ function mapResidentStatus(value?: string): Resident["status"] {
   }
 
   return "active";
+}
+
+function appwriteResidentStatus(value: Resident["status"]) {
+  return value === "moved out" ? "moved_out" : value;
 }
 
 function mapUnitStatus(value?: string): Unit["status"] {

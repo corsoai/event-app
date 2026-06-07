@@ -9,6 +9,8 @@ import {
   Building2,
   CalendarClock,
   Camera,
+  ChevronDown,
+  ChevronRight,
   CheckCircle2,
   ClipboardList,
   Database,
@@ -455,7 +457,21 @@ export function ResidentsAdminPage() {
     setResidentMessage("");
 
     try {
-      const updatedResident = await updateResident(resident.id, input);
+      const isLocalResident = state.residents.some((item) => item.id === resident.id);
+      const updatedResident = isLocalResident
+        ? await updateResident(resident.id, input)
+        : await updateAppwriteResidentFromDirectory(resident.id, input);
+
+      if (!isLocalResident) {
+        setAppwriteDirectory((current) => current
+          ? {
+              ...current,
+              residents: current.residents.map((item) => item.id === updatedResident.id ? updatedResident : item)
+            }
+          : current
+        );
+      }
+
       setEditingResident(null);
       setResidentMessage(`${updatedResident.name}'s resident record has been updated.`);
     } catch (error) {
@@ -463,6 +479,34 @@ export function ResidentsAdminPage() {
     } finally {
       setSavingResident(false);
     }
+  }
+
+  async function updateAppwriteResidentFromDirectory(residentId: string, input: ResidentEditInput) {
+    const response = await fetch("/api/appwrite/admin/residents", {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({
+        residentId,
+        name: input.name,
+        propertyId: input.propertyId,
+        unitId: input.unitId,
+        phone: input.phone,
+        email: input.email,
+        type: input.type,
+        status: input.status,
+        moveInDate: input.moveInDate,
+        legacyName: input.legacyName,
+        legacyAddress: input.legacyAddress
+      })
+    });
+    const payload = await response.json().catch(() => null) as { resident?: Resident; error?: string } | null;
+    if (!response.ok || !payload?.resident) {
+      throw new Error(payload?.error ?? "Appwrite resident could not be updated.");
+    }
+
+    return payload.resident;
   }
 
   return (
@@ -493,7 +537,7 @@ export function ResidentsAdminPage() {
       {editingResident ? (
         <ResidentEditCard
           resident={editingResident}
-          state={state}
+          state={directoryState}
           saving={savingResident}
           onSave={saveResident}
           onCancel={() => setEditingResident(null)}
@@ -607,7 +651,11 @@ function ResidentDirectoryPanel({
   onEdit: (resident: Resident) => void;
 }) {
   const selectedResident = residents.find((resident) => resident.id === selectedResidentId) ?? residents[0];
+  const explicitlySelectedResident = residents.find((resident) => resident.id === selectedResidentId);
   const selectedIsLocal = selectedResident ? localResidents.some((resident) => resident.id === selectedResident.id) : false;
+  const explicitlySelectedIsLocal = explicitlySelectedResident
+    ? localResidents.some((resident) => resident.id === explicitlySelectedResident.id)
+    : false;
 
   return (
     <Card>
@@ -623,24 +671,29 @@ function ResidentDirectoryPanel({
       />
 
       <div className="grid gap-4 xl:grid-cols-[1fr_24rem]">
-        <div className="grid gap-3 md:hidden">
-          {residents.length ? residents.map((resident) => (
-            <ResidentDirectoryCard
-              key={resident.id}
-              resident={resident}
-              state={state}
-              selected={selectedResident?.id === resident.id}
-              source={localResidents.some((item) => item.id === resident.id) ? "Local" : "Database"}
-              onSelect={() => onSelect(resident.id)}
-            />
-          )) : (
+        <div className="grid gap-3 xl:hidden">
+          {residents.length ? residents.map((resident) => {
+            const source = localResidents.some((item) => item.id === resident.id) ? "Local" : "Database";
+            const selected = explicitlySelectedResident?.id === resident.id;
+
+            return (
+              <ResidentDirectoryCard
+                key={resident.id}
+                resident={resident}
+                state={state}
+                selected={selected}
+                source={source}
+                onSelect={() => onSelect(selected ? "" : resident.id)}
+              />
+            );
+          }) : (
             <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-4 text-sm text-slate-400">
               No resident records to show.
             </div>
           )}
         </div>
 
-        <div className="hidden max-w-full overflow-x-auto overscroll-x-contain rounded-lg border border-white/10 bg-black/10 md:block">
+        <div className="hidden max-w-full overflow-x-auto overscroll-x-contain rounded-lg border border-white/10 bg-black/10 xl:block">
           <table className="w-full table-auto border-separate border-spacing-0 text-left text-sm">
             <thead>
               <tr>
@@ -699,13 +752,44 @@ function ResidentDirectoryPanel({
           </table>
         </div>
 
-        <ResidentDetailsPanel
-          resident={selectedResident}
-          state={state}
-          source={selectedIsLocal ? "Local" : "Database"}
-          onEdit={selectedResident && selectedIsLocal ? () => onEdit(selectedResident) : undefined}
-        />
+        <div className="hidden xl:sticky xl:top-24 xl:block xl:self-start">
+          <ResidentDetailsPanel
+            resident={selectedResident}
+            state={state}
+            source={selectedIsLocal ? "Local" : "Database"}
+            onEdit={selectedResident ? () => onEdit(selectedResident) : undefined}
+          />
+        </div>
       </div>
+
+      {explicitlySelectedResident ? (
+        <div className="fixed inset-x-3 bottom-3 z-50 xl:hidden">
+          <div className="mx-auto max-h-[78dvh] max-w-md overflow-y-auto rounded-xl border border-smart/30 bg-ink/95 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.55)] backdrop-blur">
+            <div className="mb-2 flex items-center justify-between gap-3">
+              <span className="rounded-full border border-smart/25 bg-smart/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-smart">
+                Resident details
+              </span>
+              <button
+                type="button"
+                className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-slate-200"
+                onClick={() => onSelect("")}
+                aria-label="Close resident details"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            <ResidentDetailsPanel
+              resident={explicitlySelectedResident}
+              state={state}
+              source={explicitlySelectedIsLocal ? "Local" : "Database"}
+              onEdit={() => {
+                onEdit(explicitlySelectedResident);
+                onSelect("");
+              }}
+            />
+          </div>
+        </div>
+      ) : null}
     </Card>
   );
 }
@@ -724,24 +808,56 @@ function ResidentDirectoryCard({
   onSelect: () => void;
 }) {
   const unit = getResidentUnit(state, resident);
+  const property = getResidentProperty(state, resident);
+  const contactSummary = [
+    resident.phone ? "Phone" : "",
+    resident.email ? "Email" : ""
+  ].filter(Boolean).join(" + ") || "No contact";
 
   return (
     <button
-      className={`rounded-lg border p-3 text-left transition ${selected ? "border-smart/40 bg-smart/10" : "border-white/10 bg-black/20"}`}
+      className={`min-h-[7.5rem] rounded-lg border p-3 text-left transition active:scale-[0.99] ${selected ? "border-smart/50 bg-smart/10 shadow-[0_0_0_1px_rgba(192,255,107,0.12)]" : "border-white/10 bg-black/20 hover:border-white/20"}`}
       onClick={onSelect}
       type="button"
+      aria-expanded={selected}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p className="font-semibold text-white">{resident.name}</p>
-          <p className="mt-1 font-mono text-xs text-smart">{residentUnitLabel(state, resident)}</p>
-          <p className="mt-1 text-xs text-slate-400">{unit?.apartmentType ?? resident.type}</p>
+      <div className="grid gap-3">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="truncate text-base font-semibold text-white">{resident.name}</p>
+            <div className="mt-1 flex flex-wrap items-center gap-2">
+              <span className="rounded-full border border-smart/25 bg-smart/10 px-2.5 py-1 font-mono text-xs font-semibold text-smart">
+                {residentUnitLabel(state, resident)}
+              </span>
+              <span className="rounded-full border border-white/10 bg-white/[0.04] px-2.5 py-1 text-xs font-semibold capitalize text-slate-300">
+                {resident.type}
+              </span>
+            </div>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <StatusBadge status={resident.status} />
+            <span className="grid h-8 w-8 place-items-center rounded-full border border-white/10 bg-white/[0.04] text-slate-300">
+              {selected ? <ChevronDown className="h-4 w-4" /> : <ChevronRight className="h-4 w-4" />}
+            </span>
+          </div>
         </div>
-        <div className="flex shrink-0 flex-col items-end gap-2">
-          <StatusBadge status={resident.status} />
-          <span className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] font-semibold text-slate-400">
-            {source}
-          </span>
+
+        <div className="grid gap-2 text-xs text-slate-400">
+          <div className="flex min-w-0 items-center gap-2">
+            <MapPin className="h-3.5 w-3.5 shrink-0 text-slate-500" />
+            <span className="truncate">{unit?.apartmentType ?? "Unit pending"}{property?.street ? `, ${property.street}` : ""}</span>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <span className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] font-semibold text-slate-400">
+              {source}
+            </span>
+            <span className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] font-semibold text-slate-400">
+              {contactSummary}
+            </span>
+            <span className="ml-auto text-[11px] font-semibold text-slate-500">
+              {selected ? "Hide details" : "View details"}
+            </span>
+          </div>
         </div>
       </div>
     </button>
@@ -771,11 +887,11 @@ function ResidentDetailsPanel({
   const property = getResidentProperty(state, resident);
 
   return (
-    <aside className="rounded-lg border border-white/10 bg-black/20 p-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
+    <aside className="rounded-lg border border-smart/20 bg-black/30 p-3 shadow-[0_14px_32px_rgba(0,0,0,0.22)] sm:p-4">
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="min-w-0">
           <p className="text-xs uppercase tracking-[0.18em] text-smart">Resident</p>
-          <h2 className="mt-1 text-xl font-semibold text-white">{resident.name}</h2>
+          <h2 className="mt-1 break-words text-lg font-semibold text-white sm:text-xl">{resident.name}</h2>
           <p className="mt-1 font-mono text-sm text-smart">{residentUnitLabel(state, resident)}</p>
         </div>
         <StatusBadge status={resident.status} />
@@ -793,28 +909,28 @@ function ResidentDetailsPanel({
         <ResidentDetailLine label="Legacy address" value={resident.legacyAddress || "None"} />
       </div>
 
-      <div className="mt-5 grid gap-2">
+      <div className="mt-5 grid gap-2 sm:grid-cols-3">
         {onEdit ? (
-          <Button type="button" onClick={onEdit}>
+          <Button type="button" onClick={onEdit} className="w-full">
             <Pencil className="h-4 w-4" />
-            Edit resident
+            Edit
           </Button>
         ) : (
-          <Button type="button" variant="secondary" disabled>
+          <Button type="button" variant="secondary" className="w-full" disabled>
             <Pencil className="h-4 w-4" />
-            Database edit pending
+            Edit
           </Button>
         )}
         <Link href="/admin/users">
           <Button type="button" variant="secondary" className="w-full">
             <Users className="h-4 w-4" />
-            Create login account
+            Login
           </Button>
         </Link>
         <Link href="/admin/payments">
           <Button type="button" variant="secondary" className="w-full">
             <WalletCards className="h-4 w-4" />
-            View bills / payments
+            Payments
           </Button>
         </Link>
       </div>
@@ -824,9 +940,9 @@ function ResidentDetailsPanel({
 
 function ResidentDetailLine({ label, value }: { label: string; value: string }) {
   return (
-    <div className="grid grid-cols-[6.75rem_1fr] gap-3 border-t border-white/10 pt-2 first:border-t-0 first:pt-0">
+    <div className="grid gap-1 border-t border-white/10 pt-2 first:border-t-0 first:pt-0 sm:grid-cols-[6.75rem_1fr] sm:gap-3">
       <span className="text-xs text-slate-500">{label}</span>
-      <span className="min-w-0 text-slate-100">{value}</span>
+      <span className="min-w-0 break-words text-slate-100">{value}</span>
     </div>
   );
 }
@@ -1322,8 +1438,8 @@ function ResidentEditCard({
   return (
     <Card className="mb-6">
       <CardHeader
-        title={`Edit ${resident.name}`}
-        description="Correct resident details, update apartment / house number, or mark a resident inactive or moved out."
+        title="Edit resident"
+        description={resident.name}
       />
       <form className="grid gap-4" onSubmit={submitResidentEdit}>
         <div className="grid gap-4 md:grid-cols-2">
@@ -1332,6 +1448,7 @@ function ResidentEditCard({
           </Field>
           <Field label="Property / unit">
             <Select name="unitId" defaultValue={selectedUnit?.id ?? resident.unitId ?? ""}>
+              <option value="">Unassigned / legacy only</option>
               {state.units.map((unit) => (
                 <option key={unit.id} value={unit.id}>
                   {unit.unitCode} - {unit.label} - {unit.apartmentType}
@@ -1372,9 +1489,9 @@ function ResidentEditCard({
             <Input name="legacyAddress" defaultValue={resident.legacyAddress ?? ""} placeholder="Old address/export text" />
           </Field>
         </div>
-        <div className="flex flex-wrap gap-3">
-          <Button disabled={saving}>{saving ? "Saving resident" : "Save resident"}</Button>
-          <Button type="button" variant="secondary" onClick={onCancel}>Cancel</Button>
+        <div className="sticky bottom-2 z-10 grid gap-2 rounded-lg border border-white/10 bg-ink/95 p-2 shadow-[0_-12px_32px_rgba(0,0,0,0.28)] backdrop-blur sm:static sm:flex sm:flex-wrap sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
+          <Button className="w-full sm:w-auto" disabled={saving}>{saving ? "Saving resident" : "Save resident"}</Button>
+          <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={onCancel} disabled={saving}>Cancel</Button>
         </div>
       </form>
     </Card>
