@@ -48,7 +48,11 @@ export async function PATCH(request: NextRequest) {
       status: body.status === "inactive" || body.status === "moved out" ? body.status : "active",
       moveInDate: body.moveInDate,
       legacyName: body.legacyName,
-      legacyAddress: body.legacyAddress
+      legacyAddress: body.legacyAddress,
+      openingOutstanding: typeof body.openingOutstanding === "number" ? body.openingOutstanding : undefined,
+      expectedMonthly: typeof body.expectedMonthly === "number" ? body.expectedMonthly : undefined,
+      onboardingStatus: body.onboardingStatus,
+      reviewReasons: body.reviewReasons
     });
 
     return NextResponse.json({ resident });

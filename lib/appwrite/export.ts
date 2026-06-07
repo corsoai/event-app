@@ -28,6 +28,8 @@ export async function buildResidentsCsvExport() {
       apartmentType: unit?.apartmentType ?? "",
       openingOutstanding: resident.openingOutstanding ?? 0,
       expectedMonthly: resident.expectedMonthly ?? 0,
+      onboardingStatus: resident.onboardingStatus ?? "verified",
+      reviewReasons: resident.reviewReasons ?? "",
       moveInDate: resident.moveInDate ?? "",
       legacyName: resident.legacyName ?? "",
       legacyAddress: resident.legacyAddress ?? ""

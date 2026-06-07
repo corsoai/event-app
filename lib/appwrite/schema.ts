@@ -121,7 +121,9 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
       { key: "legacyAddress", type: "string", size: 512, required: false },
       { key: "sourceRow", type: "integer", required: false },
       { key: "openingOutstanding", type: "float", required: false, default: 0 },
-      { key: "expectedMonthly", type: "float", required: false, default: 0 }
+      { key: "expectedMonthly", type: "float", required: false, default: 0 },
+      { key: "onboardingStatus", type: "string", size: 32, required: false, default: "verified" },
+      { key: "reviewReasons", type: "string", size: 1024, required: false }
     ],
     indexes: [
       { key: "resident_unit_idx", type: "key", attributes: ["unitId"] },

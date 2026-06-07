@@ -22,6 +22,8 @@ type AppwriteResidentRow = {
   sourceRow?: number;
   openingOutstanding?: number;
   expectedMonthly?: number;
+  onboardingStatus?: string;
+  reviewReasons?: string;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -101,6 +103,8 @@ export async function importBillingPreviewRows(rows: LbsviewOnboardingPreviewRow
       sourceRow: resident.sourceRow ?? source.sourceRow,
       openingOutstanding,
       expectedMonthly,
+      onboardingStatus: resident.onboardingStatus,
+      reviewReasons: resident.reviewReasons,
       createdAt: resident.createdAt ?? now,
       updatedAt: now
     });

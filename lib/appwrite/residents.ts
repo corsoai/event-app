@@ -52,6 +52,8 @@ type AppwriteResidentRow = {
   sourceRow?: number;
   openingOutstanding?: number;
   expectedMonthly?: number;
+  onboardingStatus?: string;
+  reviewReasons?: string;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -68,6 +70,10 @@ export type AppwriteResidentUpdateInput = {
   moveInDate?: string;
   legacyName?: string;
   legacyAddress?: string;
+  openingOutstanding?: number;
+  expectedMonthly?: number;
+  onboardingStatus?: string;
+  reviewReasons?: string;
 };
 
 export type AppwriteResidentDirectory = {
@@ -148,8 +154,10 @@ export async function updateAppwriteResident(input: AppwriteResidentUpdateInput)
     legacyName: input.legacyName?.trim() ?? "",
     legacyAddress: input.legacyAddress?.trim() ?? "",
     sourceRow: existing.sourceRow,
-    openingOutstanding: existing.openingOutstanding,
-    expectedMonthly: existing.expectedMonthly,
+    openingOutstanding: input.openingOutstanding ?? existing.openingOutstanding,
+    expectedMonthly: input.expectedMonthly ?? existing.expectedMonthly,
+    onboardingStatus: input.onboardingStatus ?? existing.onboardingStatus,
+    reviewReasons: input.reviewReasons ?? existing.reviewReasons,
     createdAt: existing.createdAt,
     updatedAt: now
   };
@@ -242,7 +250,9 @@ function mapResidentRow(row: AppwriteResidentRow, unit?: Unit): Resident {
     legacyName: optionalText(row.legacyName),
     legacyAddress: optionalText(row.legacyAddress),
     openingOutstanding: numberOrUndefined(row.openingOutstanding),
-    expectedMonthly: numberOrUndefined(row.expectedMonthly)
+    expectedMonthly: numberOrUndefined(row.expectedMonthly),
+    onboardingStatus: optionalText(row.onboardingStatus),
+    reviewReasons: optionalText(row.reviewReasons)
   };
 }
 

@@ -523,7 +523,11 @@ export function ResidentsAdminPage() {
         status: input.status,
         moveInDate: input.moveInDate,
         legacyName: input.legacyName,
-        legacyAddress: input.legacyAddress
+        legacyAddress: input.legacyAddress,
+        openingOutstanding: input.openingOutstanding,
+        expectedMonthly: input.expectedMonthly,
+        onboardingStatus: input.onboardingStatus,
+        reviewReasons: input.reviewReasons
       })
     });
     const payload = await response.json().catch(() => null) as { resident?: Resident; error?: string } | null;
@@ -675,8 +679,44 @@ function ResidentDirectoryPanel({
   onSelect: (residentId: string) => void;
   onEdit: (resident: Resident) => void;
 }) {
-  const selectedResident = residents.find((resident) => resident.id === selectedResidentId) ?? residents[0];
-  const explicitlySelectedResident = residents.find((resident) => resident.id === selectedResidentId);
+  const [residentSearch, setResidentSearch] = useState("");
+  const [propertyFilter, setPropertyFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [reviewFilter, setReviewFilter] = useState("all");
+  const propertyOptions = useMemo(() => {
+    const options = new Map<string, string>();
+    for (const property of state.properties) {
+      options.set(property.id, `${property.propertyCode} - ${property.name}`);
+    }
+    return [...options.entries()].sort((left, right) => left[1].localeCompare(right[1]));
+  }, [state.properties]);
+  const filteredResidents = useMemo(() => {
+    const query = residentSearch.trim().toLowerCase();
+    return residents.filter((resident) => {
+      const unit = getResidentUnit(state, resident);
+      const property = getResidentProperty(state, resident);
+      const haystack = [
+        resident.name,
+        resident.phone,
+        resident.email,
+        resident.houseNumber,
+        unit?.unitCode,
+        property?.propertyCode,
+        property?.name,
+        resident.legacyName,
+        resident.legacyAddress
+      ].filter(Boolean).join(" ").toLowerCase();
+
+      if (query && !haystack.includes(query)) return false;
+      if (propertyFilter !== "all" && resident.propertyId !== propertyFilter && unit?.propertyId !== propertyFilter) return false;
+      if (statusFilter !== "all" && resident.status !== statusFilter) return false;
+      if (reviewFilter === "needs_review" && resident.onboardingStatus !== "needs_review") return false;
+      if (reviewFilter === "verified" && resident.onboardingStatus === "needs_review") return false;
+      return true;
+    });
+  }, [propertyFilter, residentSearch, residents, reviewFilter, state, statusFilter]);
+  const selectedResident = filteredResidents.find((resident) => resident.id === selectedResidentId) ?? filteredResidents[0];
+  const explicitlySelectedResident = filteredResidents.find((resident) => resident.id === selectedResidentId);
   const selectedIsLocal = selectedResident ? localResidents.some((resident) => resident.id === selectedResident.id) : false;
   const explicitlySelectedIsLocal = explicitlySelectedResident
     ? localResidents.some((resident) => resident.id === explicitlySelectedResident.id)
@@ -695,9 +735,44 @@ function ResidentDirectoryPanel({
         }
       />
 
+      <div className="mb-4 grid gap-3 rounded-lg border border-white/10 bg-white/[0.04] p-3 md:grid-cols-[1.3fr_1fr_1fr_1fr]">
+        <Field label="Search residents">
+          <Input value={residentSearch} onChange={(event) => setResidentSearch(event.currentTarget.value)} placeholder="Name, phone, unit, legacy text" />
+        </Field>
+        <Field label="Property group">
+          <Select value={propertyFilter} onChange={(event) => setPropertyFilter(event.currentTarget.value)}>
+            <option value="all">All property groups</option>
+            {propertyOptions.map(([propertyId, label]) => (
+              <option key={propertyId} value={propertyId}>{label}</option>
+            ))}
+          </Select>
+        </Field>
+        <Field label="Resident status">
+          <Select value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value)}>
+            <option value="all">All statuses</option>
+            <option value="active">Active</option>
+            <option value="inactive">Inactive</option>
+            <option value="moved out">Moved out</option>
+          </Select>
+        </Field>
+        <Field label="Review state">
+          <Select value={reviewFilter} onChange={(event) => setReviewFilter(event.currentTarget.value)}>
+            <option value="all">All records</option>
+            <option value="needs_review">Needs review</option>
+            <option value="verified">Verified</option>
+          </Select>
+        </Field>
+        <div className="flex flex-wrap gap-2 text-xs text-slate-400 md:col-span-4">
+          <span className="rounded-full border border-white/10 px-2.5 py-1">{filteredResidents.length} shown</span>
+          <span className="rounded-full border border-warn/30 bg-warn/10 px-2.5 py-1 text-warn">
+            {residents.filter((resident) => resident.onboardingStatus === "needs_review").length} need review
+          </span>
+        </div>
+      </div>
+
       <div className="grid gap-4 lg:grid-cols-[1fr_24rem]">
         <div className="grid gap-3 lg:hidden">
-          {residents.length ? residents.map((resident) => {
+          {filteredResidents.length ? filteredResidents.map((resident) => {
             const source = localResidents.some((item) => item.id === resident.id) ? "Local" : "Database";
             const selected = explicitlySelectedResident?.id === resident.id;
 
@@ -713,7 +788,7 @@ function ResidentDirectoryPanel({
             );
           }) : (
             <div className="rounded-lg border border-white/10 bg-black/20 px-3 py-4 text-sm text-slate-400">
-              No resident records to show.
+              No resident records match these filters.
             </div>
           )}
         </div>
@@ -722,7 +797,7 @@ function ResidentDirectoryPanel({
           <table className="w-full table-auto border-separate border-spacing-0 text-left text-sm">
             <thead>
               <tr>
-                {["Name", "Property / Unit", "Type", "Phone", "Status", "Source"].map((header) => (
+                {["Name", "Property / Unit", "Type", "Phone", "Status", "Review"].map((header) => (
                   <th key={header} className="border-b border-white/10 bg-white/[0.04] px-3 py-3 align-top font-semibold text-slate-300">
                     {header}
                   </th>
@@ -730,7 +805,7 @@ function ResidentDirectoryPanel({
               </tr>
             </thead>
             <tbody>
-              {residents.length ? residents.map((resident) => {
+              {filteredResidents.length ? filteredResidents.map((resident) => {
                 const unit = getResidentUnit(state, resident);
                 const property = getResidentProperty(state, resident);
                 const selected = selectedResident?.id === resident.id;
@@ -762,15 +837,18 @@ function ResidentDirectoryPanel({
                     <td className="border-b border-white/10 px-3 py-4 align-top font-mono text-slate-100">{resident.phone || "No phone"}</td>
                     <td className="border-b border-white/10 px-3 py-4 align-top"><StatusBadge status={resident.status} /></td>
                     <td className="border-b border-white/10 px-3 py-4 align-top">
-                      <span className="inline-flex rounded-full border border-smart/30 bg-smart/10 px-3 py-1 text-xs font-semibold text-smart">
-                        {source}
+                      <span className={resident.onboardingStatus === "needs_review"
+                        ? "inline-flex rounded-full border border-warn/30 bg-warn/10 px-3 py-1 text-xs font-semibold text-warn"
+                        : "inline-flex rounded-full border border-smart/30 bg-smart/10 px-3 py-1 text-xs font-semibold text-smart"}
+                      >
+                        {resident.onboardingStatus === "needs_review" ? "Needs review" : source}
                       </span>
                     </td>
                   </tr>
                 );
               }) : (
                 <tr>
-                  <td className="px-3 py-4 text-sm text-slate-400" colSpan={6}>No resident records to show.</td>
+                  <td className="px-3 py-4 text-sm text-slate-400" colSpan={6}>No resident records match these filters.</td>
                 </tr>
               )}
             </tbody>
@@ -927,6 +1005,11 @@ function ResidentDirectoryCard({
             <span className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] font-semibold text-slate-400">
               {source}
             </span>
+            {resident.onboardingStatus === "needs_review" ? (
+              <span className="rounded-full border border-warn/30 bg-warn/10 px-2.5 py-1 text-[11px] font-semibold text-warn">
+                Needs review
+              </span>
+            ) : null}
             <span className="rounded-full border border-white/10 px-2.5 py-1 text-[11px] font-semibold text-slate-400">
               {contactSummary}
             </span>
@@ -982,6 +1065,8 @@ function ResidentDetailsPanel({
         <ResidentDetailLine label="Unit" value={unit ? `${unit.unitCode} - ${unit.apartmentType}` : "Unit pending"} />
         <ResidentDetailLine label="Opening balance" value={money(resident.openingOutstanding ?? 0)} />
         <ResidentDetailLine label="Monthly due" value={money(resident.expectedMonthly ?? 0)} />
+        <ResidentDetailLine label="Review state" value={resident.onboardingStatus === "needs_review" ? "Needs review" : "Verified"} />
+        <ResidentDetailLine label="Review notes" value={resident.reviewReasons || "None"} />
         <ResidentDetailLine label="Move-in" value={resident.moveInDate || "Not recorded"} />
         <ResidentDetailLine label="Legacy name" value={resident.legacyName || "None"} />
         <ResidentDetailLine label="Legacy address" value={resident.legacyAddress || "None"} />
@@ -1287,7 +1372,7 @@ function AppwriteOnboardingPanel() {
       const typedRows = previewRows as LbsviewOnboardingPreviewRow[];
       setRows(typedRows);
       const result = await sendImportRequest(typedRows, true);
-      setMessage(`${result.summary.importableRows} rows are ready; ${result.summary.skippedRows} need review.`);
+      setMessage(`${result.summary.importableRows} resident rows are ready; ${result.summary.reviewRows} will be imported as needs review; ${result.summary.skippedRows} skipped.`);
     } catch (error) {
       setRows([]);
       setSummary(null);
@@ -1309,7 +1394,7 @@ function AppwriteOnboardingPanel() {
 
     try {
       const result = await sendImportRequest(rows, true);
-      setMessage(`${result.summary.importableRows} rows are ready; ${result.summary.skippedRows} need review.`);
+      setMessage(`${result.summary.importableRows} resident rows are ready; ${result.summary.reviewRows} will be imported as needs review; ${result.summary.skippedRows} skipped.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Dry run failed.");
     } finally {
@@ -1328,7 +1413,7 @@ function AppwriteOnboardingPanel() {
 
     try {
       const result = await sendImportRequest(rows, false);
-      setMessage(`Imported ${result.summary.residents} residents, ${result.summary.units} units, and ${result.summary.openingBills} opening bills.`);
+      setMessage(`Imported ${result.summary.residents} residents, including ${result.summary.reviewRows} review records, plus ${result.summary.openingBills} opening bills.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Import failed.");
     } finally {
@@ -1563,6 +1648,10 @@ type ResidentEditInput = Pick<Resident, "name" | "houseNumber" | "phone" | "emai
   moveInDate?: string;
   legacyName?: string;
   legacyAddress?: string;
+  openingOutstanding?: number;
+  expectedMonthly?: number;
+  onboardingStatus?: string;
+  reviewReasons?: string;
 };
 
 function ResidentEditCard({
@@ -1597,7 +1686,11 @@ function ResidentEditCard({
       unitId: unit?.id ?? resident.unitId,
       moveInDate: String(form.get("moveInDate") ?? resident.moveInDate ?? "").trim(),
       legacyName: String(form.get("legacyName") ?? "").trim(),
-      legacyAddress: String(form.get("legacyAddress") ?? "").trim()
+      legacyAddress: String(form.get("legacyAddress") ?? "").trim(),
+      openingOutstanding: formNumber(form.get("openingOutstanding")),
+      expectedMonthly: formNumber(form.get("expectedMonthly")),
+      onboardingStatus: String(form.get("onboardingStatus") ?? resident.onboardingStatus ?? "verified"),
+      reviewReasons: String(form.get("reviewReasons") ?? "").trim()
     });
   }
 
@@ -1648,11 +1741,26 @@ function ResidentEditCard({
           <Field label="Move-in date">
             <Input name="moveInDate" type="date" defaultValue={resident.moveInDate ?? ""} />
           </Field>
+          <Field label="Opening balance">
+            <Input name="openingOutstanding" type="number" min="0" step="0.01" defaultValue={resident.openingOutstanding ?? 0} />
+          </Field>
+          <Field label="Monthly due">
+            <Input name="expectedMonthly" type="number" min="0" step="0.01" defaultValue={resident.expectedMonthly ?? 0} />
+          </Field>
+          <Field label="Onboarding status">
+            <Select name="onboardingStatus" defaultValue={resident.onboardingStatus ?? "verified"}>
+              <option value="verified">Verified</option>
+              <option value="needs_review">Needs review</option>
+            </Select>
+          </Field>
           <Field label="Legacy name">
             <Input name="legacyName" defaultValue={resident.legacyName ?? ""} placeholder="Old alias or landlord label" />
           </Field>
           <Field label="Legacy address">
             <Input name="legacyAddress" defaultValue={resident.legacyAddress ?? ""} placeholder="Old address/export text" />
+          </Field>
+          <Field label="Review notes">
+            <Textarea name="reviewReasons" defaultValue={resident.reviewReasons ?? ""} placeholder="Why this record needs cleanup" />
           </Field>
         </div>
         <div className="sticky bottom-2 z-10 grid gap-2 rounded-lg border border-white/10 bg-ink/95 p-2 shadow-[0_-12px_32px_rgba(0,0,0,0.28)] backdrop-blur sm:static sm:flex sm:flex-wrap sm:border-0 sm:bg-transparent sm:p-0 sm:shadow-none">
@@ -1662,6 +1770,11 @@ function ResidentEditCard({
       </form>
     </Card>
   );
+}
+
+function formNumber(value: FormDataEntryValue | null) {
+  const numeric = Number(value ?? 0);
+  return Number.isFinite(numeric) ? Math.max(0, numeric) : 0;
 }
 
 function AccessRequestsPanel({

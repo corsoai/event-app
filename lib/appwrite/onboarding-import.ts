@@ -52,6 +52,10 @@ type ImportPlanRow = {
   propertyId: string;
   unitId: string;
   residentId: string;
+  propertyCode: string;
+  unitCode: string;
+  onboardingStatus: "verified" | "needs_review";
+  reviewReasons: string[];
   openingBillId?: string;
   legacyPaymentId?: string;
 };
@@ -83,14 +87,15 @@ export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreview
   });
 
   const properties = uniqueBy(
-    plan.rows.map((row) => row.source),
-    (row) => normalizedCode(row.propertyCode)
+    plan.rows,
+    (row) => row.propertyCode
   );
-  for (const property of properties) {
-    await appwriteUpsertRow("properties", propertyIdFor(property.propertyCode), {
+  for (const row of properties) {
+    const property = row.source;
+    await appwriteUpsertRow("properties", row.propertyId, {
       estateId: APPWRITE_LBSVIEW_ESTATE_ID,
-      propertyCode: normalizedCode(property.propertyCode),
-      name: property.propertyName || normalizedCode(property.propertyCode),
+      propertyCode: row.propertyCode,
+      name: property.propertyName || row.propertyCode,
       description: property.legacyProperty || property.propertyName || "",
       street: "LBS View Estate",
       legacyName: property.legacyProperty || property.propertyName || "",
@@ -113,8 +118,8 @@ export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreview
     await appwriteUpsertRow("units", row.unitId, {
       estateId: APPWRITE_LBSVIEW_ESTATE_ID,
       propertyId: row.propertyId,
-      unitCode: normalizedCode(source.unitCode),
-      label: normalizedCode(source.unitCode),
+      unitCode: row.unitCode,
+      label: row.unitCode,
       apartmentType: source.apartmentType || "Pending classification",
       status: unitCurrentResident.has(row.unitId) ? "occupied" : "vacant",
       currentResidentId: unitCurrentResident.get(row.unitId),
@@ -131,7 +136,7 @@ export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreview
       estateId: APPWRITE_LBSVIEW_ESTATE_ID,
       propertyId: row.propertyId,
       unitId: row.unitId,
-      fullName: source.fullName,
+      fullName: source.fullName || `Legacy resident row ${source.sourceRow}`,
       phone: source.phone,
       email: source.email,
       residentType: "tenant",
@@ -141,6 +146,8 @@ export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreview
       sourceRow: source.sourceRow,
       openingOutstanding: numberOrZero(source.openingOutstanding),
       expectedMonthly: numberOrZero(source.expectedMonthly),
+      onboardingStatus: row.onboardingStatus,
+      reviewReasons: row.reviewReasons.join(", "),
       createdAt: now,
       updatedAt: now
     });
@@ -150,7 +157,7 @@ export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreview
       residentId: row.residentId,
       propertyId: row.propertyId,
       unitId: row.unitId,
-      unitCode: normalizedCode(source.unitCode),
+      unitCode: row.unitCode,
       residentStatus: status,
       source: "legacy_excel_import",
       legacyNote: source.legacyAddress || source.legacyProperty || "",
@@ -234,8 +241,12 @@ function buildImportPlan(rows: LbsviewOnboardingPreviewRow[]): ImportPlan {
       continue;
     }
 
-    const propertyId = propertyIdFor(row.propertyCode);
-    const unitId = unitIdFor(row.unitCode);
+    const reviewReasons = reviewReasonsFor(row, duplicateActiveUnitCodes);
+    const onboardingStatus = reviewReasons.length ? "needs_review" : "verified";
+    const propertyCode = importPropertyCodeFor(row);
+    const unitCode = importUnitCodeFor(row, duplicateActiveUnitCodes);
+    const propertyId = propertyIdFor(propertyCode);
+    const unitId = unitIdFor(unitCode);
     const residentId = residentIdFor(row);
     const hasBill = numberOrZero(row.expectedPayment) > 0 || numberOrZero(row.openingOutstanding) > 0;
     const hasPayment = numberOrZero(row.amountPaid) > 0;
@@ -245,6 +256,10 @@ function buildImportPlan(rows: LbsviewOnboardingPreviewRow[]): ImportPlan {
       propertyId,
       unitId,
       residentId,
+      propertyCode,
+      unitCode,
+      onboardingStatus,
+      reviewReasons,
       openingBillId: hasBill ? openingBillIdFor(row) : undefined,
       legacyPaymentId: hasPayment ? legacyPaymentIdFor(row) : undefined
     });
@@ -266,7 +281,7 @@ function summarizePlan(
 ): AppwriteImportSummary {
   const byProperty = new Map<string, number>();
   for (const row of planRows) {
-    const key = normalizedCode(row.source.propertyCode);
+    const key = row.propertyCode;
     byProperty.set(key, (byProperty.get(key) ?? 0) + 1);
   }
 
@@ -274,9 +289,9 @@ function summarizePlan(
     totalRows: sourceRows.length,
     importableRows: planRows.length,
     skippedRows: sourceRows.length - planRows.length,
-    reviewRows: sourceRows.filter((row) => row.reviewRequired).length,
+    reviewRows: planRows.filter((row) => row.onboardingStatus === "needs_review").length,
     duplicateActiveUnitRows: sourceRows.filter((row) => duplicateActiveUnitCodes.has(normalizedCode(row.unitCode))).length,
-    properties: new Set(planRows.map((row) => normalizedCode(row.source.propertyCode))).size,
+    properties: new Set(planRows.map((row) => row.propertyCode)).size,
     units: new Set(planRows.map((row) => row.unitId)).size,
     residents: planRows.length,
     openingBills: planRows.filter((row) => row.openingBillId).length,
@@ -292,20 +307,48 @@ function summarizePlan(
 
 function skipReasonFor(row: LbsviewOnboardingPreviewRow, duplicateActiveUnitCodes: Set<string>) {
   const role = row.role.trim().toLowerCase();
+  void duplicateActiveUnitCodes;
+
+  if (!["resident", "ex resident", "ex-resident"].includes(role)) return "not a resident role";
+
+  return "";
+}
+
+function reviewReasonsFor(row: LbsviewOnboardingPreviewRow, duplicateActiveUnitCodes: Set<string>) {
+  const reasons = new Set((row.reviewReasons ?? []).filter(Boolean));
   const propertyCode = normalizedCode(row.propertyCode);
   const unitCode = normalizedCode(row.unitCode);
 
-  if (row.reviewRequired) return "flagged for manual review";
-  if (!["resident", "ex resident", "ex-resident"].includes(role)) return "not a resident role";
-  if (!propertyCode || propertyCode === "LDI-REVIEW") return "property needs review";
-  if (!unitCode) return "missing unit ID";
-  if (!isApprovedPropertyCode(propertyCode)) return "property group not approved";
-  if (!row.phone && !row.email) return "missing phone and email";
-  if (normalizedStatus(row.residentStatus) === "active" && duplicateActiveUnitCodes.has(unitCode)) {
-    return "duplicate active resident for unit";
+  if (row.reviewRequired) reasons.add("legacy row flagged for manual review");
+  if (!row.fullName.trim()) reasons.add("missing resident name");
+  if (!propertyCode || propertyCode === "LDI-REVIEW") reasons.add("property group needs assignment");
+  if (!unitCode) reasons.add("unit ID needs assignment");
+  if (propertyCode && propertyCode !== "LDI-REVIEW" && !isApprovedPropertyCode(propertyCode)) reasons.add("property group needs approval");
+  if (!row.phone && !row.email) reasons.add("missing login contact");
+  if (normalizedStatus(row.residentStatus) === "active" && unitCode && duplicateActiveUnitCodes.has(unitCode)) {
+    reasons.add("duplicate active resident for unit");
   }
 
-  return "";
+  return [...reasons];
+}
+
+function importPropertyCodeFor(row: LbsviewOnboardingPreviewRow) {
+  const propertyCode = normalizedCode(row.propertyCode);
+  if (!propertyCode || propertyCode === "LDI-REVIEW" || !isApprovedPropertyCode(propertyCode)) {
+    return "LDI-REVIEW";
+  }
+
+  return propertyCode;
+}
+
+function importUnitCodeFor(row: LbsviewOnboardingPreviewRow, duplicateActiveUnitCodes: Set<string>) {
+  const unitCode = normalizedCode(row.unitCode);
+  const needsFallback = !unitCode || (normalizedStatus(row.residentStatus) === "active" && duplicateActiveUnitCodes.has(unitCode));
+  if (needsFallback) {
+    return `REVIEW-ROW-${String(row.sourceRow).padStart(3, "0")}`;
+  }
+
+  return unitCode;
 }
 
 function findDuplicateActiveUnitCodes(rows: LbsviewOnboardingPreviewRow[]) {

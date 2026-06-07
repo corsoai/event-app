@@ -57,6 +57,8 @@ export type Resident = {
   legacyAddress?: string;
   openingOutstanding?: number;
   expectedMonthly?: number;
+  onboardingStatus?: "verified" | "needs_review" | string;
+  reviewReasons?: string;
 };
 
 export type Visitor = {
