@@ -41,6 +41,12 @@ export async function POST(request: NextRequest) {
       summary: summarizeOnboardingPreview(rows)
     });
   }
+  if (typeof limit !== "number") {
+    return NextResponse.json(
+      { error: "Refresh this page before importing. The current import must run in smaller batches." },
+      { status: 409 }
+    );
+  }
 
   const config = getAppwriteServerConfig();
   if (!config.configured) {
