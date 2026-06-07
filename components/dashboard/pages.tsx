@@ -130,6 +130,30 @@ type AppwriteImportResponse = {
   error?: string;
 };
 
+type AppwriteBillingImportSummary = {
+  totalRows: number;
+  financeRows: number;
+  matchedResidents: number;
+  skippedRows: number;
+  updatedResidents: number;
+  openingBills: number;
+  legacyPayments: number;
+  totals: {
+    expectedPayment: number;
+    amountPaid: number;
+    openingOutstanding: number;
+    expectedMonthly: number;
+  };
+  skippedReasons: Array<{ reason: string; count: number }>;
+};
+
+type AppwriteBillingImportResponse = {
+  dryRun: boolean;
+  imported: boolean;
+  summary: AppwriteBillingImportSummary;
+  error?: string;
+};
+
 type AppwriteResidentDirectory = {
   properties: Property[];
   units: Unit[];
@@ -956,6 +980,8 @@ function ResidentDetailsPanel({
         <ResidentDetailLine label="Email" value={resident.email || "No email"} />
         <ResidentDetailLine label="Property" value={property ? `${property.propertyCode} - ${property.name}` : "Property pending"} />
         <ResidentDetailLine label="Unit" value={unit ? `${unit.unitCode} - ${unit.apartmentType}` : "Unit pending"} />
+        <ResidentDetailLine label="Opening balance" value={money(resident.openingOutstanding ?? 0)} />
+        <ResidentDetailLine label="Monthly due" value={money(resident.expectedMonthly ?? 0)} />
         <ResidentDetailLine label="Move-in" value={resident.moveInDate || "Not recorded"} />
         <ResidentDetailLine label="Legacy name" value={resident.legacyName || "None"} />
         <ResidentDetailLine label="Legacy address" value={resident.legacyAddress || "None"} />
@@ -1193,8 +1219,9 @@ function AppwriteOnboardingPanel() {
   const [status, setStatus] = useState<AppwriteOnboardingStatus | null>(null);
   const [rows, setRows] = useState<LbsviewOnboardingPreviewRow[]>([]);
   const [summary, setSummary] = useState<AppwriteImportSummary | null>(null);
+  const [billingSummary, setBillingSummary] = useState<AppwriteBillingImportSummary | null>(null);
   const [message, setMessage] = useState("");
-  const [busy, setBusy] = useState<"" | "status" | "setup" | "dry-run" | "import">("");
+  const [busy, setBusy] = useState<"" | "status" | "setup" | "dry-run" | "import" | "billing-dry-run" | "billing-import">("");
   const ready = Boolean(status?.configured);
   const hasRows = rows.length > 0;
 
@@ -1264,6 +1291,7 @@ function AppwriteOnboardingPanel() {
     } catch (error) {
       setRows([]);
       setSummary(null);
+      setBillingSummary(null);
       setMessage(error instanceof Error ? error.message : "Preview file could not be loaded.");
     } finally {
       setBusy("");
@@ -1308,6 +1336,44 @@ function AppwriteOnboardingPanel() {
     }
   }
 
+  async function dryRunBillingRows() {
+    if (!rows.length) {
+      setMessage("Upload the onboarding preview JSON first.");
+      return;
+    }
+
+    setBusy("billing-dry-run");
+    setMessage("");
+
+    try {
+      const result = await sendBillingImportRequest(rows, true);
+      setMessage(`${result.summary.matchedResidents} existing residents matched for billing; ${result.summary.skippedRows} rows skipped.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Billing dry run failed.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function importBillingRows() {
+    if (!rows.length) {
+      setMessage("Upload the onboarding preview JSON first.");
+      return;
+    }
+
+    setBusy("billing-import");
+    setMessage("");
+
+    try {
+      const result = await sendBillingImportRequest(rows, false);
+      setMessage(`Updated ${result.summary.updatedResidents} resident balances, ${result.summary.openingBills} opening bills, and ${result.summary.legacyPayments} legacy payments.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Billing import failed.");
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function sendImportRequest(previewRows: LbsviewOnboardingPreviewRow[], dryRun: boolean) {
     const response = await fetch("/api/appwrite/onboarding/import", {
       method: "POST",
@@ -1320,6 +1386,21 @@ function AppwriteOnboardingPanel() {
     }
 
     setSummary(payload.summary);
+    return payload;
+  }
+
+  async function sendBillingImportRequest(previewRows: LbsviewOnboardingPreviewRow[], dryRun: boolean) {
+    const response = await fetch("/api/appwrite/onboarding/billing-import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dryRun, rows: previewRows })
+    });
+    const payload = await response.json() as AppwriteBillingImportResponse;
+    if (!response.ok) {
+      throw new Error(payload.error ?? "Billing import request failed.");
+    }
+
+    setBillingSummary(payload.summary);
     return payload;
   }
 
@@ -1389,6 +1470,39 @@ function AppwriteOnboardingPanel() {
                 Import
               </Button>
             </div>
+          </div>
+          <div className="mt-4 rounded-lg border border-white/10 bg-white/[0.04] p-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-smart">Billing-only update</p>
+                <p className="mt-1 text-xs text-slate-400">Adds old Excel payment totals to existing residents without changing names, units, or contacts.</p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button type="button" variant="secondary" className="min-h-9 px-3 py-1 text-xs" disabled={!ready || !hasRows || busy === "billing-dry-run"} onClick={() => void dryRunBillingRows()}>
+                  <Search className="h-3.5 w-3.5" />
+                  Billing dry run
+                </Button>
+                <Button type="button" className="min-h-9 px-3 py-1 text-xs" disabled={!ready || !hasRows || busy === "billing-import"} onClick={() => void importBillingRows()}>
+                  <WalletCards className="h-3.5 w-3.5" />
+                  Import balances
+                </Button>
+              </div>
+            </div>
+            {billingSummary ? (
+              <div className="mt-3 grid gap-3 text-xs text-slate-400 sm:grid-cols-2 xl:grid-cols-4">
+                <p>Finance rows: <span className="font-semibold text-white">{billingSummary.financeRows}</span></p>
+                <p>Matched: <span className="font-semibold text-white">{billingSummary.matchedResidents}</span></p>
+                <p>Outstanding: <span className="font-semibold text-warn">{money(billingSummary.totals.openingOutstanding)}</span></p>
+                <p>Monthly due: <span className="font-semibold text-smart">{money(billingSummary.totals.expectedMonthly)}</span></p>
+              </div>
+            ) : null}
+            {billingSummary?.skippedReasons.length ? (
+              <div className="mt-3 grid gap-1 text-xs text-slate-400">
+                {billingSummary.skippedReasons.slice(0, 3).map((item) => (
+                  <p key={item.reason}>{item.reason}: <span className="text-slate-200">{item.count}</span></p>
+                ))}
+              </div>
+            ) : null}
           </div>
           {summary ? (
             <>

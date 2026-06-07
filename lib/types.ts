@@ -55,6 +55,8 @@ export type Resident = {
   moveInDate?: string;
   legacyName?: string;
   legacyAddress?: string;
+  openingOutstanding?: number;
+  expectedMonthly?: number;
 };
 
 export type Visitor = {

@@ -240,7 +240,9 @@ function mapResidentRow(row: AppwriteResidentRow, unit?: Unit): Resident {
     status: mapResidentStatus(row.status),
     moveInDate: optionalText(row.moveInDate),
     legacyName: optionalText(row.legacyName),
-    legacyAddress: optionalText(row.legacyAddress)
+    legacyAddress: optionalText(row.legacyAddress),
+    openingOutstanding: numberOrUndefined(row.openingOutstanding),
+    expectedMonthly: numberOrUndefined(row.expectedMonthly)
   };
 }
 
@@ -283,4 +285,9 @@ function mapUnitStatus(value?: string): Unit["status"] {
 function optionalText(value?: string) {
   const trimmed = value?.trim();
   return trimmed || undefined;
+}
+
+function numberOrUndefined(value?: number) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : undefined;
 }
