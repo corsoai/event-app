@@ -765,7 +765,7 @@ function ResidentDirectoryPanel({
       {explicitlySelectedResident ? (
         <div className="fixed inset-0 z-[9999] bg-black/55 px-3 py-4 backdrop-blur-sm lg:hidden" onClick={() => onSelect("")}>
           <div
-            className="fixed left-1/2 top-1/2 z-[10000] max-h-[85dvh] w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-smart/30 bg-ink/95 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.65)]"
+            className="fixed left-1/2 top-1/2 z-[10000] max-h-[85vh] max-h-[85dvh] w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-smart/30 bg-ink/95 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.65)]"
             onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-2 flex items-center justify-between gap-3">

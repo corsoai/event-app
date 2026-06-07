@@ -1,4 +1,4 @@
-const CACHE_NAME = "corso-estate-v9-resident-overlay";
+const CACHE_NAME = "corso-estate-v10-resident-overlay";
 const OFFLINE_URL = "/offline.html";
 const APP_SHELL = [
   OFFLINE_URL,
