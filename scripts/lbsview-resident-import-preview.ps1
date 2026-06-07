@@ -204,8 +204,9 @@ $summary = [pscustomobject]@{
   })
 }
 
-$preview | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $previewPath -Encoding UTF8
-$summary | ConvertTo-Json -Depth 6 | Set-Content -LiteralPath $summaryPath -Encoding UTF8
+$utf8NoBom = New-Object System.Text.UTF8Encoding($false)
+[System.IO.File]::WriteAllText($previewPath, ($preview | ConvertTo-Json -Depth 6), $utf8NoBom)
+[System.IO.File]::WriteAllText($summaryPath, ($summary | ConvertTo-Json -Depth 6), $utf8NoBom)
 
 Write-Host "Preview written to $previewPath"
 Write-Host "Summary written to $summaryPath"

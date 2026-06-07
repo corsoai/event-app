@@ -1358,7 +1358,7 @@ function AppwriteOnboardingPanel() {
     setMessage("");
 
     try {
-      const parsed = JSON.parse(await file.text()) as unknown;
+      const parsed = JSON.parse(cleanJsonText(await file.text())) as unknown;
       const previewRows = Array.isArray(parsed)
         ? parsed
         : parsed && typeof parsed === "object" && "rows" in parsed && Array.isArray((parsed as { rows?: unknown }).rows)
@@ -1465,7 +1465,7 @@ function AppwriteOnboardingPanel() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ dryRun, rows: previewRows })
     });
-    const payload = await response.json() as AppwriteImportResponse;
+    const payload = await readJsonResponse<AppwriteImportResponse>(response);
     if (!response.ok) {
       throw new Error(payload.error ?? "Import request failed.");
     }
@@ -1480,7 +1480,7 @@ function AppwriteOnboardingPanel() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ dryRun, rows: previewRows })
     });
-    const payload = await response.json() as AppwriteBillingImportResponse;
+    const payload = await readJsonResponse<AppwriteBillingImportResponse>(response);
     if (!response.ok) {
       throw new Error(payload.error ?? "Billing import request failed.");
     }
@@ -1631,6 +1631,24 @@ function AppwriteOnboardingPanel() {
       </div>
     </Card>
   );
+}
+
+async function readJsonResponse<T>(response: Response): Promise<T> {
+  const text = await response.text();
+  if (!text.trim()) {
+    throw new Error("The server returned an empty response. Please refresh and try again.");
+  }
+
+  return JSON.parse(cleanJsonText(text)) as T;
+}
+
+function cleanJsonText(text: string) {
+  const cleaned = text.replace(/^\uFEFF/, "").trim();
+  if (!cleaned) {
+    throw new Error("The selected JSON file is empty.");
+  }
+
+  return cleaned;
 }
 
 function MiniImportStat({ label, value, tone = "text-smart" }: { label: string; value: number; tone?: string }) {
