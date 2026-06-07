@@ -135,7 +135,7 @@ export function AppShell({
         ) : null}
       </div>
 
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-72 border-r border-white/10 bg-black/40 px-4 py-5 shadow-[10px_0_40px_rgba(0,0,0,0.2)] backdrop-blur-2xl lg:block">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 border-r border-white/10 bg-black/40 px-3 py-5 shadow-[10px_0_40px_rgba(0,0,0,0.2)] backdrop-blur-2xl lg:block">
         <Link href={dashboardHref} className="flex items-center gap-3 px-2 text-white">
           <BrandMark className="h-11 w-11" />
           <span>
@@ -157,7 +157,7 @@ export function AppShell({
         </button>
       </aside>
 
-      <main className={cn("px-4 pb-24 pt-20 lg:ml-72 lg:px-8 lg:py-8", bottomNav && "pb-28")}>
+      <main className={cn("px-4 pb-24 pt-20 lg:ml-64 lg:px-5 lg:py-7 xl:px-6", bottomNav && "pb-28")}>
         {children}
       </main>
 

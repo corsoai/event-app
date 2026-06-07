@@ -776,7 +776,7 @@ function ResidentDirectoryPanel({
         </div>
       </div>
 
-      <div className="grid gap-4 lg:grid-cols-[1fr_24rem]">
+      <div className="grid gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(25rem,28rem)] xl:grid-cols-[minmax(0,1fr)_minmax(27rem,30rem)]">
         <div className="grid gap-3 lg:hidden">
           {filteredResidents.length ? filteredResidents.map((resident) => {
             const source = localResidents.some((item) => item.id === resident.id) ? "Local" : "Database";
@@ -861,7 +861,7 @@ function ResidentDirectoryPanel({
           </table>
         </div>
 
-        <div className="hidden lg:sticky lg:top-24 lg:block lg:self-start">
+        <div className="hidden lg:sticky lg:top-20 lg:block lg:max-h-[calc(100vh-6rem)] lg:self-start lg:overflow-hidden">
           <ResidentDetailsPanel
             resident={selectedResident}
             state={state}
@@ -1052,7 +1052,7 @@ function ResidentDetailsPanel({
   const property = getResidentProperty(state, resident);
 
   return (
-    <aside className="rounded-lg border border-smart/20 bg-black/30 p-3 shadow-[0_14px_32px_rgba(0,0,0,0.22)] sm:p-4">
+    <aside className="rounded-lg border border-smart/20 bg-black/30 p-3 shadow-[0_14px_32px_rgba(0,0,0,0.22)] sm:p-4 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:overscroll-contain">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-xs uppercase tracking-[0.18em] text-smart">Resident</p>
