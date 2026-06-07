@@ -85,6 +85,7 @@ export function formatGateTime(date: Date) {
   return new Intl.DateTimeFormat("en-NG", {
     dateStyle: "medium",
     timeStyle: "short",
+    hour12: true,
     timeZone: "Africa/Lagos"
   }).format(date);
 }

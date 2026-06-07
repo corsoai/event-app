@@ -3,8 +3,31 @@
 @tailwind utilities;
 
 :root {
+  color-scheme: light;
+  background: #f8fafc;
+  --color-ink: 248 250 252;
+  --color-panel: 255 255 255;
+  --color-panel-soft: 226 232 240;
+  --color-line: 232 238 245;
+  --color-smart: 125 196 55;
+  --color-sky: 43 140 163;
+  --color-gold: 245 176 65;
+  --color-warn: 245 176 65;
+  --color-danger: 255 99 114;
+}
+
+:root[data-theme="dark"] {
   color-scheme: dark;
   background: #000000;
+  --color-ink: 0 0 0;
+  --color-panel: 10 10 10;
+  --color-panel-soft: 101 101 101;
+  --color-line: 42 42 42;
+  --color-smart: 192 255 107;
+  --color-sky: 213 213 213;
+  --color-gold: 192 255 107;
+  --color-warn: 213 213 213;
+  --color-danger: 255 59 48;
 }
 
 * {
@@ -25,11 +48,18 @@ body {
   overflow-x: clip;
   overscroll-behavior-x: none;
   background:
+    radial-gradient(circle at 15% 0%, rgba(168, 224, 99, 0.18), transparent 30%),
+    linear-gradient(180deg, #ffffff 0%, #f8fafc 46%, #f1f5f9 100%);
+  color: #1f2937;
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+}
+
+:root[data-theme="dark"] body {
+  background:
     radial-gradient(circle at 15% 0%, rgba(192, 255, 107, 0.14), transparent 32%),
     linear-gradient(180deg, #161616 0%, #000000 52%, #000000 100%);
   color: #d5d5d5;
-  -webkit-font-smoothing: antialiased;
-  text-rendering: optimizeLegibility;
 }
 
 @supports not (overflow: clip) {
@@ -77,7 +107,96 @@ th {
 
 input[type="date"],
 input[type="time"] {
+  color-scheme: light;
+}
+
+:root[data-theme="dark"] input[type="date"],
+:root[data-theme="dark"] input[type="time"] {
   color-scheme: dark;
+}
+
+table th,
+table td {
+  border-color: rgba(255, 255, 255, 0.055) !important;
+}
+
+:root:not([data-theme="dark"]) [class~="bg-black"],
+:root:not([data-theme="dark"]) [class~="bg-black/10"],
+:root:not([data-theme="dark"]) [class~="bg-black/20"],
+:root:not([data-theme="dark"]) [class~="bg-black/25"],
+:root:not([data-theme="dark"]) [class~="bg-black/30"],
+:root:not([data-theme="dark"]) [class~="bg-black/35"],
+:root:not([data-theme="dark"]) [class~="bg-black/40"],
+:root:not([data-theme="dark"]) [class~="bg-black/55"],
+:root:not([data-theme="dark"]) [class~="bg-black/65"] {
+  background-color: rgba(255, 255, 255, 0.84) !important;
+}
+
+:root:not([data-theme="dark"]) [class~="bg-white/10"],
+:root:not([data-theme="dark"]) [class~="bg-white/15"],
+:root:not([data-theme="dark"]) [class~="bg-white/80"],
+:root:not([data-theme="dark"]) [class~="bg-white/[0.03]"],
+:root:not([data-theme="dark"]) [class~="bg-white/[0.04]"],
+:root:not([data-theme="dark"]) [class~="bg-white/[0.06]"],
+:root:not([data-theme="dark"]) [class~="bg-white/[0.08]"],
+:root:not([data-theme="dark"]) [class~="bg-white/[0.12]"] {
+  background-color: rgba(255, 255, 255, 0.9) !important;
+}
+
+:root:not([data-theme="dark"]) [class*="border-white/"],
+:root:not([data-theme="dark"]) [class*="border-line"] {
+  border-color: rgba(148, 163, 184, 0.16) !important;
+}
+
+:root:not([data-theme="dark"]) table th,
+:root:not([data-theme="dark"]) table td {
+  border-color: rgba(148, 163, 184, 0.1) !important;
+}
+
+:root:not([data-theme="dark"]) .text-white,
+:root:not([data-theme="dark"]) .text-slate-100,
+:root:not([data-theme="dark"]) .text-slate-200 {
+  color: #1f2937 !important;
+}
+
+:root:not([data-theme="dark"]) .text-slate-300 {
+  color: #475569 !important;
+}
+
+:root:not([data-theme="dark"]) .text-slate-400,
+:root:not([data-theme="dark"]) .text-slate-500 {
+  color: #64748b !important;
+}
+
+:root:not([data-theme="dark"]) input,
+:root:not([data-theme="dark"]) select,
+:root:not([data-theme="dark"]) textarea {
+  background-color: rgba(255, 255, 255, 0.94);
+  border-color: rgba(148, 163, 184, 0.2);
+  color: #1f2937;
+}
+
+:root:not([data-theme="dark"]) input::placeholder,
+:root:not([data-theme="dark"]) textarea::placeholder {
+  color: #94a3b8;
+}
+
+:root:not([data-theme="dark"]) .shadow-glow {
+  box-shadow: 0 18px 46px rgba(15, 23, 42, 0.08), 0 1px 0 rgba(255, 255, 255, 0.92) inset !important;
+}
+
+:root:not([data-theme="dark"]) .estate-auth-bg .text-white,
+:root:not([data-theme="dark"]) .estate-auth-bg .text-slate-100,
+:root:not([data-theme="dark"]) .estate-photo-bg .text-white,
+:root:not([data-theme="dark"]) .estate-photo-bg .text-slate-100 {
+  color: #f8fafc !important;
+}
+
+:root:not([data-theme="dark"]) .estate-auth-bg .text-slate-200,
+:root:not([data-theme="dark"]) .estate-auth-bg .text-slate-300,
+:root:not([data-theme="dark"]) .estate-photo-bg .text-slate-200,
+:root:not([data-theme="dark"]) .estate-photo-bg .text-slate-300 {
+  color: #cbd5e1 !important;
 }
 
 .estate-photo-bg {

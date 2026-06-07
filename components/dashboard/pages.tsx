@@ -331,7 +331,7 @@ export function AdminDashboard() {
           rows={state.visitors.map((visitor) => [
             visitor.visitorName,
             state.residents.find((resident) => resident.id === visitor.residentId)?.name ?? "Unknown",
-            `${visitor.visitDate} ${visitor.arrivalTime}`,
+            `${visitor.visitDate} ${formatClockTime(visitor.arrivalTime)}`,
             <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
             <StatusBadge key={visitor.status} status={visitor.status} />
           ])}
@@ -2500,7 +2500,7 @@ export function EstateDetailPage({ estateId }: { estateId: string }) {
           rows={estateVisitors.slice(0, 6).map((visitor) => [
             <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
             visitor.visitorName,
-            `${visitor.visitDate} ${visitor.arrivalTime}`,
+            `${visitor.visitDate} ${formatClockTime(visitor.arrivalTime)}`,
             <StatusBadge key={visitor.status} status={visitor.status} />
           ])}
         />
@@ -3652,7 +3652,7 @@ export function MyVisitorsPage() {
         headers={["Visitor", "Date", "Purpose", "Code", "Status"]}
         rows={myVisitors.map((visitor) => [
           visitor.visitorName,
-          `${visitor.visitDate} ${visitor.arrivalTime}`,
+          `${visitor.visitDate} ${formatClockTime(visitor.arrivalTime)}`,
           visitor.purpose,
           <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
           <StatusBadge key={visitor.status} status={visitor.status} />
@@ -4837,7 +4837,12 @@ function PatrolFact({ label, value }: { label: string; value: string }) {
 function formatDateTime(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value || "Unknown time";
-  return date.toLocaleString();
+  return new Intl.DateTimeFormat("en-NG", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    hour12: true,
+    timeZone: LAGOS_TIME_ZONE
+  }).format(date);
 }
 
 export function EmergencyAlertsPage({ audience = "security" }: { audience?: "security" | "admin" }) {
@@ -5532,7 +5537,7 @@ export function ExpectedVisitorsPage() {
           <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
           visitor.visitorName,
           state.residents.find((resident) => resident.id === visitor.residentId)?.name ?? "Unknown",
-          visitor.arrivalTime,
+          formatClockTime(visitor.arrivalTime),
           visitor.count,
           <StatusBadge key={visitor.status} status={visitor.status} />
         ])}
@@ -6142,6 +6147,7 @@ function formatAlertTime(value: string) {
     day: "numeric",
     hour: "numeric",
     minute: "2-digit",
+    hour12: true,
     timeZone: LAGOS_TIME_ZONE
   }).format(new Date(value));
 }
@@ -6260,7 +6266,7 @@ function visitorAccessWindowLabel(date: string, time: string) {
   }
 
   if (!date) {
-    return `from ${time}`;
+    return `from ${formatClockTime(time)}`;
   }
 
   const startTime = time || "00:00";
@@ -6274,14 +6280,30 @@ function visitorAccessWindowLabel(date: string, time: string) {
     day: "numeric",
     timeZone: LAGOS_TIME_ZONE
   }).format(startsAt);
-  const formattedEndTime = new Intl.DateTimeFormat("en-GB", {
-    hour: "2-digit",
+  const formattedEndTime = new Intl.DateTimeFormat("en-NG", {
+    hour: "numeric",
     minute: "2-digit",
-    hour12: false,
+    hour12: true,
     timeZone: LAGOS_TIME_ZONE
   }).format(endsAt);
 
-  return `on ${formattedDate} from ${startTime} to ${formattedEndTime}`;
+  return `on ${formattedDate} from ${formatClockTime(startTime)} to ${formattedEndTime}`;
+}
+
+function formatClockTime(value: string) {
+  const [hourText, minuteText = "00"] = value.split(":");
+  const hour = Number(hourText);
+  const minute = Number(minuteText);
+  if (!Number.isInteger(hour) || !Number.isInteger(minute) || hour < 0 || hour > 23 || minute < 0 || minute > 59) {
+    return value || "not specified";
+  }
+
+  return new Intl.DateTimeFormat("en-NG", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: "UTC"
+  }).format(new Date(Date.UTC(2000, 0, 1, hour, minute)));
 }
 
 function moneyInputToNumber(value: string) {
@@ -6320,6 +6342,7 @@ function formatAuditTime(value: string) {
   return new Intl.DateTimeFormat("en-NG", {
     dateStyle: "medium",
     timeStyle: "short",
+    hour12: true,
     timeZone: LAGOS_TIME_ZONE
   }).format(new Date(value));
 }
@@ -6357,7 +6380,7 @@ function VisitorVerificationCard({
       <div className="mt-5 grid gap-3 text-sm text-slate-300 sm:grid-cols-2">
         <p><span className="text-slate-500">Resident:</span> {resident?.name} - {resident?.houseNumber}</p>
         <p><span className="text-slate-500">Purpose:</span> {visitor.purpose}</p>
-        <p><span className="text-slate-500">Arrival:</span> {visitor.visitDate} {visitor.arrivalTime}</p>
+        <p><span className="text-slate-500">Arrival:</span> {visitor.visitDate} {formatClockTime(visitor.arrivalTime)}</p>
         <p><span className="text-slate-500">Guests:</span> {visitor.count}</p>
       </div>
       {!checkedIn && !checkedOut ? (

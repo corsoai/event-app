@@ -555,8 +555,8 @@ function mapVisitorLog(row: Record<string, any>): LocalVisitorLog {
     code: row.visitors?.access_code ?? "",
     gateName: row.gate_name,
     guardName: "Security",
-    entryTime: row.entry_time ? new Intl.DateTimeFormat("en-NG", { hour: "numeric", minute: "2-digit", timeZone: LAGOS_TIME_ZONE }).format(new Date(row.entry_time)) : undefined,
-    exitTime: row.exit_time ? new Intl.DateTimeFormat("en-NG", { hour: "numeric", minute: "2-digit", timeZone: LAGOS_TIME_ZONE }).format(new Date(row.exit_time)) : undefined,
+    entryTime: row.entry_time ? new Intl.DateTimeFormat("en-NG", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: LAGOS_TIME_ZONE }).format(new Date(row.entry_time)) : undefined,
+    exitTime: row.exit_time ? new Intl.DateTimeFormat("en-NG", { hour: "numeric", minute: "2-digit", hour12: true, timeZone: LAGOS_TIME_ZONE }).format(new Date(row.exit_time)) : undefined,
     decision: fromSupabaseVisitorDecision(row.decision),
     createdAt: String(row.created_at).slice(0, 10)
   };

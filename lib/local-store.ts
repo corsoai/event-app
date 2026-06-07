@@ -268,6 +268,7 @@ function formatTime() {
   return new Intl.DateTimeFormat("en-NG", {
     hour: "numeric",
     minute: "2-digit",
+    hour12: true,
     timeZone: LAGOS_TIME_ZONE
   }).format(new Date());
 }

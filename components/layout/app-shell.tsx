@@ -17,12 +17,14 @@ import {
   LogOut,
   Megaphone,
   Menu,
+  Moon,
   QrCode,
   ReceiptText,
   Settings,
   ShieldCheck,
   Siren,
   Store,
+  Sun,
   Users,
   WalletCards
 } from "lucide-react";
@@ -54,6 +56,9 @@ const icons = {
   WalletCards
 };
 
+type ThemeMode = "light" | "dark";
+const THEME_STORAGE_KEY = "corso_theme";
+
 export type NavItem = {
   label: string;
   href: string;
@@ -74,11 +79,26 @@ export function AppShell({
   const pathname = usePathname();
   const router = useRouter();
   const [open, setOpen] = useState(false);
+  const [theme, setTheme] = useState<ThemeMode>("light");
+  const [themeLoaded, setThemeLoaded] = useState(false);
   const dashboardHref = navItems[0]?.href ?? "/";
 
   useEffect(() => {
     setOpen(false);
   }, [pathname]);
+
+  useEffect(() => {
+    const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
+    setTheme(savedTheme === "dark" ? "dark" : "light");
+    setThemeLoaded(true);
+  }, []);
+
+  useEffect(() => {
+    if (!themeLoaded) return;
+    document.documentElement.dataset.theme = theme;
+    document.documentElement.style.colorScheme = theme;
+    window.localStorage.setItem(THEME_STORAGE_KEY, theme);
+  }, [theme, themeLoaded]);
 
   function logout() {
     localStorage.removeItem("corso_user");
@@ -95,6 +115,7 @@ export function AppShell({
             Corso
           </Link>
           <div className="flex items-center gap-2">
+            <ThemeToggleButton theme={theme} onToggle={() => setTheme((value) => value === "dark" ? "light" : "dark")} />
             <button
               aria-label="Logout"
               className="inline-flex items-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-sm font-semibold text-slate-100 transition hover:bg-white/15 hover:text-white"
@@ -143,6 +164,9 @@ export function AppShell({
             <span className="text-xs text-slate-400">{roleLabel}</span>
           </span>
         </Link>
+        <div className="mt-4 px-1">
+          <ThemeToggleButton theme={theme} onToggle={() => setTheme((value) => value === "dark" ? "light" : "dark")} wide />
+        </div>
         <nav className="mt-8 grid gap-1">
           {navItems.map((item) => (
             <NavLink key={item.href} item={item} active={pathname === item.href} />
@@ -183,6 +207,34 @@ export function AppShell({
         </nav>
       ) : null}
     </div>
+  );
+}
+
+function ThemeToggleButton({
+  theme,
+  onToggle,
+  wide = false
+}: {
+  theme: ThemeMode;
+  onToggle: () => void;
+  wide?: boolean;
+}) {
+  const showingDark = theme === "dark";
+  const Icon = showingDark ? Sun : Moon;
+  return (
+    <button
+      type="button"
+      aria-label={showingDark ? "Use light theme" : "Use dark theme"}
+      title={showingDark ? "Use light theme" : "Use dark theme"}
+      onClick={onToggle}
+      className={cn(
+        "inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3 text-sm font-semibold text-slate-100 transition hover:bg-white/15 hover:text-white",
+        wide && "w-full justify-start"
+      )}
+    >
+      <Icon className="h-4 w-4" />
+      <span className={cn("hidden", wide ? "lg:inline" : "sm:inline")}>{showingDark ? "Light" : "Dark"}</span>
+    </button>
   );
 }
 

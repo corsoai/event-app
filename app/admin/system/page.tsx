@@ -152,5 +152,10 @@ function Info({ label, value }: { label: string; value: string }) {
 function formatCheckedAt(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return value;
-  return date.toLocaleString();
+  return new Intl.DateTimeFormat("en-NG", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    hour12: true,
+    timeZone: "Africa/Lagos"
+  }).format(date);
 }
