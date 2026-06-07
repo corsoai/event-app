@@ -48,6 +48,7 @@ import Link from "next/link";
 import jsQR from "jsqr";
 import QRCode from "qrcode";
 import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
 import { DataTable } from "@/components/ui/data-table";
@@ -763,37 +764,85 @@ function ResidentDirectoryPanel({
       </div>
 
       {explicitlySelectedResident ? (
-        <div className="fixed inset-0 z-[9999] bg-black/55 px-3 py-4 backdrop-blur-sm lg:hidden" onClick={() => onSelect("")}>
-          <div
-            className="fixed left-1/2 top-1/2 z-[10000] max-h-[85vh] max-h-[85dvh] w-[92vw] max-w-md -translate-x-1/2 -translate-y-1/2 overflow-y-auto rounded-xl border border-smart/30 bg-ink/95 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.65)]"
-            onClick={(event) => event.stopPropagation()}
-          >
-            <div className="mb-2 flex items-center justify-between gap-3">
-              <span className="rounded-full border border-smart/25 bg-smart/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-smart">
-                Resident details
-              </span>
-              <button
-                type="button"
-                className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-slate-200"
-                onClick={() => onSelect("")}
-                aria-label="Close resident details"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <ResidentDetailsPanel
-              resident={explicitlySelectedResident}
-              state={state}
-              source={explicitlySelectedIsLocal ? "Local" : "Database"}
-              onEdit={() => {
-                onEdit(explicitlySelectedResident);
-                onSelect("");
-              }}
-            />
-          </div>
-        </div>
+        <ResidentMobileDetailsOverlay
+          resident={explicitlySelectedResident}
+          state={state}
+          source={explicitlySelectedIsLocal ? "Local" : "Database"}
+          onClose={() => onSelect("")}
+          onEdit={() => {
+            onEdit(explicitlySelectedResident);
+            onSelect("");
+          }}
+        />
       ) : null}
     </Card>
+  );
+}
+
+function ResidentMobileDetailsOverlay({
+  resident,
+  state,
+  source,
+  onClose,
+  onEdit
+}: {
+  resident: Resident;
+  state: LocalEstateState;
+  source: string;
+  onClose: () => void;
+  onEdit: () => void;
+}) {
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
+
+  useEffect(() => {
+    if (!mounted || !window.matchMedia("(max-width: 1023px)").matches) {
+      return;
+    }
+
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [mounted]);
+
+  if (!mounted) {
+    return null;
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[9999] flex items-center justify-center p-3 lg:hidden" role="dialog" aria-modal="true">
+      <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
+      <div className="relative z-[10000] flex max-h-[85vh] max-h-[85dvh] w-[92vw] max-w-md flex-col overflow-hidden rounded-xl border border-smart/30 bg-ink/95 p-3 shadow-[0_24px_80px_rgba(0,0,0,0.65)]">
+        <div className="mb-2 flex shrink-0 items-center justify-between gap-3">
+          <span className="rounded-full border border-smart/25 bg-smart/10 px-2.5 py-1 text-[11px] font-semibold uppercase tracking-[0.14em] text-smart">
+            Resident details
+          </span>
+          <button
+            type="button"
+            className="grid h-9 w-9 place-items-center rounded-full border border-white/10 bg-white/[0.06] text-slate-200"
+            onClick={onClose}
+            aria-label="Close resident details"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto">
+          <ResidentDetailsPanel
+            resident={resident}
+            state={state}
+            source={source}
+            onEdit={onEdit}
+          />
+        </div>
+      </div>
+    </div>,
+    document.body
   );
 }
 
