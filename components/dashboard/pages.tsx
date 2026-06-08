@@ -4525,15 +4525,15 @@ function SecurityAlertCapsule({ alert }: { alert: CsoSecurityAlert }) {
   const fresh = Date.now() - new Date(alert.createdAt).getTime() < 15000;
 
   return (
-    <article className={`rounded-lg border p-3 transition ${fresh ? "animate-pulse ring-1 ring-smart/40" : ""} ${urgent ? "border-danger/30 bg-danger/10" : "border-yellow-300/30 bg-yellow-300/10"}`}>
+    <article className={`security-state-card rounded-lg border p-3 transition ${fresh ? "animate-pulse ring-1 ring-smart/40" : ""} ${urgent ? "security-state-card--warning" : "security-state-card--attention"}`}>
       <div className="flex items-start gap-2">
-        <div className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md ${urgent ? "bg-danger/15 text-red-100" : "bg-yellow-300/15 text-yellow-100"}`}>
+        <div className={`mt-0.5 grid h-8 w-8 shrink-0 place-items-center rounded-md ${urgent ? "security-alert-icon--warning" : "security-alert-icon--attention"}`}>
           {urgent ? <Siren className="h-4 w-4" /> : <AlertTriangle className="h-4 w-4" />}
         </div>
         <div className="min-w-0">
-          <p className="text-sm font-semibold text-white">{alert.title}</p>
-          <p className="mt-1 text-xs text-slate-300">{alert.detail}</p>
-          <p className="mt-2 text-[11px] text-slate-500">{formatDateTime(alert.createdAt)}</p>
+          <p className="security-card-title text-sm font-semibold">{alert.title}</p>
+          <p className="security-card-note mt-1 text-xs">{alert.detail}</p>
+          <p className="security-card-meta mt-2 text-[11px]">{formatDateTime(alert.createdAt)}</p>
         </div>
       </div>
     </article>
@@ -4544,13 +4544,13 @@ function PatrolEventCard({ patrol }: { patrol: GuardPatrolEvent }) {
   const gpsWarning = patrol.isGpsVerified === false || patrol.status === "gps_violation";
   const warning = gpsWarning || patrol.isOfflineLog === true;
   return (
-    <article className={`rounded-lg border p-4 ${warning ? "border-danger/30 bg-danger/10" : "border-smart/25 bg-smart/10"}`}>
+    <article className={`security-state-card rounded-lg border p-4 ${warning ? "security-state-card--warning" : "security-state-card--ok"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="font-semibold text-white">{patrol.checkpointName}</p>
-          <p className="mt-1 text-xs text-slate-400">{patrol.guardName} - {formatDateTime(patrol.scannedAt)}</p>
+          <p className="security-card-title font-semibold">{patrol.checkpointName}</p>
+          <p className="security-card-meta mt-1 text-xs">{patrol.guardName} - {formatDateTime(patrol.scannedAt)}</p>
         </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${warning ? "bg-danger/15 text-red-200" : "bg-smart/15 text-smart"}`}>
+        <span className={`security-status-pill rounded-full px-3 py-1 text-xs font-semibold ${warning ? "security-status-pill--warning" : "security-status-pill--ok"}`}>
           {gpsWarning ? "GPS warning" : "GPS OK"}
         </span>
       </div>
@@ -4560,7 +4560,7 @@ function PatrolEventCard({ patrol }: { patrol: GuardPatrolEvent }) {
         <PatrolFact label="Status" value={patrol.status.replaceAll("_", " ")} />
         <PatrolFact label="Source" value={patrol.isOfflineLog === true ? "Offline sync" : "Live scan"} />
       </dl>
-      {patrol.note ? <p className="mt-3 text-sm text-slate-300">{patrol.note}</p> : null}
+      {patrol.note ? <p className="security-card-note mt-3 text-sm">{patrol.note}</p> : null}
     </article>
   );
 }
@@ -4568,13 +4568,13 @@ function PatrolEventCard({ patrol }: { patrol: GuardPatrolEvent }) {
 function SecurityIncidentCard({ incident }: { incident: SecurityIncident }) {
   const critical = incident.severity === "high" || incident.severity === "critical";
   return (
-    <article className={`rounded-lg border p-4 ${critical ? "border-danger/30 bg-danger/10" : "border-yellow-300/25 bg-yellow-300/10"}`}>
+    <article className={`security-state-card rounded-lg border p-4 ${critical ? "security-state-card--warning" : "security-state-card--attention"}`}>
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="font-semibold text-white">{incident.summary}</p>
-          <p className="mt-1 text-xs text-slate-400">{incident.locationLabel ?? "Estate security"} - {formatDateTime(incident.openedAt)}</p>
+          <p className="security-card-title font-semibold">{incident.summary}</p>
+          <p className="security-card-meta mt-1 text-xs">{incident.locationLabel ?? "Estate security"} - {formatDateTime(incident.openedAt)}</p>
         </div>
-        <span className={`rounded-full px-3 py-1 text-xs font-semibold ${critical ? "bg-danger/15 text-red-200" : "bg-yellow-300/15 text-yellow-100"}`}>
+        <span className={`security-status-pill rounded-full px-3 py-1 text-xs font-semibold ${critical ? "security-status-pill--warning" : "security-status-pill--attention"}`}>
           {incident.severity}
         </span>
       </div>
@@ -4584,20 +4584,20 @@ function SecurityIncidentCard({ incident }: { incident: SecurityIncident }) {
         <PatrolFact label="Type" value={incident.incidentType} />
         <PatrolFact label="Reporter" value={incident.reportedByRole} />
       </dl>
-      {incident.details ? <p className="mt-3 text-sm text-slate-300">{incident.details}</p> : null}
+      {incident.details ? <p className="security-card-note mt-3 text-sm">{incident.details}</p> : null}
     </article>
   );
 }
 
 function CsoReviewCard({ review }: { review: CsoReview }) {
   return (
-    <article className="rounded-lg border border-smart/25 bg-smart/10 p-4">
+    <article className="security-state-card security-state-card--ok rounded-lg border p-4">
       <div className="flex flex-wrap items-start justify-between gap-3">
         <div>
-          <p className="font-semibold text-white">{review.decision}</p>
-          <p className="mt-1 text-xs text-slate-400">Incident {review.incidentId || "pending"} - {formatDateTime(review.reviewedAt)}</p>
+          <p className="security-card-title font-semibold">{review.decision}</p>
+          <p className="security-card-meta mt-1 text-xs">Incident {review.incidentId || "pending"} - {formatDateTime(review.reviewedAt)}</p>
         </div>
-        <span className="rounded-full bg-smart/15 px-3 py-1 text-xs font-semibold text-smart">
+        <span className="security-status-pill security-status-pill--ok rounded-full px-3 py-1 text-xs font-semibold">
           {review.status}
         </span>
       </div>
@@ -4606,7 +4606,7 @@ function CsoReviewCard({ review }: { review: CsoReview }) {
         <PatrolFact label="CSO" value={review.csoProfileId || "Unassigned"} />
         <PatrolFact label="Follow-up" value={review.followUpDate ?? "None"} />
       </dl>
-      {review.note ? <p className="mt-3 text-sm text-slate-300">{review.note}</p> : null}
+      {review.note ? <p className="security-card-note mt-3 text-sm">{review.note}</p> : null}
     </article>
   );
 }
@@ -5043,8 +5043,8 @@ function CheckpointCard({
 function PatrolFact({ label, value }: { label: string; value: string }) {
   return (
     <div className="grid grid-cols-[5rem_1fr] gap-3">
-      <dt className="text-slate-500">{label}</dt>
-      <dd className="min-w-0 break-words text-slate-200">{value}</dd>
+      <dt className="security-card-meta">{label}</dt>
+      <dd className="security-card-value min-w-0 break-words">{value}</dd>
     </div>
   );
 }
