@@ -175,6 +175,30 @@ table td {
   color: rgba(79, 97, 119, 0.86) !important;
 }
 
+:root:not([data-theme="dark"]) .text-ink {
+  color: #14210d !important;
+}
+
+:root:not([data-theme="dark"]) .text-smart {
+  color: #3f7a16 !important;
+}
+
+:root:not([data-theme="dark"]) .text-sky {
+  color: #0d6677 !important;
+}
+
+:root:not([data-theme="dark"]) .text-warn,
+:root:not([data-theme="dark"]) .text-gold,
+:root:not([data-theme="dark"]) .text-yellow-100 {
+  color: #7c4300 !important;
+}
+
+:root:not([data-theme="dark"]) .text-danger,
+:root:not([data-theme="dark"]) .text-red-100,
+:root:not([data-theme="dark"]) .text-red-200 {
+  color: #a91a2a !important;
+}
+
 :root:not([data-theme="dark"]) input,
 :root:not([data-theme="dark"]) select,
 :root:not([data-theme="dark"]) textarea {
