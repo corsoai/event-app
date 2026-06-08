@@ -87,13 +87,15 @@ export type AppwriteResidentDirectory = {
   };
 };
 
-export async function listAppwriteResidentDirectory(): Promise<AppwriteResidentDirectory> {
+export async function listAppwriteResidentDirectory(options: { ensureSchema?: boolean } = {}): Promise<AppwriteResidentDirectory> {
   const config = getAppwriteServerConfig();
   if (!config.configured) {
     throw new Error(`Appwrite server configuration is missing: ${config.missing.join(", ")}`);
   }
 
-  await setupAppwriteOnboardingSchema();
+  if (options.ensureSchema) {
+    await setupAppwriteOnboardingSchema();
+  }
 
   const [propertyRows, unitRows, residentRows] = await Promise.all([
     listAppwriteTableRows<AppwritePropertyRow>("properties"),

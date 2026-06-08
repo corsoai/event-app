@@ -1,6 +1,6 @@
 import type { AuditLog, Bill, Payment, PaymentChannel, Resident } from "@/lib/types";
 import { APPWRITE_LBSVIEW_ESTATE_ID, appwriteRequest, appwriteUpsertRow, getAppwriteServerConfig, safeAppwriteId, setupAppwriteOnboardingSchema } from "@/lib/appwrite/server";
-import { listAppwriteResidentDirectory, listAppwriteTableRows } from "@/lib/appwrite/residents";
+import { listAppwriteResidentDirectory, listAppwriteTableRows, type AppwriteResidentDirectory } from "@/lib/appwrite/residents";
 
 type AppwriteBillRow = {
   $id?: string;
@@ -46,7 +46,34 @@ type AppwriteAuditRow = {
   createdAt?: string;
 };
 
-export type AppwriteAccountingData = Awaited<ReturnType<typeof listAppwriteAccounting>>;
+type AppwriteAccountingResidentRow = {
+  expectedMonthly?: number;
+};
+
+export type AppwriteAccountingData = AppwriteResidentDirectory & {
+  bills: Bill[];
+  payments: Payment[];
+  auditLogs: AuditLog[];
+  total: AppwriteResidentDirectory["total"] & {
+    bills: number;
+    payments: number;
+  };
+};
+export type AppwriteAccountingSummary = {
+  expectedRevenue: number;
+  paidAmount: number;
+  outstandingBalance: number;
+  pendingReviewAmount: number;
+  debtorsCount: number;
+  monthlyExpected: number;
+  residentsCount: number;
+  billsCount: number;
+  paymentsCount: number;
+  channelTotals: Record<string, number>;
+  paymentStatusTotals: Record<string, { count: number; amount: number }>;
+  categoryTotals: Record<string, number>;
+  generatedAt: string;
+};
 
 export type AppwritePaymentInput = {
   billId: string;
@@ -56,11 +83,21 @@ export type AppwritePaymentInput = {
   date?: string;
 };
 
-export async function listAppwriteAccounting() {
-  await setupAppwriteOnboardingSchema();
+const ACCOUNTING_CACHE_MS = 30_000;
+let accountingCache: { data: AppwriteAccountingData; expiresAt: number } | null = null;
+let summaryCache: { data: AppwriteAccountingSummary; expiresAt: number } | null = null;
+
+export async function listAppwriteAccounting(options: { bypassCache?: boolean; ensureSchema?: boolean } = {}) {
+  if (!options.bypassCache && accountingCache && accountingCache.expiresAt > Date.now()) {
+    return accountingCache.data;
+  }
+
+  if (options.ensureSchema) {
+    await setupAppwriteOnboardingSchema();
+  }
 
   const [directory, billRows, paymentRows, auditRows] = await Promise.all([
-    listAppwriteResidentDirectory(),
+    listAppwriteResidentDirectory({ ensureSchema: false }),
     listAppwriteTableRows<AppwriteBillRow>("bills"),
     listAppwriteTableRows<AppwritePaymentRow>("payments"),
     listAppwriteTableRows<AppwriteAuditRow>("audit_logs")
@@ -73,7 +110,7 @@ export async function listAppwriteAccounting() {
     payments
   );
 
-  return {
+  const data = {
     ...directory,
     bills,
     payments,
@@ -84,6 +121,76 @@ export async function listAppwriteAccounting() {
       payments: payments.length
     }
   };
+
+  accountingCache = { data, expiresAt: Date.now() + ACCOUNTING_CACHE_MS };
+  return data;
+}
+
+export async function getAppwriteAccountingSummary(options: { bypassCache?: boolean; ensureSchema?: boolean } = {}): Promise<AppwriteAccountingSummary> {
+  if (!options.bypassCache && summaryCache && summaryCache.expiresAt > Date.now()) {
+    return summaryCache.data;
+  }
+
+  if (options.ensureSchema) {
+    await setupAppwriteOnboardingSchema();
+  }
+
+  const [residentRows, billRows, paymentRows] = await Promise.all([
+    listAppwriteTableRows<AppwriteAccountingResidentRow>("residents"),
+    listAppwriteTableRows<AppwriteBillRow>("bills"),
+    listAppwriteTableRows<AppwritePaymentRow>("payments")
+  ]);
+  const payments = paymentRows.map(mapPaymentRow);
+  const bills = normalizeBillsWithPayments(billRows.map((row) => mapBillRow(row)), payments);
+  const confirmedPayments = payments.filter((payment) => payment.status === "confirmed");
+  const expectedRevenue = bills.reduce((sum, bill) => sum + bill.amount, 0);
+  const paidAmount = confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  const outstandingBalance = bills.reduce((sum, bill) => sum + Math.max(0, bill.amount - numberOrZero(bill.paidAmount)), 0);
+  const pendingReviewAmount = payments
+    .filter((payment) => payment.status === "pending")
+    .reduce((sum, payment) => sum + payment.amount, 0);
+  const channelTotals = confirmedPayments.reduce<Record<string, number>>((totals, payment) => {
+    const channel = channelLabel(payment.channel);
+    totals[channel] = (totals[channel] ?? 0) + payment.amount;
+    return totals;
+  }, {});
+  const paymentStatusTotals = payments.reduce<Record<string, { count: number; amount: number }>>((totals, payment) => {
+    const confirmation = payment.status === "confirmed"
+      ? "Confirmed"
+      : payment.status === "pending"
+        ? "Unconfirmed"
+        : "Rejected";
+    const method = payment.channel === "online" ? "online" : "manual";
+    const key = `${confirmation} ${method}`;
+    totals[key] = {
+      count: (totals[key]?.count ?? 0) + 1,
+      amount: (totals[key]?.amount ?? 0) + payment.amount
+    };
+    return totals;
+  }, {});
+  const categoryTotals = bills.reduce<Record<string, number>>((totals, bill) => {
+    const category = bill.category ?? "Service charge";
+    totals[category] = (totals[category] ?? 0) + bill.amount;
+    return totals;
+  }, {});
+  const data = {
+    expectedRevenue,
+    paidAmount,
+    outstandingBalance,
+    pendingReviewAmount,
+    debtorsCount: bills.filter((bill) => Math.max(0, bill.amount - numberOrZero(bill.paidAmount)) > 0).length,
+    monthlyExpected: residentRows.reduce((sum, resident) => sum + numberOrZero(resident.expectedMonthly), 0),
+    residentsCount: residentRows.length,
+    billsCount: bills.length,
+    paymentsCount: payments.length,
+    channelTotals,
+    paymentStatusTotals,
+    categoryTotals,
+    generatedAt: new Date().toISOString()
+  };
+
+  summaryCache = { data, expiresAt: Date.now() + ACCOUNTING_CACHE_MS };
+  return data;
 }
 
 export async function recordAppwriteAdminPayment(input: AppwritePaymentInput) {
@@ -94,7 +201,6 @@ export async function recordAppwriteAdminPayment(input: AppwritePaymentInput) {
     throw new Error("Bill, payment reference, and amount are required.");
   }
 
-  await setupAppwriteOnboardingSchema();
   const config = getAppwriteServerConfig();
 
   const billRow = await appwriteRequest<AppwriteBillRow>(
@@ -102,7 +208,7 @@ export async function recordAppwriteAdminPayment(input: AppwritePaymentInput) {
     { method: "GET" }
   );
   const resident = billRow.residentId
-    ? (await listAppwriteResidentDirectory()).residents.find((item) => item.id === billRow.residentId)
+    ? (await listAppwriteResidentDirectory({ ensureSchema: false })).residents.find((item) => item.id === billRow.residentId)
     : undefined;
   const now = new Date().toISOString();
   const date = input.date || now.slice(0, 10);
@@ -162,10 +268,17 @@ export async function recordAppwriteAdminPayment(input: AppwritePaymentInput) {
     createdAt: now
   });
 
+  clearAppwriteAccountingCache();
+
   return {
     payment: mapPaymentRow(payment),
     bill: mapBillRow(updatedBill, resident)
   };
+}
+
+export function clearAppwriteAccountingCache() {
+  accountingCache = null;
+  summaryCache = null;
 }
 
 function normalizeBillsWithPayments(bills: Bill[], payments: Payment[]) {
@@ -255,6 +368,22 @@ function mapChannel(value?: string): Payment["channel"] {
   }
 
   return "bank_transfer";
+}
+
+function channelLabel(value?: Payment["channel"]) {
+  switch (value) {
+    case "online":
+      return "Online";
+    case "cash":
+      return "Cash";
+    case "pos":
+      return "POS";
+    case "whatsapp_receipt":
+      return "WhatsApp receipt";
+    case "bank_transfer":
+    default:
+      return "Bank transfer";
+  }
 }
 
 function mapAuditEntity(value?: string): AuditLog["entityType"] {

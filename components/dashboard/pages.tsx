@@ -181,6 +181,22 @@ type AppwriteAccountingDirectory = AppwriteResidentDirectory & {
   };
 };
 
+type AppwriteAccountingSummary = {
+  expectedRevenue: number;
+  paidAmount: number;
+  outstandingBalance: number;
+  pendingReviewAmount: number;
+  debtorsCount: number;
+  monthlyExpected: number;
+  residentsCount: number;
+  billsCount: number;
+  paymentsCount: number;
+  channelTotals: Record<string, number>;
+  paymentStatusTotals: Record<string, { count: number; amount: number }>;
+  categoryTotals: Record<string, number>;
+  generatedAt: string;
+};
+
 type LbsviewOnboardingPreviewRow = {
   sourceRow: number;
   fullName: string;
@@ -318,27 +334,51 @@ function mergeAccountingState(state: LocalEstateState, accounting: AppwriteAccou
 
 function useAdminAccountingState(state: LocalEstateState) {
   const [accounting, setAccounting] = useState<AppwriteAccountingDirectory | null>(null);
+  const [summary, setSummary] = useState<AppwriteAccountingSummary | null>(null);
   const [loadingAccounting, setLoadingAccounting] = useState(false);
-  const [accountingStatus, setAccountingStatus] = useState("Loading Appwrite accounting...");
+  const [loadingAccountingDetails, setLoadingAccountingDetails] = useState(false);
+  const [accountingStatus, setAccountingStatus] = useState("Loading accounting summary...");
 
-  async function refreshAccounting() {
+  async function refreshAccounting(options: { bypassCache?: boolean } = {}) {
     setLoadingAccounting(true);
-    setAccountingStatus("Loading Appwrite accounting...");
+    setLoadingAccountingDetails(false);
+    setAccountingStatus("Loading accounting summary...");
+    const refreshQuery = options.bypassCache ? "?refresh=1" : "";
 
     try {
-      const response = await fetch("/api/appwrite/admin/accounting", { cache: "no-store" });
-      const payload = await response.json().catch(() => null) as (AppwriteAccountingDirectory & { error?: string }) | null;
-      if (!response.ok || !payload) {
-        throw new Error(payload?.error ?? "Unable to load Appwrite accounting.");
+      const summaryResponse = await fetch(`/api/appwrite/admin/accounting/summary${refreshQuery}`, { cache: "no-store" });
+      const summaryPayload = await summaryResponse.json().catch(() => null) as (AppwriteAccountingSummary & { error?: string }) | null;
+      if (!summaryResponse.ok || !summaryPayload) {
+        throw new Error(summaryPayload?.error ?? "Unable to load Appwrite accounting summary.");
       }
 
-      setAccounting(payload);
-      setAccountingStatus(`Loaded ${payload.bills.length} bills and ${payload.payments.length} payments from Appwrite TablesDB.`);
+      setSummary(summaryPayload);
+      setAccountingStatus(`Loaded accounting summary for ${summaryPayload.billsCount} bills and ${summaryPayload.paymentsCount} payments. Loading details...`);
+      setLoadingAccounting(false);
+      setLoadingAccountingDetails(true);
+
+      try {
+        const response = await fetch(`/api/appwrite/admin/accounting${refreshQuery}`, { cache: "no-store" });
+        const payload = await response.json().catch(() => null) as (AppwriteAccountingDirectory & { error?: string }) | null;
+        if (!response.ok || !payload) {
+          throw new Error(payload?.error ?? "Unable to load Appwrite accounting.");
+        }
+
+        setAccounting(payload);
+        setAccountingStatus(`Loaded ${payload.bills.length} bills and ${payload.payments.length} payments from Appwrite TablesDB.`);
+      } catch (detailError) {
+        setAccounting(null);
+        setAccountingStatus(detailError instanceof Error
+          ? `Loaded summary. Detailed accounting is still unavailable: ${detailError.message}`
+          : "Loaded summary. Detailed accounting is still unavailable.");
+      }
     } catch (error) {
       setAccounting(null);
+      setSummary(null);
       setAccountingStatus(error instanceof Error ? error.message : "Using local accounting records.");
     } finally {
       setLoadingAccounting(false);
+      setLoadingAccountingDetails(false);
     }
   }
 
@@ -349,8 +389,10 @@ function useAdminAccountingState(state: LocalEstateState) {
   return {
     accountingState: mergeAccountingState(state, accounting),
     accounting,
+    summary,
     accountingStatus,
     loadingAccounting,
+    loadingAccountingDetails,
     refreshAccounting
   };
 }
@@ -362,14 +404,14 @@ function filenameFromContentDisposition(value: string | null) {
 
 export function AdminDashboard() {
   const { state } = useLocalEstateStore();
-  const { accountingState } = useAdminAccountingState(state);
+  const { accountingState, summary } = useAdminAccountingState(state);
   const confirmedPayments = accountingState.payments.filter((payment) => payment.status === "confirmed");
-  const paid = confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
-  const expected = accountingState.bills.reduce((sum, bill) => sum + bill.amount, 0);
-  const outstanding = accountingState.bills.reduce((sum, bill) => sum + billOutstandingAmount(accountingState, bill), 0);
+  const paid = summary?.paidAmount ?? confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  const expected = summary?.expectedRevenue ?? accountingState.bills.reduce((sum, bill) => sum + bill.amount, 0);
+  const outstanding = summary?.outstandingBalance ?? accountingState.bills.reduce((sum, bill) => sum + billOutstandingAmount(accountingState, bill), 0);
   const onlinePayments = confirmedPayments.filter((payment) => payment.channel === "online").reduce((sum, payment) => sum + payment.amount, 0);
   const manualPayments = confirmedPayments.filter((payment) => payment.channel !== "online").reduce((sum, payment) => sum + payment.amount, 0);
-  const pendingPayments = accountingState.payments.filter((payment) => payment.status === "pending").reduce((sum, payment) => sum + payment.amount, 0);
+  const pendingPayments = summary?.pendingReviewAmount ?? accountingState.payments.filter((payment) => payment.status === "pending").reduce((sum, payment) => sum + payment.amount, 0);
 
   return (
     <>
@@ -2039,14 +2081,14 @@ export function BillsAdminPage() {
 
 export function PaymentsAdminPage() {
   const { state, addPayment, confirmPayment } = useLocalEstateStore();
-  const { accountingState, accounting, accountingStatus, loadingAccounting, refreshAccounting } = useAdminAccountingState(state);
+  const { accountingState, accounting, summary, accountingStatus, loadingAccounting, loadingAccountingDetails, refreshAccounting } = useAdminAccountingState(state);
   const [paymentMessage, setPaymentMessage] = useState("");
   const [savingPayment, setSavingPayment] = useState(false);
-  const expected = accountingState.bills.reduce((sum, bill) => sum + bill.amount, 0);
-  const confirmed = accountingState.payments.filter((payment) => payment.status === "confirmed").reduce((sum, payment) => sum + payment.amount, 0);
-  const pendingReview = accountingState.payments.filter((payment) => payment.status === "pending").reduce((sum, payment) => sum + payment.amount, 0);
-  const outstanding = accountingState.bills.reduce((sum, bill) => sum + billOutstandingAmount(accountingState, bill), 0);
-  const debtors = accountingState.bills.filter((bill) => billOutstandingAmount(accountingState, bill) > 0).length;
+  const expected = summary?.expectedRevenue ?? accountingState.bills.reduce((sum, bill) => sum + bill.amount, 0);
+  const confirmed = summary?.paidAmount ?? accountingState.payments.filter((payment) => payment.status === "confirmed").reduce((sum, payment) => sum + payment.amount, 0);
+  const pendingReview = summary?.pendingReviewAmount ?? accountingState.payments.filter((payment) => payment.status === "pending").reduce((sum, payment) => sum + payment.amount, 0);
+  const outstanding = summary?.outstandingBalance ?? accountingState.bills.reduce((sum, bill) => sum + billOutstandingAmount(accountingState, bill), 0);
+  const debtors = summary?.debtorsCount ?? accountingState.bills.filter((bill) => billOutstandingAmount(accountingState, bill) > 0).length;
   const payableBills = accountingState.bills.filter((bill) => billOutstandingAmount(accountingState, bill) > 0);
 
   async function submitAdminPayment(event: FormEvent<HTMLFormElement>) {
@@ -2080,7 +2122,7 @@ export function PaymentsAdminPage() {
         if (!response.ok) {
           throw new Error(payload?.error ?? "Unable to record Appwrite payment.");
         }
-        await refreshAccounting();
+        await refreshAccounting({ bypassCache: true });
       } else {
         addPayment({
           billId: bill.id,
@@ -2105,9 +2147,9 @@ export function PaymentsAdminPage() {
   return (
     <>
       <PageHeader title="Payments" description="Online payments confirm automatically through processor webhooks. Manual bank transfers, cash, POS, and WhatsApp receipts stay available as admin-reviewed fallback.">
-        <Button type="button" variant="secondary" onClick={() => void refreshAccounting()} disabled={loadingAccounting}>
+        <Button type="button" variant="secondary" onClick={() => void refreshAccounting({ bypassCache: true })} disabled={loadingAccounting || loadingAccountingDetails}>
           <RefreshCw className="h-4 w-4" />
-          {loadingAccounting ? "Refreshing" : "Refresh accounting"}
+          {loadingAccounting || loadingAccountingDetails ? "Refreshing" : "Refresh accounting"}
         </Button>
       </PageHeader>
       <p className="mb-4 rounded-lg border border-line bg-ink/50 px-3 py-2 text-sm text-slate-300">{accountingStatus}</p>
@@ -2351,18 +2393,18 @@ function KnowledgeBasePage({ manager = false }: { manager?: boolean }) {
 
 export function ReportsPage() {
   const { state } = useLocalEstateStore();
-  const { accountingState, accountingStatus, loadingAccounting, refreshAccounting } = useAdminAccountingState(state);
-  const expectedRevenue = accountingState.bills.reduce((sum, bill) => sum + bill.amount, 0);
+  const { accountingState, summary, accountingStatus, loadingAccounting, loadingAccountingDetails, refreshAccounting } = useAdminAccountingState(state);
+  const expectedRevenue = summary?.expectedRevenue ?? accountingState.bills.reduce((sum, bill) => sum + bill.amount, 0);
   const confirmedPayments = accountingState.payments.filter((payment) => payment.status === "confirmed");
-  const paidAmount = confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
-  const outstandingBalance = accountingState.bills.reduce((sum, bill) => sum + billOutstandingAmount(accountingState, bill), 0);
+  const paidAmount = summary?.paidAmount ?? confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  const outstandingBalance = summary?.outstandingBalance ?? accountingState.bills.reduce((sum, bill) => sum + billOutstandingAmount(accountingState, bill), 0);
   const debtorBills = accountingState.bills.filter((bill) => billOutstandingAmount(accountingState, bill) > 0);
-  const channelTotals = confirmedPayments.reduce<Record<string, number>>((totals, payment) => {
+  const channelTotals = summary?.channelTotals ?? confirmedPayments.reduce<Record<string, number>>((totals, payment) => {
     const channel = paymentChannelLabel(payment);
     totals[channel] = (totals[channel] ?? 0) + payment.amount;
     return totals;
   }, {});
-  const paymentStatusTotals = accountingState.payments.reduce<Record<string, { count: number; amount: number }>>((totals, payment) => {
+  const paymentStatusTotals = summary?.paymentStatusTotals ?? accountingState.payments.reduce<Record<string, { count: number; amount: number }>>((totals, payment) => {
     const confirmation = payment.status === "confirmed"
       ? "Confirmed"
       : payment.status === "pending"
@@ -2378,7 +2420,7 @@ export function ReportsPage() {
 
     return totals;
   }, {});
-  const categoryTotals = accountingState.bills.reduce<Record<string, number>>((totals, bill) => {
+  const categoryTotals = summary?.categoryTotals ?? accountingState.bills.reduce<Record<string, number>>((totals, bill) => {
     const category = bill.category ?? "Service charge";
     totals[category] = (totals[category] ?? 0) + bill.amount;
     return totals;
@@ -2387,9 +2429,9 @@ export function ReportsPage() {
   return (
     <>
       <PageHeader title="Reports" description="Accounting and operations analytics for expected revenue, confirmed payments, outstanding balances, debtors, channels, categories, and audit trail.">
-        <Button type="button" variant="secondary" onClick={() => void refreshAccounting()} disabled={loadingAccounting}>
+        <Button type="button" variant="secondary" onClick={() => void refreshAccounting({ bypassCache: true })} disabled={loadingAccounting || loadingAccountingDetails}>
           <RefreshCw className="h-4 w-4" />
-          {loadingAccounting ? "Refreshing" : "Refresh reports"}
+          {loadingAccounting || loadingAccountingDetails ? "Refreshing" : "Refresh reports"}
         </Button>
       </PageHeader>
       <p className="mb-4 rounded-lg border border-line bg-ink/50 px-3 py-2 text-sm text-slate-300">{accountingStatus}</p>
@@ -2397,7 +2439,7 @@ export function ReportsPage() {
         <StatCard label="Expected revenue" value={money(expectedRevenue)} helper="All bills issued" icon={<ReceiptText className="h-5 w-5" />} />
         <StatCard label="Paid amount" value={money(paidAmount)} helper="Confirmed payments" icon={<WalletCards className="h-5 w-5" />} />
         <StatCard label="Outstanding" value={money(outstandingBalance)} helper="Open balance" icon={<Landmark className="h-5 w-5" />} />
-        <StatCard label="Debtors" value={String(debtorBills.length)} helper="Bills with balance" icon={<Users className="h-5 w-5" />} />
+        <StatCard label="Debtors" value={String(summary?.debtorsCount ?? debtorBills.length)} helper="Bills with balance" icon={<Users className="h-5 w-5" />} />
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <DataTable

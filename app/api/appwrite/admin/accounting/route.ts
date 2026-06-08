@@ -12,7 +12,9 @@ export async function GET(request: NextRequest) {
   }
 
   try {
-    const accounting = await listAppwriteAccounting();
+    const accounting = await listAppwriteAccounting({
+      bypassCache: request.nextUrl.searchParams.get("refresh") === "1"
+    });
     return NextResponse.json(accounting);
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load Appwrite accounting.";
