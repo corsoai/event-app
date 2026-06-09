@@ -529,6 +529,8 @@ export function ResidentsAdminPage() {
   const [loadingAppwriteDirectory, setLoadingAppwriteDirectory] = useState(false);
   const [exportingScope, setExportingScope] = useState<"" | "residents" | "all">("");
   const [selectedResidentId, setSelectedResidentId] = useState("");
+  const [creatingResidentLoginId, setCreatingResidentLoginId] = useState("");
+  const [residentLoginCredential, setResidentLoginCredential] = useState<TemporaryCredential | null>(null);
   const directoryState = appwriteDirectory?.residents.length
     ? {
         ...state,
@@ -628,6 +630,78 @@ export function ResidentsAdminPage() {
     }
   }
 
+  async function createResidentLogin(resident: Resident) {
+    const unit = getResidentUnit(directoryState, resident);
+    const houseNumber = unit?.unitCode ?? (
+      resident.houseNumber && resident.houseNumber !== "Pending assignment" ? resident.houseNumber : ""
+    );
+
+    if (!resident.phone.trim()) {
+      setResidentMessage("Add this resident's phone number before creating a login.");
+      return;
+    }
+
+    if (!houseNumber.trim()) {
+      setResidentMessage("Assign this resident to a property / unit ID before creating a login.");
+      return;
+    }
+
+    const password = window.prompt(
+      `Set login password for ${resident.name}. Leave blank to auto-generate a temporary password.`,
+      ""
+    );
+
+    if (password === null) {
+      return;
+    }
+
+    setCreatingResidentLoginId(resident.id);
+    setResidentMessage("");
+    setResidentLoginCredential(null);
+
+    try {
+      const response = await fetch("/api/appwrite/admin/users", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          fullName: resident.name,
+          email: resident.email,
+          phone: resident.phone,
+          role: "resident",
+          estateId: resident.estateId || state.estates[0]?.id || "",
+          houseNumber,
+          password
+        })
+      });
+      const payload = await response.json().catch(() => null) as {
+        message?: string;
+        loginIdentifier?: string;
+        temporaryPassword?: string;
+        user?: { fullName?: string };
+        error?: string;
+      } | null;
+
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Resident login could not be created.");
+      }
+
+      setResidentMessage(payload?.message ?? `${resident.name}'s resident login has been created.`);
+      setResidentLoginCredential({
+        fullName: payload?.user?.fullName ?? resident.name,
+        role: "resident",
+        loginIdentifier: payload?.loginIdentifier ?? resident.phone,
+        password: payload?.temporaryPassword ?? password
+      });
+      await refreshAppwriteResidentDirectory();
+    } catch (error) {
+      setResidentMessage(error instanceof Error ? error.message : "Resident login could not be created.");
+    } finally {
+      setCreatingResidentLoginId("");
+    }
+  }
+
   async function updateAppwriteResidentFromDirectory(residentId: string, input: ResidentEditInput) {
     const response = await fetch("/api/appwrite/admin/residents", {
       method: "PATCH",
@@ -684,6 +758,11 @@ export function ResidentsAdminPage() {
         onRefresh={() => void refreshEstateState()}
       />
       {residentMessage ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{residentMessage}</p> : null}
+      {residentLoginCredential ? (
+        <div className="mb-4">
+          <TemporaryCredentialBox credential={residentLoginCredential} />
+        </div>
+      ) : null}
       {onboardingMessage ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{onboardingMessage}</p> : null}
       {editingResident ? (
         <ResidentEditCard
@@ -704,6 +783,8 @@ export function ResidentsAdminPage() {
         onRefresh={() => void refreshAppwriteResidentDirectory()}
         onSelect={setSelectedResidentId}
         onEdit={(resident) => setEditingResident(resident)}
+        onCreateLogin={(resident) => void createResidentLogin(resident)}
+        creatingLoginId={creatingResidentLoginId}
       />
       <div className="mt-6">
         <ResidentOnboardingPanel
@@ -789,7 +870,9 @@ function ResidentDirectoryPanel({
   loading,
   onRefresh,
   onSelect,
-  onEdit
+  onEdit,
+  onCreateLogin,
+  creatingLoginId
 }: {
   residents: Resident[];
   state: LocalEstateState;
@@ -800,6 +883,8 @@ function ResidentDirectoryPanel({
   onRefresh: () => void;
   onSelect: (residentId: string) => void;
   onEdit: (resident: Resident) => void;
+  onCreateLogin: (resident: Resident) => void;
+  creatingLoginId: string;
 }) {
   const [residentSearch, setResidentSearch] = useState("");
   const [propertyFilter, setPropertyFilter] = useState("all");
@@ -983,6 +1068,8 @@ function ResidentDirectoryPanel({
             state={state}
             source={selectedIsLocal ? "Local" : "Database"}
             onEdit={selectedResident ? () => onEdit(selectedResident) : undefined}
+            onCreateLogin={selectedResident ? () => onCreateLogin(selectedResident) : undefined}
+            creatingLogin={selectedResident ? creatingLoginId === selectedResident.id : false}
           />
         </div>
       </div>
@@ -997,6 +1084,8 @@ function ResidentDirectoryPanel({
             onEdit(explicitlySelectedResident);
             onSelect("");
           }}
+          onCreateLogin={() => onCreateLogin(explicitlySelectedResident)}
+          creatingLogin={creatingLoginId === explicitlySelectedResident.id}
         />
       ) : null}
     </Card>
@@ -1008,13 +1097,17 @@ function ResidentMobileDetailsOverlay({
   state,
   source,
   onClose,
-  onEdit
+  onEdit,
+  onCreateLogin,
+  creatingLogin
 }: {
   resident: Resident;
   state: LocalEstateState;
   source: string;
   onClose: () => void;
   onEdit: () => void;
+  onCreateLogin: () => void;
+  creatingLogin: boolean;
 }) {
   const [mounted, setMounted] = useState(false);
 
@@ -1062,6 +1155,8 @@ function ResidentMobileDetailsOverlay({
             state={state}
             source={source}
             onEdit={onEdit}
+            onCreateLogin={onCreateLogin}
+            creatingLogin={creatingLogin}
           />
         </div>
       </div>
@@ -1149,12 +1244,16 @@ function ResidentDetailsPanel({
   resident,
   state,
   source,
-  onEdit
+  onEdit,
+  onCreateLogin,
+  creatingLogin = false
 }: {
   resident?: Resident;
   state: LocalEstateState;
   source: string;
   onEdit?: () => void;
+  onCreateLogin?: () => void;
+  creatingLogin?: boolean;
 }) {
   if (!resident) {
     return (
@@ -1206,12 +1305,16 @@ function ResidentDetailsPanel({
             Edit
           </Button>
         )}
-        <Link href="/admin/users">
-          <Button type="button" variant="secondary" className="w-full">
-            <Users className="h-4 w-4" />
-            Login
-          </Button>
-        </Link>
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          disabled={!onCreateLogin || creatingLogin}
+          onClick={onCreateLogin}
+        >
+          <KeyRound className="h-4 w-4" />
+          {creatingLogin ? "Creating" : "Create login"}
+        </Button>
         <Link href="/admin/payments">
           <Button type="button" variant="secondary" className="w-full">
             <WalletCards className="h-4 w-4" />
