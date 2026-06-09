@@ -1594,6 +1594,41 @@ export function residentUnitLabel(state: LocalEstateState, resident: Resident) {
   return unit?.unitCode ?? resident.houseNumber;
 }
 
+export function residentPropertyDisplayLabel(state: LocalEstateState, resident: Resident) {
+  const unit = getResidentUnit(state, resident);
+  const property = getResidentProperty(state, resident);
+  const split = splitPropertyUnitCode(unit?.unitCode ?? resident.houseNumber);
+
+  return property?.propertyCode ?? split.propertyCode ?? "Property pending";
+}
+
+export function residentUnitDisplayLabel(state: LocalEstateState, resident: Resident) {
+  const unit = getResidentUnit(state, resident);
+  const split = splitPropertyUnitCode(unit?.unitCode ?? resident.houseNumber);
+
+  return split.unitLabel || unit?.label || unit?.unitCode || resident.houseNumber || "Unit pending";
+}
+
+export function splitPropertyUnitCode(value: string) {
+  const normalized = normalizeOnboardingUnitCode(value);
+  const ldiMatch = normalized.match(/^(LDI-\d+)-([A-Z0-9]+)$/);
+  if (ldiMatch) {
+    return { propertyCode: ldiMatch[1], unitLabel: ldiMatch[2] };
+  }
+
+  const dashedMatch = normalized.match(/^([A-Z]+)-(\d+[A-Z]?)$/);
+  if (dashedMatch) {
+    return { propertyCode: dashedMatch[1], unitLabel: dashedMatch[2] };
+  }
+
+  const compactMatch = normalized.match(/^([A-Z]+)(\d+[A-Z]?)$/);
+  if (compactMatch) {
+    return { propertyCode: compactMatch[1], unitLabel: compactMatch[2] };
+  }
+
+  return { propertyCode: "", unitLabel: normalized };
+}
+
 export function billPaidAmount(state: LocalEstateState, bill: Bill) {
   return bill.paidAmount ?? paymentTotalForBill(state.payments, bill.id);
 }

@@ -69,6 +69,8 @@ import {
   getResidentProperty,
   getResidentUnit,
   residentBillingBalance,
+  residentPropertyDisplayLabel,
+  residentUnitDisplayLabel,
   residentUnitLabel,
   type LocalAccessRequest,
   type LocalEstateState,
@@ -1265,6 +1267,10 @@ function ResidentDetailsPanel({
 
   const unit = getResidentUnit(state, resident);
   const property = getResidentProperty(state, resident);
+  const propertyDisplay = residentPropertyDisplayLabel(state, resident);
+  const propertyDetail = property?.name && property.name !== propertyDisplay
+    ? `${propertyDisplay} - ${property.name}`
+    : propertyDisplay;
 
   return (
     <aside className="rounded-lg border border-smart/20 bg-black/30 p-3 shadow-[0_14px_32px_rgba(0,0,0,0.22)] sm:p-4 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:overscroll-contain">
@@ -1282,8 +1288,9 @@ function ResidentDetailsPanel({
         <ResidentDetailLine label="Type" value={resident.type} />
         <ResidentDetailLine label="Phone" value={resident.phone || "No phone"} />
         <ResidentDetailLine label="Email" value={resident.email || "No email"} />
-        <ResidentDetailLine label="Property" value={property ? `${property.propertyCode} - ${property.name}` : "Property pending"} />
-        <ResidentDetailLine label="Unit" value={unit ? `${unit.unitCode} - ${unit.apartmentType}` : "Unit pending"} />
+        <ResidentDetailLine label="Property" value={propertyDetail} />
+        <ResidentDetailLine label="Unit" value={residentUnitDisplayLabel(state, resident)} />
+        <ResidentDetailLine label="Full unit ID" value={unit?.unitCode ?? resident.houseNumber} />
         <ResidentDetailLine label="Opening balance" value={money(resident.openingOutstanding ?? 0)} />
         <ResidentDetailLine label="Monthly due" value={money(resident.expectedMonthly ?? 0)} />
         <ResidentDetailLine label="Review state" value={resident.onboardingStatus === "needs_review" ? "Needs review" : "Verified"} />
