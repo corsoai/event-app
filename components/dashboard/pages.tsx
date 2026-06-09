@@ -4150,7 +4150,7 @@ export function PaymentHistoryPage() {
                 </Select>
               </Field>
               <Field label="Payment reference"><Input name="reference" placeholder="BANK-TRANSFER-REF" required /></Field>
-              <Field label="Amount"><Input name="amount" type="number" placeholder="85000" min={1} required /></Field>
+              <Field label="Amount"><Input name="amount" type="number" placeholder="4000" min={1} required /></Field>
               <Field label="Channel">
                 <Select name="channel" defaultValue="bank_transfer">
                   <option value="bank_transfer">Bank transfer</option>

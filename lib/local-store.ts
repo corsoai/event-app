@@ -241,8 +241,32 @@ function defaultState(): LocalEstateState {
   };
 }
 
+export function isBrowserLocalStateEnabled() {
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const hostname = window.location.hostname.toLowerCase();
+  const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+
+  return isLocalHost && process.env.NEXT_PUBLIC_ENABLE_LOCAL_DEMO === "true";
+}
+
+function clearBrowserLocalEstateState() {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  window.localStorage.removeItem(STORAGE_KEY);
+}
+
 export function readLocalEstateState() {
   if (typeof window === "undefined") {
+    return defaultState();
+  }
+
+  if (!isBrowserLocalStateEnabled()) {
+    clearBrowserLocalEstateState();
     return defaultState();
   }
 
@@ -259,7 +283,7 @@ export function readLocalEstateState() {
 }
 
 function saveLocalEstateState(next: LocalEstateState) {
-  if (typeof window !== "undefined") {
+  if (typeof window !== "undefined" && isBrowserLocalStateEnabled()) {
     window.localStorage.setItem(STORAGE_KEY, JSON.stringify(next));
     window.dispatchEvent(new Event(STATE_UPDATED_EVENT));
   }
@@ -1420,8 +1444,10 @@ export function useLocalEstateStore() {
 
   function resetLocalDemo() {
     const fresh = defaultState();
-    if (typeof window !== "undefined") {
+    if (typeof window !== "undefined" && isBrowserLocalStateEnabled()) {
       window.localStorage.setItem(STORAGE_KEY, JSON.stringify(fresh));
+    } else {
+      clearBrowserLocalEstateState();
     }
     setState(fresh);
   }
@@ -1479,6 +1505,10 @@ export function createLocalAccessRequest(input: {
   role: UserRole;
   estate: string;
 }) {
+  if (!isBrowserLocalStateEnabled()) {
+    throw new Error("Local demo access requests are disabled on this deployment.");
+  }
+
   const current = readLocalEstateState();
   const normalizedPhone = normalizePhoneNumber(input.phone);
   const normalizedEmail = input.email?.trim().toLowerCase() ?? "";
@@ -1519,6 +1549,10 @@ export function createLocalAccessRequest(input: {
 }
 
 export function findApprovedLocalUser(identifier: string, password: string) {
+  if (!isBrowserLocalStateEnabled()) {
+    return undefined;
+  }
+
   const normalizedEmail = loginIdentifierToEmail(identifier);
   const normalizedPhone = normalizePhoneNumber(identifier);
   return readLocalEstateState().approvedUsers.find(
@@ -1527,6 +1561,10 @@ export function findApprovedLocalUser(identifier: string, password: string) {
 }
 
 export function findLocalAccessRequest(identifier: string) {
+  if (!isBrowserLocalStateEnabled()) {
+    return undefined;
+  }
+
   const normalizedEmail = loginIdentifierToEmail(identifier);
   const normalizedPhone = normalizePhoneNumber(identifier);
   return readLocalEstateState().accessRequests.find(

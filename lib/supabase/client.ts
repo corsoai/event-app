@@ -9,7 +9,14 @@ export function isSupabaseConfigured() {
 }
 
 export function isLocalDemoEnabled() {
-  return !isSupabaseConfigured() || process.env.NEXT_PUBLIC_ENABLE_LOCAL_DEMO === "true";
+  if (typeof window === "undefined") {
+    return false;
+  }
+
+  const hostname = window.location.hostname.toLowerCase();
+  const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
+
+  return isLocalHost && process.env.NEXT_PUBLIC_ENABLE_LOCAL_DEMO === "true";
 }
 
 export function getSupabaseBrowserClient() {

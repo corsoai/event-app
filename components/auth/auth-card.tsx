@@ -279,16 +279,16 @@ export function AuthCard({ mode }: { mode: Mode }) {
         return;
       }
 
-      if (!appwriteResult.canFallback && !demoUser) {
+      if (!localDemoEnabled) {
         setMessageTone("error");
         setMessage(appwriteResult.error ?? "Invalid login details.");
         setLoading(false);
         return;
       }
 
-      if (!localDemoEnabled && !demoUser) {
+      if (!appwriteResult.canFallback && !demoUser) {
         setMessageTone("error");
-        setMessage(appwriteResult.error ?? "No configured login backend is available.");
+        setMessage(appwriteResult.error ?? "Invalid login details.");
         setLoading(false);
         return;
       }
