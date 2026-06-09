@@ -1599,7 +1599,7 @@ export function residentPropertyDisplayLabel(state: LocalEstateState, resident: 
   const property = getResidentProperty(state, resident);
   const split = splitPropertyUnitCode(unit?.unitCode ?? resident.houseNumber);
 
-  return property?.propertyCode ?? split.propertyCode ?? "Property pending";
+  return split.propertyCode || property?.propertyCode || "Property pending";
 }
 
 export function residentUnitDisplayLabel(state: LocalEstateState, resident: Resident) {

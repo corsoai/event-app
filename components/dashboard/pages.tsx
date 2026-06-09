@@ -1265,12 +1265,8 @@ function ResidentDetailsPanel({
     );
   }
 
-  const unit = getResidentUnit(state, resident);
-  const property = getResidentProperty(state, resident);
   const propertyDisplay = residentPropertyDisplayLabel(state, resident);
-  const propertyDetail = property?.name && property.name !== propertyDisplay
-    ? `${propertyDisplay} - ${property.name}`
-    : propertyDisplay;
+  const unitDisplay = residentUnitDisplayLabel(state, resident);
 
   return (
     <aside className="rounded-lg border border-smart/20 bg-black/30 p-3 shadow-[0_14px_32px_rgba(0,0,0,0.22)] sm:p-4 lg:max-h-[calc(100vh-6rem)] lg:overflow-y-auto lg:overscroll-contain">
@@ -1278,7 +1274,7 @@ function ResidentDetailsPanel({
         <div className="min-w-0">
           <p className="text-xs uppercase tracking-[0.18em] text-smart">Resident</p>
           <h2 className="mt-1 break-words text-lg font-semibold text-white sm:text-xl">{resident.name}</h2>
-          <p className="mt-1 font-mono text-sm text-smart">{residentUnitLabel(state, resident)}</p>
+          <p className="mt-1 font-mono text-sm text-smart">{propertyDisplay} / {unitDisplay}</p>
         </div>
         <StatusBadge status={resident.status} />
       </div>
@@ -1288,9 +1284,8 @@ function ResidentDetailsPanel({
         <ResidentDetailLine label="Type" value={resident.type} />
         <ResidentDetailLine label="Phone" value={resident.phone || "No phone"} />
         <ResidentDetailLine label="Email" value={resident.email || "No email"} />
-        <ResidentDetailLine label="Property" value={propertyDetail} />
-        <ResidentDetailLine label="Unit" value={residentUnitDisplayLabel(state, resident)} />
-        <ResidentDetailLine label="Full unit ID" value={unit?.unitCode ?? resident.houseNumber} />
+        <ResidentDetailLine label="Property" value={propertyDisplay} />
+        <ResidentDetailLine label="Unit" value={unitDisplay} />
         <ResidentDetailLine label="Opening balance" value={money(resident.openingOutstanding ?? 0)} />
         <ResidentDetailLine label="Monthly due" value={money(resident.expectedMonthly ?? 0)} />
         <ResidentDetailLine label="Review state" value={resident.onboardingStatus === "needs_review" ? "Needs review" : "Verified"} />
