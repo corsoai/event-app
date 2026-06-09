@@ -40,6 +40,7 @@ export type AppwriteBillingImportSummary = {
     expectedPayment: number;
     amountPaid: number;
     openingOutstanding: number;
+    creditBalance: number;
     expectedMonthly: number;
   };
   skippedReasons: Array<{ reason: string; count: number }>;
@@ -85,8 +86,8 @@ export async function importBillingPreviewRows(rows: LbsviewOnboardingPreviewRow
     const amountPaid = numberOrZero(source.amountPaid);
     const openingOutstanding = numberOrZero(source.openingOutstanding);
     const expectedMonthly = numberOrZero(source.expectedMonthly);
-    const billAmount = Math.max(expectedPayment, openingOutstanding + amountPaid, openingOutstanding);
-    const paidAmount = Math.min(amountPaid, billAmount);
+    const billAmount = legacyBillAmount(expectedPayment, amountPaid, openingOutstanding);
+    const paidAmount = amountPaid;
 
     await appwriteUpsertRow<AppwriteResidentRow>("residents", row.residentId, {
       estateId: resident.estateId ?? APPWRITE_LBSVIEW_ESTATE_ID,
@@ -247,11 +248,13 @@ function summarizeBillingPlan(
     expectedPayment: sum.expectedPayment + numberOrZero(row.expectedPayment),
     amountPaid: sum.amountPaid + numberOrZero(row.amountPaid),
     openingOutstanding: sum.openingOutstanding + numberOrZero(row.openingOutstanding),
+    creditBalance: sum.creditBalance + Math.max(0, numberOrZero(row.amountPaid) - numberOrZero(row.expectedPayment)),
     expectedMonthly: sum.expectedMonthly + numberOrZero(row.expectedMonthly)
   }), {
     expectedPayment: 0,
     amountPaid: 0,
     openingOutstanding: 0,
+    creditBalance: 0,
     expectedMonthly: 0
   });
 
@@ -268,6 +271,12 @@ function summarizeBillingPlan(
       .map(([reason, count]) => ({ reason, count }))
       .sort((left, right) => right.count - left.count)
   };
+}
+
+function legacyBillAmount(expectedPayment: number, amountPaid: number, openingOutstanding: number) {
+  if (expectedPayment > 0) return expectedPayment;
+  if (openingOutstanding > 0 && amountPaid > 0) return openingOutstanding + amountPaid;
+  return Math.max(openingOutstanding, amountPaid);
 }
 
 function basicSkipReason(row: LbsviewOnboardingPreviewRow) {

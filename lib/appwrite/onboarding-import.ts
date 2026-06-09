@@ -184,8 +184,8 @@ export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreview
       const expectedPayment = numberOrZero(source.expectedPayment);
       const amountPaid = numberOrZero(source.amountPaid);
       const openingOutstanding = Math.max(0, numberOrZero(source.openingOutstanding));
-      const billAmount = Math.max(expectedPayment, openingOutstanding + amountPaid, openingOutstanding);
-      const paidAmount = Math.min(amountPaid, billAmount);
+      const billAmount = legacyBillAmount(expectedPayment, amountPaid, openingOutstanding);
+      const paidAmount = amountPaid;
 
       await appwriteUpsertRow("bills", row.openingBillId, {
         estateId: APPWRITE_LBSVIEW_ESTATE_ID,
@@ -445,6 +445,12 @@ function billStatus(amount: number, paidAmount: number, openingOutstanding: numb
   if (paidAmount >= amount || (openingOutstanding === 0 && amount === paidAmount)) return "paid";
   if (paidAmount > 0) return "partially_paid";
   return "unpaid";
+}
+
+function legacyBillAmount(expectedPayment: number, amountPaid: number, openingOutstanding: number) {
+  if (expectedPayment > 0) return expectedPayment;
+  if (openingOutstanding > 0 && amountPaid > 0) return openingOutstanding + amountPaid;
+  return Math.max(openingOutstanding, amountPaid);
 }
 
 function uniqueBy<T>(rows: T[], keyFor: (row: T) => string) {

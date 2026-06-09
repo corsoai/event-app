@@ -62,11 +62,13 @@ import {
   knowledgeBase,
 } from "@/lib/demo-data";
 import {
+  billCreditAmount,
   billOutstandingAmount,
   billPaidAmount,
   getCurrentResident,
   getResidentProperty,
   getResidentUnit,
+  residentBillingBalance,
   residentUnitLabel,
   type LocalAccessRequest,
   type LocalEstateState,
@@ -148,6 +150,7 @@ type AppwriteBillingImportSummary = {
     expectedPayment: number;
     amountPaid: number;
     openingOutstanding: number;
+    creditBalance?: number;
     expectedMonthly: number;
   };
   skippedReasons: Array<{ reason: string; count: number }>;
@@ -185,8 +188,11 @@ type AppwriteAccountingSummary = {
   expectedRevenue: number;
   paidAmount: number;
   outstandingBalance: number;
+  creditBalance?: number;
+  netReceivable?: number;
   pendingReviewAmount: number;
   debtorsCount: number;
+  residentsInCredit?: number;
   monthlyExpected: number;
   residentsCount: number;
   billsCount: number;
@@ -409,6 +415,7 @@ export function AdminDashboard() {
   const paid = summary?.paidAmount ?? confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
   const expected = summary?.expectedRevenue ?? accountingState.bills.reduce((sum, bill) => sum + bill.amount, 0);
   const outstanding = summary?.outstandingBalance ?? accountingState.bills.reduce((sum, bill) => sum + billOutstandingAmount(accountingState, bill), 0);
+  const credit = summary?.creditBalance ?? accountingState.bills.reduce((sum, bill) => sum + billCreditAmount(accountingState, bill), 0);
   const onlinePayments = confirmedPayments.filter((payment) => payment.channel === "online").reduce((sum, payment) => sum + payment.amount, 0);
   const manualPayments = confirmedPayments.filter((payment) => payment.channel !== "online").reduce((sum, payment) => sum + payment.amount, 0);
   const pendingPayments = summary?.pendingReviewAmount ?? accountingState.payments.filter((payment) => payment.status === "pending").reduce((sum, payment) => sum + payment.amount, 0);
@@ -445,11 +452,12 @@ export function AdminDashboard() {
           ])}
         />
         <Card>
-          <CardHeader title="Revenue snapshot" description="Expected revenue, confirmed payments, outstanding balances, and pending reviews." />
+          <CardHeader title="Revenue snapshot" description="Expected revenue, confirmed payments, outstanding balances, credits, and pending reviews." />
           <div className="space-y-5">
             <Progress label="Expected revenue" value={expected} max={expected} />
             <Progress label="Confirmed paid" value={paid} max={expected} />
             <Progress label="Outstanding" value={outstanding} max={expected} tone="bg-warn" />
+            <Progress label="Credit / advance" value={credit} max={expected} tone="bg-smart" />
             <Progress label="Confirmed online" value={onlinePayments} max={expected} tone="bg-sky" />
             <Progress label="Confirmed manual" value={manualPayments} max={expected} tone="bg-slate-400" />
             <Progress label="Pending review" value={pendingPayments} max={expected} tone="bg-red-400" />
@@ -1713,7 +1721,10 @@ function AppwriteOnboardingPanel() {
               <div className="mt-3 grid gap-3 text-xs text-slate-400 sm:grid-cols-2 xl:grid-cols-4">
                 <p>Finance rows: <span className="font-semibold text-white">{billingSummary.financeRows}</span></p>
                 <p>Matched: <span className="font-semibold text-white">{billingSummary.matchedResidents}</span></p>
+                <p>Expected: <span className="font-semibold text-white">{money(billingSummary.totals.expectedPayment)}</span></p>
+                <p>Paid: <span className="font-semibold text-smart">{money(billingSummary.totals.amountPaid)}</span></p>
                 <p>Outstanding: <span className="font-semibold text-warn">{money(billingSummary.totals.openingOutstanding)}</span></p>
+                <p>Credit: <span className="font-semibold text-smart">{money(billingSummary.totals.creditBalance ?? 0)}</span></p>
                 <p>Monthly due: <span className="font-semibold text-smart">{money(billingSummary.totals.expectedMonthly)}</span></p>
               </div>
             ) : null}
@@ -2088,7 +2099,9 @@ export function PaymentsAdminPage() {
   const confirmed = summary?.paidAmount ?? accountingState.payments.filter((payment) => payment.status === "confirmed").reduce((sum, payment) => sum + payment.amount, 0);
   const pendingReview = summary?.pendingReviewAmount ?? accountingState.payments.filter((payment) => payment.status === "pending").reduce((sum, payment) => sum + payment.amount, 0);
   const outstanding = summary?.outstandingBalance ?? accountingState.bills.reduce((sum, bill) => sum + billOutstandingAmount(accountingState, bill), 0);
-  const debtors = summary?.debtorsCount ?? accountingState.bills.filter((bill) => billOutstandingAmount(accountingState, bill) > 0).length;
+  const credit = summary?.creditBalance ?? accountingState.bills.reduce((sum, bill) => sum + billCreditAmount(accountingState, bill), 0);
+  const netReceivable = summary?.netReceivable ?? Math.max(0, outstanding - credit);
+  const debtors = summary?.debtorsCount ?? accountingState.residents.filter((resident) => residentBillingBalance(accountingState, resident.id).netReceivable > 0).length;
   const payableBills = accountingState.bills.filter((bill) => billOutstandingAmount(accountingState, bill) > 0);
 
   async function submitAdminPayment(event: FormEvent<HTMLFormElement>) {
@@ -2154,10 +2167,12 @@ export function PaymentsAdminPage() {
       </PageHeader>
       <p className="mb-4 rounded-lg border border-line bg-ink/50 px-3 py-2 text-sm text-slate-300">{accountingStatus}</p>
       {paymentMessage ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{paymentMessage}</p> : null}
-      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-5">
+      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <StatCard label="Expected revenue" value={money(expected)} helper="All issued bills" icon={<ReceiptText className="h-5 w-5" />} />
         <StatCard label="Confirmed paid" value={money(confirmed)} helper="Webhook and admin confirmed" icon={<WalletCards className="h-5 w-5" />} />
         <StatCard label="Outstanding" value={money(outstanding)} helper="Balance still owed" icon={<Landmark className="h-5 w-5" />} />
+        <StatCard label="Credit balance" value={money(credit)} helper="Advance payments held" icon={<BadgeCheck className="h-5 w-5" />} />
+        <StatCard label="Net receivable" value={money(netReceivable)} helper="Outstanding after credits" icon={<ReceiptText className="h-5 w-5" />} />
         <StatCard label="Pending review" value={money(pendingReview)} helper="Manual proofs awaiting admin" icon={<ShieldCheck className="h-5 w-5" />} />
         <StatCard label="Debtors" value={String(debtors)} helper="Bills with balance" icon={<Users className="h-5 w-5" />} />
       </div>
@@ -2398,7 +2413,14 @@ export function ReportsPage() {
   const confirmedPayments = accountingState.payments.filter((payment) => payment.status === "confirmed");
   const paidAmount = summary?.paidAmount ?? confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
   const outstandingBalance = summary?.outstandingBalance ?? accountingState.bills.reduce((sum, bill) => sum + billOutstandingAmount(accountingState, bill), 0);
-  const debtorBills = accountingState.bills.filter((bill) => billOutstandingAmount(accountingState, bill) > 0);
+  const creditBalance = summary?.creditBalance ?? accountingState.bills.reduce((sum, bill) => sum + billCreditAmount(accountingState, bill), 0);
+  const netReceivable = summary?.netReceivable ?? Math.max(0, outstandingBalance - creditBalance);
+  const residentBalances = accountingState.residents.map((resident) => ({
+    resident,
+    balance: residentBillingBalance(accountingState, resident.id)
+  }));
+  const debtorResidents = residentBalances.filter(({ balance }) => balance.netReceivable > 0);
+  const creditResidents = residentBalances.filter(({ balance }) => balance.availableCredit > 0);
   const channelTotals = summary?.channelTotals ?? confirmedPayments.reduce<Record<string, number>>((totals, payment) => {
     const channel = paymentChannelLabel(payment);
     totals[channel] = (totals[channel] ?? 0) + payment.amount;
@@ -2428,34 +2450,48 @@ export function ReportsPage() {
 
   return (
     <>
-      <PageHeader title="Reports" description="Accounting and operations analytics for expected revenue, confirmed payments, outstanding balances, debtors, channels, categories, and audit trail.">
+      <PageHeader title="Reports" description="Accounting and operations analytics for expected revenue, confirmed payments, outstanding balances, credit balances, debtors, channels, categories, and audit trail.">
         <Button type="button" variant="secondary" onClick={() => void refreshAccounting({ bypassCache: true })} disabled={loadingAccounting || loadingAccountingDetails}>
           <RefreshCw className="h-4 w-4" />
           {loadingAccounting || loadingAccountingDetails ? "Refreshing" : "Refresh reports"}
         </Button>
       </PageHeader>
       <p className="mb-4 rounded-lg border border-line bg-ink/50 px-3 py-2 text-sm text-slate-300">{accountingStatus}</p>
-      <div className="grid gap-4 md:grid-cols-4">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
         <StatCard label="Expected revenue" value={money(expectedRevenue)} helper="All bills issued" icon={<ReceiptText className="h-5 w-5" />} />
         <StatCard label="Paid amount" value={money(paidAmount)} helper="Confirmed payments" icon={<WalletCards className="h-5 w-5" />} />
         <StatCard label="Outstanding" value={money(outstandingBalance)} helper="Open balance" icon={<Landmark className="h-5 w-5" />} />
-        <StatCard label="Debtors" value={String(summary?.debtorsCount ?? debtorBills.length)} helper="Bills with balance" icon={<Users className="h-5 w-5" />} />
+        <StatCard label="Credit balance" value={money(creditBalance)} helper="Advance payments" icon={<BadgeCheck className="h-5 w-5" />} />
+        <StatCard label="Net receivable" value={money(netReceivable)} helper="Outstanding after credits" icon={<ReceiptText className="h-5 w-5" />} />
+        <StatCard label="In credit" value={String(summary?.residentsInCredit ?? creditResidents.length)} helper="Advance payment residents" icon={<BadgeCheck className="h-5 w-5" />} />
+        <StatCard label="Debtors" value={String(summary?.debtorsCount ?? debtorResidents.length)} helper="Residents with net balance" icon={<Users className="h-5 w-5" />} />
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <DataTable
           title="Debtors"
-          headers={["Resident", "Unit", "Bill", "Outstanding"]}
-          rows={debtorBills.map((bill) => {
-            const resident = accountingState.residents.find((item) => item.id === bill.residentId);
-
-            return [
-              resident?.name ?? "Unknown",
-              resident ? residentUnitLabel(accountingState, resident) : bill.unitId ?? "Unit pending",
-              bill.title,
-              money(billOutstandingAmount(accountingState, bill))
-            ];
-          })}
+          headers={["Resident", "Unit", "Outstanding", "Credit", "Net due"]}
+          rows={debtorResidents.map(({ resident, balance }) => [
+            resident.name,
+            residentUnitLabel(accountingState, resident),
+            money(balance.outstandingBalance),
+            money(balance.creditBalance),
+            money(balance.netReceivable)
+          ])}
         />
+        <DataTable
+          title="Residents in credit"
+          description="Advance payments available to offset the next subscription bill."
+          headers={["Resident", "Unit", "Paid", "Expected", "Credit"]}
+          rows={creditResidents.map(({ resident, balance }) => [
+            resident.name,
+            residentUnitLabel(accountingState, resident),
+            money(balance.paidAmount),
+            money(balance.expectedAmount),
+            money(balance.availableCredit)
+          ])}
+        />
+      </div>
+      <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <DataTable
           title="Payment channels"
           description="Confirmed revenue by processor and payment route."
@@ -3488,8 +3524,7 @@ function TemporaryCredentialBox({ credential }: { credential: TemporaryCredentia
 export function ResidentDashboard() {
   const { state } = useLocalEstateStore();
   const resident = useCurrentResidentProfile(state);
-  const myBills = state.bills.filter((bill) => bill.residentId === resident.id);
-  const outstanding = myBills.reduce((sum, bill) => sum + billOutstandingAmount(state, bill), 0);
+  const balance = residentBillingBalance(state, resident.id);
   return (
     <>
       <PageHeader title={`Welcome, ${resident.name}`} description="Invite visitors, check bills, submit complaints, read announcements, and keep your digital ID ready." >
@@ -3500,7 +3535,8 @@ export function ResidentDashboard() {
         </div>
       </PageHeader>
       <div className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Outstanding bills" value={money(outstanding)} helper="Pay online first" icon={<ReceiptText className="h-5 w-5" />} />
+        <StatCard label="Subscription balance" value={money(balance.netReceivable)} helper="Outstanding after credit" icon={<ReceiptText className="h-5 w-5" />} />
+        <StatCard label="Credit available" value={money(balance.availableCredit)} helper="Advance payment balance" icon={<BadgeCheck className="h-5 w-5" />} />
         <StatCard label="Expected visitors" value={String(state.visitors.filter((visitor) => visitor.residentId === resident.id).length)} helper="Pending access codes" icon={<DoorOpen className="h-5 w-5" />} />
         <StatCard label="My complaints" value={String(state.complaints.filter((complaint) => complaint.residentId === resident.id).length)} helper="Open and resolved tickets" icon={<ClipboardList className="h-5 w-5" />} />
       </div>
@@ -3881,10 +3917,16 @@ export function MyBillsPage() {
   const { state } = useLocalEstateStore();
   const resident = useCurrentResidentProfile(state);
   const myBills = state.bills.filter((bill) => bill.residentId === resident.id);
+  const balance = residentBillingBalance(state, resident.id);
 
   return (
     <>
       <PageHeader title="My bills" description="View outstanding estate bills, due dates, and payment status." />
+      <div className="mb-6 grid gap-4 md:grid-cols-3">
+        <StatCard label="Net amount due" value={money(balance.netReceivable)} helper="Outstanding after credit" icon={<ReceiptText className="h-5 w-5" />} />
+        <StatCard label="Credit available" value={money(balance.availableCredit)} helper="Advance payment balance" icon={<BadgeCheck className="h-5 w-5" />} />
+        <StatCard label="Confirmed paid" value={money(balance.paidAmount)} helper="Recorded payments" icon={<WalletCards className="h-5 w-5" />} />
+      </div>
       <BillsTable title="Resident billing" rows={myBills} state={state} residentsDirectory={state.residents} />
     </>
   );
@@ -3896,6 +3938,7 @@ export function PaymentHistoryPage() {
   const myBills = state.bills.filter((bill) => bill.residentId === resident.id);
   const payableBills = myBills.filter((bill) => billOutstandingAmount(state, bill) > 0);
   const myPayments = state.payments.filter((payment) => payment.residentId === resident.id);
+  const balance = residentBillingBalance(state, resident.id);
   const [paymentMessage, setPaymentMessage] = useState("");
 
   function submitOnlinePayment(event: FormEvent<HTMLFormElement>) {
@@ -3938,6 +3981,11 @@ export function PaymentHistoryPage() {
   return (
     <>
       <PageHeader title="Payment history" description="Pay bills online first. Manual bank transfer, POS, cash, or WhatsApp receipts remain available when online payment is not possible." />
+      <div className="mb-6 grid gap-4 md:grid-cols-3">
+        <StatCard label="Net amount due" value={money(balance.netReceivable)} helper="Outstanding after credit" icon={<ReceiptText className="h-5 w-5" />} />
+        <StatCard label="Credit available" value={money(balance.availableCredit)} helper="Applied to future subscription" icon={<BadgeCheck className="h-5 w-5" />} />
+        <StatCard label="Confirmed paid" value={money(balance.paidAmount)} helper="Payment history total" icon={<WalletCards className="h-5 w-5" />} />
+      </div>
       {payableBills.length ? (
         <Card className="mb-6">
           <CardHeader title="Pay online" description="Demo flow: the processor webhook confirms the payment, updates the bill, resident balance, reports, and audit trail automatically." />
@@ -3969,7 +4017,12 @@ export function PaymentHistoryPage() {
         </Card>
       ) : (
         <Card className="mb-6">
-          <CardHeader title="No outstanding bills" description="All assigned bills are fully paid or no bills have been assigned to this resident." />
+          <CardHeader
+            title={balance.availableCredit > 0 ? "Advance payment available" : "No outstanding bills"}
+            description={balance.availableCredit > 0
+              ? "Your account is in credit. Future subscription bills can be deducted from this balance before new payment is requested."
+              : "All assigned bills are fully paid or no bills have been assigned to this resident."}
+          />
         </Card>
       )}
       {payableBills.length ? (
@@ -5920,11 +5973,13 @@ function BillsTable({
   return (
     <DataTable
       title={title}
-      headers={["Bill", "Unit", "Resident", "Expected", "Paid", "Outstanding", "Status", "Action"]}
+      headers={["Bill", "Unit", "Resident", "Expected", "Paid", "Outstanding", "Credit", "Status", "Action"]}
       rows={rows.map((bill) => {
         const resident = residentsDirectory.find((item) => item.id === bill.residentId);
         const paid = billPaidAmount(state, bill);
         const outstanding = billOutstandingAmount(state, bill);
+        const credit = billCreditAmount(state, bill);
+        const status = credit > 0 ? "Credit" : bill.status;
 
         return [
         <div key={`${bill.id}-title`}>
@@ -5936,7 +5991,8 @@ function BillsTable({
         money(bill.amount),
         money(paid),
         money(outstanding),
-        <StatusBadge key={bill.status} status={bill.status} />,
+        money(credit),
+        <StatusBadge key={status} status={status} />,
         admin ? (
           <Button key="confirm" variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={() => onMarkPaid?.(bill.id)}>
             Mark paid

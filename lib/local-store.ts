@@ -1602,6 +1602,25 @@ export function billOutstandingAmount(state: LocalEstateState, bill: Bill) {
   return Math.max(0, bill.amount - billPaidAmount(state, bill));
 }
 
+export function billCreditAmount(state: LocalEstateState, bill: Bill) {
+  return Math.max(0, billPaidAmount(state, bill) - bill.amount);
+}
+
+export function residentBillingBalance(state: LocalEstateState, residentId: string) {
+  const bills = state.bills.filter((bill) => bill.residentId === residentId);
+  const outstandingBalance = bills.reduce((sum, bill) => sum + billOutstandingAmount(state, bill), 0);
+  const creditBalance = bills.reduce((sum, bill) => sum + billCreditAmount(state, bill), 0);
+
+  return {
+    expectedAmount: bills.reduce((sum, bill) => sum + bill.amount, 0),
+    paidAmount: bills.reduce((sum, bill) => sum + billPaidAmount(state, bill), 0),
+    outstandingBalance,
+    creditBalance,
+    netReceivable: Math.max(0, outstandingBalance - creditBalance),
+    availableCredit: Math.max(0, creditBalance - outstandingBalance)
+  };
+}
+
 export function removeLegacyLekkiAccounts() {
   if (typeof window === "undefined") {
     return;

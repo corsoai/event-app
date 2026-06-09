@@ -11,7 +11,7 @@ const tones: Record<StatusTone, string> = {
 
 export function statusTone(status: string): StatusTone {
   const normalized = status.toLowerCase();
-  if (["active", "occupied", "paid", "confirmed", "resolved", "checked-in", "checked-out"].includes(normalized)) {
+  if (["active", "occupied", "paid", "confirmed", "resolved", "checked-in", "checked-out", "credit", "advance payment"].includes(normalized)) {
     return "green";
   }
   if (["verified", "in progress", "partially paid"].includes(normalized)) {

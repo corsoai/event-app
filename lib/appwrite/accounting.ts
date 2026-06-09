@@ -63,8 +63,11 @@ export type AppwriteAccountingSummary = {
   expectedRevenue: number;
   paidAmount: number;
   outstandingBalance: number;
+  creditBalance: number;
+  netReceivable: number;
   pendingReviewAmount: number;
   debtorsCount: number;
+  residentsInCredit: number;
   monthlyExpected: number;
   residentsCount: number;
   billsCount: number;
@@ -146,6 +149,8 @@ export async function getAppwriteAccountingSummary(options: { bypassCache?: bool
   const expectedRevenue = bills.reduce((sum, bill) => sum + bill.amount, 0);
   const paidAmount = confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
   const outstandingBalance = bills.reduce((sum, bill) => sum + Math.max(0, bill.amount - numberOrZero(bill.paidAmount)), 0);
+  const creditBalance = bills.reduce((sum, bill) => sum + Math.max(0, numberOrZero(bill.paidAmount) - bill.amount), 0);
+  const residentBalances = residentBalanceMap(bills);
   const pendingReviewAmount = payments
     .filter((payment) => payment.status === "pending")
     .reduce((sum, payment) => sum + payment.amount, 0);
@@ -177,8 +182,11 @@ export async function getAppwriteAccountingSummary(options: { bypassCache?: bool
     expectedRevenue,
     paidAmount,
     outstandingBalance,
+    creditBalance,
+    netReceivable: Math.max(0, outstandingBalance - creditBalance),
     pendingReviewAmount,
-    debtorsCount: bills.filter((bill) => Math.max(0, bill.amount - numberOrZero(bill.paidAmount)) > 0).length,
+    debtorsCount: [...residentBalances.values()].filter((balance) => balance.outstanding > balance.credit).length,
+    residentsInCredit: [...residentBalances.values()].filter((balance) => balance.credit > balance.outstanding).length,
     monthlyExpected: residentRows.reduce((sum, resident) => sum + numberOrZero(resident.expectedMonthly), 0),
     residentsCount: residentRows.length,
     billsCount: bills.length,
@@ -217,8 +225,8 @@ export async function recordAppwriteAdminPayment(input: AppwritePaymentInput) {
     .filter((payment) => payment.billId === billId && payment.status === "confirmed")
     .reduce((sum, payment) => sum + numberOrZero(payment.amount), 0);
   const billAmount = numberOrZero(billRow.amount);
-  const paymentAmount = Math.min(amount, Math.max(0, billAmount - paidBefore) || amount);
-  const paidAmount = Math.min(billAmount, paidBefore + paymentAmount);
+  const paymentAmount = amount;
+  const paidAmount = paidBefore + paymentAmount;
   const paymentId = safeAppwriteId("pay", `${reference}-${billId}`);
 
   const payment = await appwriteUpsertRow<AppwritePaymentRow>("payments", paymentId, {
@@ -293,6 +301,21 @@ function normalizeBillsWithPayments(bills: Bill[], payments: Payment[]) {
       status: billStatus(bill.amount, paidAmount, bill.status)
     };
   });
+}
+
+function residentBalanceMap(bills: Bill[]) {
+  const balances = new Map<string, { outstanding: number; credit: number }>();
+
+  for (const bill of bills) {
+    const current = balances.get(bill.residentId) ?? { outstanding: 0, credit: 0 };
+    const paidAmount = numberOrZero(bill.paidAmount);
+    balances.set(bill.residentId, {
+      outstanding: current.outstanding + Math.max(0, bill.amount - paidAmount),
+      credit: current.credit + Math.max(0, paidAmount - bill.amount)
+    });
+  }
+
+  return balances;
 }
 
 function mapBillRow(row: AppwriteBillRow, resident?: Resident): Bill {
