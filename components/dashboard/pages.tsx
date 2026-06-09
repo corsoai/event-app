@@ -516,7 +516,6 @@ export function ResidentsAdminPage() {
     approveAccessRequest,
     rejectAccessRequest,
     refreshEstateState,
-    updateResident,
     addProperty,
     addUnit,
     onboardResident
@@ -533,15 +532,18 @@ export function ResidentsAdminPage() {
   const [selectedResidentId, setSelectedResidentId] = useState("");
   const [creatingResidentLoginId, setCreatingResidentLoginId] = useState("");
   const [residentLoginCredential, setResidentLoginCredential] = useState<TemporaryCredential | null>(null);
-  const directoryState = appwriteDirectory?.residents.length
-    ? {
-        ...state,
-        properties: mergeRecordsById(state.properties, appwriteDirectory.properties),
-        units: mergeRecordsById(state.units, appwriteDirectory.units),
-        residents: appwriteDirectory.residents
-      }
-    : state;
-  const directoryResidents = directoryState.residents.length ? directoryState.residents : [];
+  const directoryState: LocalEstateState = {
+    ...state,
+    properties: appwriteDirectory?.properties ?? [],
+    units: appwriteDirectory?.units ?? [],
+    residents: appwriteDirectory?.residents ?? [],
+    bills: [],
+    payments: [],
+    visitors: [],
+    complaints: [],
+    emergencyAlerts: []
+  };
+  const directoryResidents = appwriteDirectory?.residents ?? [];
 
   useEffect(() => {
     void refreshAppwriteResidentDirectory();
@@ -608,20 +610,15 @@ export function ResidentsAdminPage() {
     setResidentMessage("");
 
     try {
-      const isLocalResident = state.residents.some((item) => item.id === resident.id);
-      const updatedResident = isLocalResident
-        ? await updateResident(resident.id, input)
-        : await updateAppwriteResidentFromDirectory(resident.id, input);
+      const updatedResident = await updateAppwriteResidentFromDirectory(resident.id, input);
 
-      if (!isLocalResident) {
-        setAppwriteDirectory((current) => current
-          ? {
-              ...current,
-              residents: current.residents.map((item) => item.id === updatedResident.id ? updatedResident : item)
-            }
-          : current
-        );
-      }
+      setAppwriteDirectory((current) => current
+        ? {
+            ...current,
+            residents: current.residents.map((item) => item.id === updatedResident.id ? updatedResident : item)
+          }
+        : current
+      );
 
       setEditingResident(null);
       setResidentMessage(`${updatedResident.name}'s resident record has been updated.`);
@@ -778,7 +775,7 @@ export function ResidentsAdminPage() {
       <ResidentDirectoryPanel
         residents={directoryResidents}
         state={directoryState}
-        localResidents={state.residents}
+        localResidents={[]}
         selectedResidentId={selectedResidentId}
         description={appwriteDirectoryStatus}
         loading={loadingAppwriteDirectory}
@@ -812,20 +809,6 @@ export function ResidentsAdminPage() {
               setOnboardingMessage(error instanceof Error ? error.message : "Resident could not be onboarded.");
             }
           }}
-        />
-      </div>
-      <div className="mt-6">
-        <DataTable
-          title="Approved local login accounts"
-          description="Accounts approved during the local demo. These can log in from the login page."
-          headers={["Name", "Phone", "Role", "Estate", "Approved"]}
-          rows={state.approvedUsers.map((user) => [
-            <span key={user.id} className="font-medium text-white">{user.fullName}</span>,
-            <span key={user.email} className="font-mono text-smart">{contactLabel(user.email, user.phone)}</span>,
-            roleLabel(user.role),
-            user.estate,
-            user.approvedAt
-          ])}
         />
       </div>
     </>
