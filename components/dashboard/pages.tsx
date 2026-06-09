@@ -2180,16 +2180,38 @@ export function VisitorLogsPage() {
 }
 
 export function BillsAdminPage() {
-  const { state, addBill, markBillPaid } = useLocalEstateStore();
+  const { state } = useLocalEstateStore();
+  const { accountingState, accounting, accountingStatus, loadingAccounting, loadingAccountingDetails, refreshAccounting } = useAdminAccountingState(state);
+  const liveState: LocalEstateState = accounting
+    ? accountingState
+    : { ...state, residents: [], bills: [], payments: [], auditLogs: [] };
+  const loading = loadingAccounting || loadingAccountingDetails;
 
   return (
     <>
       <PageHeader title="Bills" description="Create estate bills, assign them to residents or houses, and track due dates and payment status.">
-        <Button type="button" onClick={() => scrollToSection("create-bill")}><ReceiptText className="h-4 w-4" />New bill</Button>
+        <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="secondary" onClick={() => void refreshAccounting({ bypassCache: true })} disabled={loading}>
+            <RefreshCw className="h-4 w-4" />
+            {loading ? "Loading" : "Refresh"}
+          </Button>
+          <Button type="button" onClick={() => scrollToSection("create-bill")}><ReceiptText className="h-4 w-4" />New bill</Button>
+        </div>
       </PageHeader>
-      <BillComposer onCreateBill={addBill} state={state} residentsDirectory={state.residents} />
+      <p className="mb-4 rounded-lg border border-line bg-ink/50 px-3 py-2 text-sm text-slate-400">{accountingStatus}</p>
+      <BillComposer
+        onCreated={() => void refreshAccounting({ bypassCache: true })}
+        state={liveState}
+        residentsDirectory={liveState.residents}
+      />
       <div className="mt-6">
-        <BillsTable title="Current billing register" rows={state.bills} state={state} admin onMarkPaid={markBillPaid} residentsDirectory={state.residents} />
+        <BillsTable
+          title={loading ? "Loading Appwrite billing register" : "Current billing register"}
+          rows={liveState.bills}
+          state={liveState}
+          admin
+          residentsDirectory={liveState.residents}
+        />
       </div>
     </>
   );
@@ -6114,35 +6136,59 @@ function BillsTable({
 }
 
 function BillComposer({
-  onCreateBill,
+  onCreated,
   state,
   residentsDirectory
 }: {
-  onCreateBill: (input: { title: string; amount: number; dueDate: string; residentId: string; category?: string; unitId?: string }) => Bill;
+  onCreated: () => void;
   state: LocalEstateState;
   residentsDirectory: Resident[];
 }) {
   const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
 
-  function submitBill(event: FormEvent<HTMLFormElement>) {
+  async function submitBill(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = new FormData(event.currentTarget);
+    const formElement = event.currentTarget;
     const residentId = String(form.get("residentId") ?? residentsDirectory[0]?.id ?? "");
     const resident = residentsDirectory.find((item) => item.id === residentId);
     if (!resident) {
-      setMessage("Add or import residents before creating a bill.");
+      setMessage("Load Appwrite residents before creating a bill.");
       return;
     }
-    const bill = onCreateBill({
-      title: String(form.get("title") ?? ""),
-      category: String(form.get("category") ?? "Service charge"),
-      amount: Number(form.get("amount") ?? 0),
-      dueDate: String(form.get("dueDate") ?? ""),
-      residentId,
-      unitId: resident?.unitId
-    });
-    setMessage(`${bill.title} saved locally.`);
-    event.currentTarget.reset();
+
+    setSaving(true);
+    setMessage("");
+
+    try {
+      const response = await fetch("/api/appwrite/admin/accounting", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({
+          action: "create_bill",
+          residentId,
+          title: String(form.get("title") ?? ""),
+          category: String(form.get("category") ?? "Subscription"),
+          amount: Number(form.get("amount") ?? 0),
+          dueDate: String(form.get("dueDate") ?? "")
+        })
+      });
+      const payload = await response.json().catch(() => null) as { bill?: Bill; error?: string } | null;
+      if (!response.ok || !payload?.bill) {
+        throw new Error(payload?.error ?? "Bill could not be created in Appwrite.");
+      }
+
+      setMessage(`${payload.bill.title} saved to Appwrite.`);
+      formElement.reset();
+      onCreated();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Bill could not be created in Appwrite.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
@@ -6150,9 +6196,10 @@ function BillComposer({
       <CardHeader title="Create bill" description="Assign a service charge, security levy, waste fee, power levy, maintenance fee, or custom charge." />
       <form onSubmit={submitBill}>
         <div className="grid gap-4 md:grid-cols-5">
-          <Field label="Title"><Input name="title" defaultValue="June 2026 Service Charge" required /></Field>
+          <Field label="Title"><Input name="title" defaultValue="Subscription" required /></Field>
           <Field label="Category">
-            <Select name="category" defaultValue="Service charge">
+            <Select name="category" defaultValue="Subscription">
+              <option>Subscription</option>
               <option>Service charge</option>
               <option>Security levy</option>
               <option>Waste management</option>
@@ -6160,8 +6207,8 @@ function BillComposer({
               <option>Maintenance fee</option>
             </Select>
           </Field>
-          <Field label="Amount"><Input name="amount" type="number" defaultValue={85000} min={1} required /></Field>
-          <Field label="Due date"><Input name="dueDate" type="date" defaultValue="2026-06-28" required /></Field>
+          <Field label="Amount"><Input name="amount" type="number" placeholder="4000" min={1} required /></Field>
+          <Field label="Due date"><Input name="dueDate" type="date" defaultValue={dateInputValue()} required /></Field>
           <Field label="Resident / unit">
             <Select name="residentId" defaultValue={residentsDirectory[0]?.id ?? ""}>
               {residentsDirectory.length ? (
@@ -6177,7 +6224,7 @@ function BillComposer({
           </Field>
         </div>
         {message ? <p className="mt-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{message}</p> : null}
-        <Button className="mt-5">Create bill</Button>
+        <Button className="mt-5" disabled={saving || !residentsDirectory.length}>{saving ? "Creating bill" : "Create bill"}</Button>
       </form>
     </Card>
   );

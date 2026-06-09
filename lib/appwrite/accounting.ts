@@ -86,6 +86,14 @@ export type AppwritePaymentInput = {
   date?: string;
 };
 
+export type AppwriteBillInput = {
+  residentId: string;
+  title: string;
+  amount: number;
+  dueDate: string;
+  category?: string;
+};
+
 const ACCOUNTING_CACHE_MS = 30_000;
 let accountingCache: { data: AppwriteAccountingData; expiresAt: number } | null = null;
 let summaryCache: { data: AppwriteAccountingSummary; expiresAt: number } | null = null;
@@ -281,6 +289,59 @@ export async function recordAppwriteAdminPayment(input: AppwritePaymentInput) {
   return {
     payment: mapPaymentRow(payment),
     bill: mapBillRow(updatedBill, resident)
+  };
+}
+
+export async function createAppwriteBill(input: AppwriteBillInput) {
+  const residentId = input.residentId.trim();
+  const title = input.title.trim();
+  const amount = Math.max(0, Number(input.amount));
+  const dueDate = input.dueDate.trim();
+  if (!residentId || !title || amount <= 0 || !dueDate) {
+    throw new Error("Resident, title, amount, and due date are required.");
+  }
+
+  const directory = await listAppwriteResidentDirectory({ ensureSchema: false });
+  const resident = directory.residents.find((item) => item.id === residentId);
+  if (!resident) {
+    throw new Error("The selected resident was not found in Appwrite.");
+  }
+
+  const now = new Date().toISOString();
+  const category = input.category?.trim() || "Subscription";
+  const billId = safeAppwriteId("bill", `${residentId}:${title}:${dueDate}:${now}`);
+  const bill = await appwriteUpsertRow<AppwriteBillRow>("bills", billId, {
+    estateId: resident.estateId || APPWRITE_LBSVIEW_ESTATE_ID,
+    propertyId: resident.propertyId,
+    unitId: resident.unitId,
+    residentId,
+    category,
+    title,
+    amount,
+    paidAmount: 0,
+    dueDate,
+    status: "unpaid"
+  });
+
+  await appwriteUpsertRow<AppwriteAuditRow>("audit_logs", safeAppwriteId("audit", `create-bill-${billId}-${now}`), {
+    estateId: resident.estateId || APPWRITE_LBSVIEW_ESTATE_ID,
+    actor: "Estate admin",
+    action: "created bill",
+    entityType: "bill",
+    entityId: billId,
+    metadata: JSON.stringify({
+      residentId,
+      amount,
+      category,
+      dueDate
+    }),
+    createdAt: now
+  });
+
+  clearAppwriteAccountingCache();
+
+  return {
+    bill: mapBillRow(bill, resident)
   };
 }
 

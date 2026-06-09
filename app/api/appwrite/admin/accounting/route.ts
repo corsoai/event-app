@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { listAppwriteAccounting, recordAppwriteAdminPayment } from "@/lib/appwrite/accounting";
+import { createAppwriteBill, listAppwriteAccounting, recordAppwriteAdminPayment } from "@/lib/appwrite/accounting";
 import { AppwriteRestError } from "@/lib/appwrite/server";
 import type { PaymentChannel } from "@/lib/types";
 
@@ -31,8 +31,13 @@ export async function POST(request: NextRequest) {
   }
 
   const body = await request.json().catch(() => null) as {
+    action?: string;
+    residentId?: string;
+    title?: string;
     billId?: string;
     amount?: number;
+    dueDate?: string;
+    category?: string;
     reference?: string;
     channel?: PaymentChannel;
     date?: string;
@@ -42,6 +47,18 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    if (body.action === "create_bill") {
+      const result = await createAppwriteBill({
+        residentId: String(body.residentId ?? ""),
+        title: String(body.title ?? ""),
+        amount: Number(body.amount ?? 0),
+        dueDate: String(body.dueDate ?? ""),
+        category: String(body.category ?? "Subscription")
+      });
+
+      return NextResponse.json(result);
+    }
+
     const result = await recordAppwriteAdminPayment({
       billId: String(body.billId ?? ""),
       amount: Number(body.amount ?? 0),
