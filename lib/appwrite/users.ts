@@ -18,6 +18,7 @@ import {
   safeAppwriteId,
   setupAppwriteOnboardingSchema
 } from "@/lib/appwrite/server";
+import { listAppwriteTableRows } from "@/lib/appwrite/residents";
 
 const roleLabels: Record<UserRole, string> = {
   super_admin: "Super Admin",
@@ -97,6 +98,28 @@ type AppwriteProfileRow = {
   role?: UserRole;
   status?: string;
   houseNumber?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+type AppwriteResidentRow = {
+  $id?: string;
+  estateId?: string;
+  propertyId?: string;
+  unitId?: string;
+  fullName?: string;
+  phone?: string;
+  email?: string;
+  residentType?: string;
+  status?: string;
+  moveInDate?: string;
+  legacyName?: string;
+  legacyAddress?: string;
+  sourceRow?: number;
+  openingOutstanding?: number;
+  expectedMonthly?: number;
+  onboardingStatus?: string;
+  reviewReasons?: string;
   createdAt?: string;
   updatedAt?: string;
 };
@@ -478,7 +501,8 @@ async function syncResidentRows(input: {
   const propertyCode = propertyCodeFromUnitCode(input.unitCode);
   const propertyId = safeAppwriteId("prop", `${input.estateId}:${propertyCode}`);
   const unitId = safeAppwriteId("unit", `${input.estateId}:${input.unitCode}`);
-  const residentId = safeAppwriteId("res", `${input.email}:${input.phone}:${input.unitCode}`);
+  const existingResident = await findExistingResidentForLogin(input, unitId);
+  const residentId = existingResident?.$id ?? safeAppwriteId("res", `${input.email}:${input.phone}:${input.unitCode}`);
 
   await appwriteUpsertRow("properties", propertyId, {
     estateId: input.estateId,
@@ -504,19 +528,24 @@ async function syncResidentRows(input: {
   });
 
   await appwriteUpsertRow("residents", residentId, {
-    estateId: input.estateId,
-    propertyId,
-    unitId,
+    estateId: existingResident?.estateId ?? input.estateId,
+    propertyId: existingResident?.propertyId ?? propertyId,
+    unitId: existingResident?.unitId ?? unitId,
     fullName: input.fullName,
     phone: input.phone,
     email: input.email,
-    residentType: "tenant",
-    status: "active",
-    moveInDate: input.now.slice(0, 10),
-    createdAt: input.now,
+    residentType: existingResident?.residentType ?? "tenant",
+    status: existingResident?.status ?? "active",
+    moveInDate: existingResident?.moveInDate ?? input.now.slice(0, 10),
+    legacyName: existingResident?.legacyName ?? "",
+    legacyAddress: existingResident?.legacyAddress ?? "",
+    sourceRow: existingResident?.sourceRow,
+    openingOutstanding: existingResident?.openingOutstanding ?? 0,
+    expectedMonthly: existingResident?.expectedMonthly ?? 0,
+    onboardingStatus: existingResident?.onboardingStatus ?? "verified",
+    reviewReasons: existingResident?.reviewReasons ?? "",
+    createdAt: existingResident?.createdAt ?? input.now,
     updatedAt: input.now,
-    openingOutstanding: 0,
-    expectedMonthly: 0
   });
 
   await appwriteUpsertRow("resident_unit_history", safeAppwriteId("hist", `${residentId}:${unitId}`), {
@@ -533,12 +562,45 @@ async function syncResidentRows(input: {
   });
 }
 
+async function findExistingResidentForLogin(
+  input: {
+    fullName: string;
+    email: string;
+    phone: string;
+    unitCode: string;
+  },
+  unitId: string
+) {
+  const normalizedPhone = normalizePhoneNumber(input.phone);
+  const normalizedEmail = input.email.trim().toLowerCase();
+  const normalizedFullName = normalizeName(input.fullName);
+  const residents = await listAppwriteTableRows<AppwriteResidentRow>("residents");
+
+  return residents.find((resident) => {
+    const sameUnit = resident.unitId === unitId;
+    const samePhone = Boolean(normalizedPhone) && normalizePhoneNumber(resident.phone ?? "") === normalizedPhone;
+    const sameEmail = Boolean(normalizedEmail) && String(resident.email ?? "").trim().toLowerCase() === normalizedEmail;
+    const sameName = Boolean(normalizedFullName) && normalizeName(resident.fullName ?? "") === normalizedFullName;
+
+    return sameUnit && (samePhone || sameEmail || sameName);
+  }) ?? residents.find((resident) => {
+    const samePhone = Boolean(normalizedPhone) && normalizePhoneNumber(resident.phone ?? "") === normalizedPhone;
+    const sameEmail = Boolean(normalizedEmail) && String(resident.email ?? "").trim().toLowerCase() === normalizedEmail;
+
+    return samePhone || sameEmail;
+  });
+}
+
 function canonicalEstateId(estateId: string) {
   return estateId === APPWRITE_LBSVIEW_ESTATE_ID || estateId === "platform" ? estateId : APPWRITE_LBSVIEW_ESTATE_ID;
 }
 
 function normalizeUnitCode(value: string) {
   return value.trim().toUpperCase().replace(/\s+/g, "");
+}
+
+function normalizeName(value: string) {
+  return value.trim().toLowerCase().replace(/\s+/g, " ");
 }
 
 function propertyCodeFromUnitCode(unitCode: string) {
