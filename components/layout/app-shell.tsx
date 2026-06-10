@@ -58,6 +58,7 @@ const icons = {
 
 type ThemeMode = "light" | "dark";
 const THEME_STORAGE_KEY = "corso_theme";
+const RESIDENT_ACCOUNTING_CACHE_PREFIX = "corso_resident_accounting_v1:";
 
 export type NavItem = {
   label: string;
@@ -88,6 +89,32 @@ export function AppShell({
   }, [pathname]);
 
   useEffect(() => {
+    router.prefetch(pathname);
+    navItems.slice(0, 5).forEach((item) => router.prefetch(item.href));
+  }, [navItems, pathname, router]);
+
+  useEffect(() => {
+    function warmVisibleRoute() {
+      if (document.visibilityState !== "visible") {
+        return;
+      }
+
+      router.prefetch(pathname);
+      if (pathname.startsWith("/resident")) {
+        void fetch("/api/appwrite/resident/accounting", { cache: "no-store" }).catch(() => undefined);
+      }
+    }
+
+    document.addEventListener("visibilitychange", warmVisibleRoute);
+    window.addEventListener("focus", warmVisibleRoute);
+
+    return () => {
+      document.removeEventListener("visibilitychange", warmVisibleRoute);
+      window.removeEventListener("focus", warmVisibleRoute);
+    };
+  }, [pathname, router]);
+
+  useEffect(() => {
     const savedTheme = window.localStorage.getItem(THEME_STORAGE_KEY);
     setTheme(savedTheme === "dark" ? "dark" : "light");
     setThemeLoaded(true);
@@ -102,6 +129,9 @@ export function AppShell({
 
   function logout() {
     localStorage.removeItem("corso_user");
+    Object.keys(sessionStorage)
+      .filter((key) => key.startsWith(RESIDENT_ACCOUNTING_CACHE_PREFIX))
+      .forEach((key) => sessionStorage.removeItem(key));
     document.cookie = "corso_role=; Max-Age=0; path=/";
     router.push("/login");
   }

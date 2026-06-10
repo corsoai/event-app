@@ -34,6 +34,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
   const router = useRouter();
   const params = useSearchParams();
   const localDemoEnabled = isLocalDemoEnabled();
+  const appwriteLoginPreferred = Boolean(process.env.NEXT_PUBLIC_APPWRITE_PROJECT_ID);
   const defaultLoginUser = demoUsers.find((user) => user.role === "estate_admin") ?? demoUsers[0];
   const [email, setEmail] = useState(mode === "login" && localDemoEnabled ? defaultLoginUser.email : "");
   const [phone, setPhone] = useState("");
@@ -55,6 +56,18 @@ export function AuthCard({ mode }: { mode: Mode }) {
   useEffect(() => {
     removeLegacyLekkiAccounts();
   }, []);
+
+  useEffect(() => {
+    if (mode !== "login") {
+      return;
+    }
+
+    Object.values(roleHome).forEach((href) => router.prefetch(href));
+    const next = params.get("next");
+    if (next) {
+      router.prefetch(next);
+    }
+  }, [mode, params, router]);
 
   useEffect(() => {
     if (mode !== "signup") {
@@ -228,7 +241,32 @@ export function AuthCard({ mode }: { mode: Mode }) {
 
       const loginEmail = loginIdentifierToEmail(email);
       const demoUser = demoUsers.find((user) => user.email.toLowerCase() === email.toLowerCase());
-      if (supabase) {
+      if (appwriteLoginPreferred) {
+        const appwriteResult = await signInWithAppwrite(email, password);
+        if (appwriteResult.ok && appwriteResult.user) {
+          persistSession(appwriteResult.user);
+          const destination = params.get("next") ?? roleHome[appwriteResult.user.role];
+          router.prefetch(destination);
+          router.push(destination);
+          return;
+        }
+
+        if (!localDemoEnabled) {
+          setMessageTone("error");
+          setMessage(appwriteResult.error ?? "Invalid login details.");
+          setLoading(false);
+          return;
+        }
+
+        if (!appwriteResult.canFallback && !demoUser) {
+          setMessageTone("error");
+          setMessage(appwriteResult.error ?? "Invalid login details.");
+          setLoading(false);
+          return;
+        }
+      }
+
+      if (!appwriteLoginPreferred && supabase) {
         const result = await supabase.auth.signInWithPassword({ email: loginEmail, password });
         if (result.error) {
           if (!localDemoEnabled) {
@@ -241,7 +279,9 @@ export function AuthCard({ mode }: { mode: Mode }) {
           const profile = await readSupabaseSessionProfile();
           if (profile) {
             persistSession(profile);
-            router.push(params.get("next") ?? roleHome[profile.role]);
+            const destination = params.get("next") ?? roleHome[profile.role];
+            router.prefetch(destination);
+            router.push(destination);
             return;
           }
 
@@ -272,25 +312,29 @@ export function AuthCard({ mode }: { mode: Mode }) {
         }
       }
 
-      const appwriteResult = await signInWithAppwrite(email, password);
-      if (appwriteResult.ok && appwriteResult.user) {
-        persistSession(appwriteResult.user);
-        router.push(params.get("next") ?? roleHome[appwriteResult.user.role]);
-        return;
-      }
+      if (!appwriteLoginPreferred) {
+        const appwriteResult = await signInWithAppwrite(email, password);
+        if (appwriteResult.ok && appwriteResult.user) {
+          persistSession(appwriteResult.user);
+          const destination = params.get("next") ?? roleHome[appwriteResult.user.role];
+          router.prefetch(destination);
+          router.push(destination);
+          return;
+        }
 
-      if (!localDemoEnabled) {
-        setMessageTone("error");
-        setMessage(appwriteResult.error ?? "Invalid login details.");
-        setLoading(false);
-        return;
-      }
+        if (!localDemoEnabled) {
+          setMessageTone("error");
+          setMessage(appwriteResult.error ?? "Invalid login details.");
+          setLoading(false);
+          return;
+        }
 
-      if (!appwriteResult.canFallback && !demoUser) {
-        setMessageTone("error");
-        setMessage(appwriteResult.error ?? "Invalid login details.");
-        setLoading(false);
-        return;
+        if (!appwriteResult.canFallback && !demoUser) {
+          setMessageTone("error");
+          setMessage(appwriteResult.error ?? "Invalid login details.");
+          setLoading(false);
+          return;
+        }
       }
 
       if (!demoUser) {
@@ -303,7 +347,9 @@ export function AuthCard({ mode }: { mode: Mode }) {
             role: approvedUser.role,
             estate: approvedUser.estate
           });
-          router.push(params.get("next") ?? roleHome[approvedUser.role]);
+          const destination = params.get("next") ?? roleHome[approvedUser.role];
+          router.prefetch(destination);
+          router.push(destination);
           return;
         }
 
@@ -342,7 +388,9 @@ export function AuthCard({ mode }: { mode: Mode }) {
         role: demoUser.role,
         estate: "LBS View Estate"
       });
-      router.push(params.get("next") ?? roleHome[demoUser.role]);
+      const destination = params.get("next") ?? roleHome[demoUser.role];
+      router.prefetch(destination);
+      router.push(destination);
     } catch (error) {
       setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "The access request could not be submitted. Please try again.");

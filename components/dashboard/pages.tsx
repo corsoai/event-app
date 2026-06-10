@@ -228,6 +228,8 @@ type LbsviewOnboardingPreviewRow = {
 };
 
 const LAGOS_TIME_ZONE = "Africa/Lagos";
+const RESIDENT_ACCOUNTING_CACHE_PREFIX = "corso_resident_accounting_v1:";
+const RESIDENT_ACCOUNTING_CACHE_TTL_MS = 10 * 60 * 1000;
 
 declare global {
   interface Window {
@@ -347,6 +349,62 @@ function mergeAccountingState(state: LocalEstateState, accounting: AppwriteAccou
   };
 }
 
+function residentAccountingCacheKey() {
+  if (typeof window === "undefined") {
+    return "";
+  }
+
+  try {
+    const raw = window.localStorage.getItem("corso_user");
+    const session = raw ? JSON.parse(raw) as { email?: string; phone?: string; name?: string } : null;
+    const identity = session?.phone || session?.email || session?.name || "resident";
+    return `${RESIDENT_ACCOUNTING_CACHE_PREFIX}${identity.trim().toLowerCase()}`;
+  } catch {
+    return `${RESIDENT_ACCOUNTING_CACHE_PREFIX}resident`;
+  }
+}
+
+function readCachedResidentAccounting() {
+  if (typeof window === "undefined") {
+    return null;
+  }
+
+  const cacheKey = residentAccountingCacheKey();
+  if (!cacheKey) {
+    return null;
+  }
+
+  try {
+    const raw = window.sessionStorage.getItem(cacheKey);
+    if (!raw) {
+      return null;
+    }
+
+    const cached = JSON.parse(raw) as { savedAt?: number; data?: AppwriteAccountingDirectory };
+    if (!cached.savedAt || !cached.data || Date.now() - cached.savedAt > RESIDENT_ACCOUNTING_CACHE_TTL_MS) {
+      window.sessionStorage.removeItem(cacheKey);
+      return null;
+    }
+
+    return cached.data;
+  } catch {
+    return null;
+  }
+}
+
+function writeCachedResidentAccounting(data: AppwriteAccountingDirectory) {
+  if (typeof window === "undefined") {
+    return;
+  }
+
+  const cacheKey = residentAccountingCacheKey();
+  if (!cacheKey) {
+    return;
+  }
+
+  window.sessionStorage.setItem(cacheKey, JSON.stringify({ savedAt: Date.now(), data }));
+}
+
 function useResidentAccountingState(state: LocalEstateState) {
   const [accounting, setAccounting] = useState<AppwriteAccountingDirectory | null>(null);
   const [loadingAccounting, setLoadingAccounting] = useState(false);
@@ -354,7 +412,13 @@ function useResidentAccountingState(state: LocalEstateState) {
 
   async function refreshAccounting(options: { bypassCache?: boolean } = {}) {
     setLoadingAccounting(true);
-    setAccountingStatus("Loading your account...");
+    const cached = options.bypassCache ? null : readCachedResidentAccounting();
+    if (cached) {
+      setAccounting(cached);
+      setAccountingStatus("Loaded your saved account view. Refreshing latest records...");
+    } else {
+      setAccountingStatus("Loading your account...");
+    }
     const refreshQuery = options.bypassCache ? "?refresh=1" : "";
 
     try {
@@ -368,6 +432,7 @@ function useResidentAccountingState(state: LocalEstateState) {
       }
 
       setAccounting(payload);
+      writeCachedResidentAccounting(payload);
       setAccountingStatus(payload.residents.length
         ? `Loaded ${payload.bills.length} bills and ${payload.payments.length} payments from your account.`
         : "No resident accounting record matched this login yet.");
@@ -381,6 +446,22 @@ function useResidentAccountingState(state: LocalEstateState) {
 
   useEffect(() => {
     void refreshAccounting();
+  }, []);
+
+  useEffect(() => {
+    function refreshVisibleAccount() {
+      if (document.visibilityState === "visible") {
+        void refreshAccounting();
+      }
+    }
+
+    document.addEventListener("visibilitychange", refreshVisibleAccount);
+    window.addEventListener("focus", refreshVisibleAccount);
+
+    return () => {
+      document.removeEventListener("visibilitychange", refreshVisibleAccount);
+      window.removeEventListener("focus", refreshVisibleAccount);
+    };
   }, []);
 
   return {
