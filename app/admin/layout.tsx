@@ -4,7 +4,7 @@ import { adminNav } from "@/components/layout/nav";
 
 export default function AdminLayout({ children }: { children: ReactNode }) {
   return (
-    <AppShell roleLabel="Estate Admin / Manager" navItems={adminNav}>
+    <AppShell role="admin" roleLabel="Estate Admin / Manager" navItems={adminNav}>
       {children}
     </AppShell>
   );

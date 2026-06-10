@@ -13,6 +13,7 @@ import {
   ChevronRight,
   CheckCircle2,
   ClipboardList,
+  CreditCard,
   Database,
   DoorOpen,
   Download,
@@ -1067,7 +1068,7 @@ export function AdminDashboard() {
           </Button>
         </Link>
       </PageHeader>
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
         <StatCard label="Total residents" value={String(state.residents.length)} helper="Across active demo estates" icon={<Users className="h-5 w-5" />} />
         <StatCard label="Visitors today" value={String(state.visitors.length)} helper="Expected and checked in" icon={<QrCode className="h-5 w-5" />} />
         <StatCard label="Open complaints" value={String(openComplaints)} helper="Needs admin action" icon={<ClipboardList className="h-5 w-5" />} />
@@ -2034,7 +2035,7 @@ function ResidentOnboardingPanel({
 
   return (
     <div className="mb-6 grid gap-5">
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
         <StatCard label="Property groups" value={String(propertyCount)} helper="Includes LDI, JC, AA" icon={<Building2 className="h-5 w-5" />} />
         <StatCard label="Units" value={String(unitCount)} helper="Official unit IDs" icon={<Landmark className="h-5 w-5" />} />
         <StatCard label="Active residents" value={String(activeResidentCount)} helper="Current occupants" icon={<Users className="h-5 w-5" />} />
@@ -2948,7 +2949,7 @@ function BillingRunResultPanel({ result }: { result: BillingRunResult }) {
       <h3 className="text-base font-semibold text-white">
         {result.dryRun ? "Billing preview" : "Billing run complete"} for {formatBillingMonth(result.billingMonth)}
       </h3>
-      <div className="mt-4 grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+      <div className="mt-4 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-6 xl:gap-4">
         <StatCard label="Total residents" value={String(result.totalResidents)} helper="Billable unit targets" icon={<Users className="h-5 w-5" />} />
         <StatCard label="Bills to create" value={String(result.billsCreated)} helper={result.dryRun ? "Preview count" : "Created"} icon={<ReceiptText className="h-5 w-5" />} />
         <StatCard label="Auto-paid" value={String(result.autoPaidFromCredit)} helper="Settled from credit" icon={<BadgeCheck className="h-5 w-5" />} />
@@ -3109,7 +3110,7 @@ export function PaymentsAdminPage() {
       <p className="mb-4 rounded-lg border border-line bg-ink/50 px-3 py-2 text-sm text-slate-300">{accountingStatus}</p>
       {paymentMessage ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{paymentMessage}</p> : null}
       {paymentConfirmation ? <PaymentConfirmationCard confirmation={paymentConfirmation} /> : null}
-      <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
+      <div className="mb-6 grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 xl:gap-4">
         <StatCard label="Expected revenue" value={money(expected)} helper="All issued bills" icon={<ReceiptText className="h-5 w-5" />} />
         <StatCard label="Confirmed paid" value={money(confirmed)} helper="Webhook and admin confirmed" icon={<WalletCards className="h-5 w-5" />} />
         <StatCard label="Outstanding" value={money(outstanding)} helper="Balance still owed" icon={<Landmark className="h-5 w-5" />} />
@@ -4053,7 +4054,7 @@ export function ReportsPage() {
         </div>
       </PageHeader>
       <p className="mb-4 rounded-lg border border-line bg-ink/50 px-3 py-2 text-sm text-slate-300">{accountingStatus}</p>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-8">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3 xl:grid-cols-4 xl:gap-4">
         <StatCard label="Expected revenue" value={money(expectedRevenue)} helper="All bills issued" icon={<ReceiptText className="h-5 w-5" />} />
         <StatCard label="Paid amount" value={money(paidAmount)} helper="Confirmed payments" icon={<WalletCards className="h-5 w-5" />} />
         <ClickableReportCard onClick={() => scrollToSection("debtors-aging")}>
@@ -5135,28 +5136,50 @@ export function ResidentDashboard() {
   const liveBills = accounting?.bills ?? [];
   const livePayments = accounting?.payments ?? [];
   const showSkeleton = loadingAccounting && !summary && !accountingError;
+  const firstName = resident.name.split(" ")[0] || "Resident";
+  const mobileStatusText = summary?.outstandingBalance
+    ? `${money(summary.outstandingBalance)} Owed`
+    : "Paid ✓";
   return (
     <>
-      <PageHeader title={`Welcome, ${resident.name}`} description="Invite visitors, check bills, submit complaints, read announcements, and keep your digital ID ready." >
-        <div className="flex flex-wrap gap-2">
-          <Button type="button" variant="secondary" onClick={() => void refreshAccounting({ bypassCache: true })}>
-            <RefreshCw className="h-4 w-4" />
-            {loadingAccounting ? "Refreshing" : "Refresh account"}
-          </Button>
-          <Link href="/resident/invite-visitor">
-            <Button><QrCode className="h-4 w-4" />Invite visitor</Button>
-          </Link>
+      <div className="sticky top-16 z-20 -mx-4 mb-4 border-b border-line bg-ink/95 px-4 py-3 backdrop-blur sm:hidden">
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-lg font-semibold text-white">Hi {firstName}</p>
+            <p className="mt-1 inline-flex max-w-full rounded-full border border-smart/25 bg-smart/10 px-2 py-0.5 text-[11px] font-semibold text-smart">
+              {resident.houseNumber}
+            </p>
+          </div>
+          {summary ? (
+            <span className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${summary.outstandingBalance > 0 ? "border-danger/30 bg-danger/10 text-danger" : "border-smart/30 bg-smart/10 text-smart"}`}>
+              {mobileStatusText}
+            </span>
+          ) : null}
         </div>
-      </PageHeader>
+      </div>
+      <div className="hidden sm:block">
+        <PageHeader title={`Welcome, ${resident.name}`} description="Invite visitors, check bills, submit complaints, read announcements, and keep your digital ID ready." >
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" onClick={() => void refreshAccounting({ bypassCache: true })}>
+              <RefreshCw className="h-4 w-4" />
+              {loadingAccounting ? "Refreshing" : "Refresh account"}
+            </Button>
+            <Link href="/resident/invite-visitor">
+              <Button><QrCode className="h-4 w-4" />Invite visitor</Button>
+            </Link>
+          </div>
+        </PageHeader>
+      </div>
       {showSkeleton ? <ResidentFinancialSkeleton /> : null}
       {!showSkeleton && accountingError ? <ResidentAccountError /> : null}
       {!showSkeleton && !accountingError && summary ? (
         <>
           <ResidentStatusBanner summary={summary} />
           <ResidentSummaryCards summary={summary} />
+          <ResidentMobileQuickActions summary={summary} />
         </>
       ) : null}
-      <div className="mt-4 grid gap-4 md:grid-cols-2">
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-4">
         <StatCard label="Expected visitors" value={String(residentState.visitors.filter((visitor) => visitor.residentId === resident.id).length)} helper="Pending access codes" icon={<DoorOpen className="h-5 w-5" />} />
         <StatCard label="My complaints" value={String(residentState.complaints.filter((complaint) => complaint.residentId === resident.id).length)} helper="Open and resolved tickets" icon={<ClipboardList className="h-5 w-5" />} />
       </div>
@@ -5177,6 +5200,15 @@ export function ResidentDashboard() {
         </Card>
         <ResidentAnnouncementsPage compact />
       </div>
+      {summary ? (
+        <Link
+          href={summary.outstandingBalance > 0 ? "/resident/payments" : "/resident/invite-visitor"}
+          className="fixed bottom-[5.25rem] right-4 z-40 grid h-14 w-14 place-items-center rounded-full bg-[#1a7c4a] text-white shadow-[0_12px_30px_rgba(26,124,74,0.35)] sm:hidden"
+          aria-label={summary.outstandingBalance > 0 ? "Pay now" : "Invite visitor"}
+        >
+          {summary.outstandingBalance > 0 ? <CreditCard className="h-6 w-6" /> : <QrCode className="h-6 w-6" />}
+        </Link>
+      ) : null}
     </>
   );
 }
@@ -5517,7 +5549,7 @@ export function MyVisitorsPage() {
 
 function ResidentFinancialSkeleton({ cards = 4 }: { cards?: number }) {
   return (
-    <div className={`grid gap-4 ${cards === 4 ? "md:grid-cols-4" : "md:grid-cols-3"}`}>
+    <div className={`grid grid-cols-2 gap-3 sm:gap-4 ${cards === 4 ? "lg:grid-cols-4" : "md:grid-cols-3"}`}>
       {Array.from({ length: cards }, (_, index) => (
         <Card key={index} className="p-4">
           <div className="h-10 w-10 animate-pulse rounded-lg bg-slate-200/70" />
@@ -5548,8 +5580,13 @@ function ResidentStatusBanner({ summary }: { summary: ResidentAccountingSummary 
       : "border-danger/30 bg-danger/10 text-danger";
 
   return (
-    <div className={`mb-4 rounded-lg border px-3 py-3 text-sm font-medium ${toneClass}`}>
-      {summary.statusBannerText}
+    <div className={`mb-4 rounded-lg border px-3 py-3 text-sm font-medium sm:text-sm ${toneClass}`}>
+      <p className="text-base leading-6 sm:text-sm sm:leading-5">{summary.statusBannerText}</p>
+      {summary.outstandingBalance > 0 ? (
+        <Link href="/resident/payments" className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-[#1a7c4a] px-4 text-sm font-semibold text-white sm:hidden">
+          Pay now - {money(summary.outstandingBalance)}
+        </Link>
+      ) : null}
     </div>
   );
 }
@@ -5563,7 +5600,7 @@ function ResidentSummaryCards({ summary }: { summary: ResidentAccountingSummary 
     : `${money(summary.monthlyRate)} subscription`;
 
   return (
-    <div className="grid gap-4 md:grid-cols-4">
+    <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
       <StatCard label="Net amount due" value={money(summary.outstandingBalance)} helper="Outstanding after credit" icon={<ReceiptText className="h-5 w-5" />} />
       <StatCard label="Total confirmed paid" value={money(summary.totalPaid)} helper="Lifetime recorded payments" icon={<WalletCards className="h-5 w-5" />} />
       <StatCard label="Credit / advance balance" value={money(summary.advanceCredit)} helper={creditHelper} icon={<BadgeCheck className="h-5 w-5" />} />
@@ -5582,6 +5619,27 @@ function ResidentSummaryCards({ summary }: { summary: ResidentAccountingSummary 
   );
 }
 
+function ResidentMobileQuickActions({ summary }: { summary: ResidentAccountingSummary }) {
+  const primaryHref = summary.outstandingBalance > 0 ? "/resident/payments" : "/resident/invite-visitor";
+  const primaryLabel = summary.outstandingBalance > 0 ? "Pay now" : "Invite visitor";
+
+  return (
+    <div className="mt-4 grid grid-cols-2 gap-3 sm:hidden">
+      {[
+        { href: primaryHref, label: primaryLabel, icon: summary.outstandingBalance > 0 ? <CreditCard className="h-5 w-5" /> : <QrCode className="h-5 w-5" /> },
+        { href: "/resident/payments", label: "Pay ahead", icon: <WalletCards className="h-5 w-5" /> },
+        { href: "/resident/bills", label: "Statement", icon: <ReceiptText className="h-5 w-5" /> },
+        { href: "/resident/invite-visitor", label: "Invite visitor", icon: <Users className="h-5 w-5" /> }
+      ].map((item) => (
+        <Link key={item.label} href={item.href} className="flex min-h-16 items-center gap-3 rounded-lg border border-line bg-white/80 px-3 text-sm font-semibold text-white shadow-sm">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#1a7c4a]/10 text-[#1a7c4a]">{item.icon}</span>
+          {item.label}
+        </Link>
+      ))}
+    </div>
+  );
+}
+
 function ResidentHomeBillsSection({ bills }: { bills: Bill[] }) {
   const recentBills = [...bills]
     .sort((left, right) => residentDateSortValue(right.dueDate) - residentDateSortValue(left.dueDate))
@@ -5595,8 +5653,8 @@ function ResidentHomeBillsSection({ bills }: { bills: Bill[] }) {
         action={<Link className="text-sm font-semibold text-smart" href="/resident/bills">View all bills -&gt;</Link>}
       />
       <div className="grid gap-3">
-        {recentBills.length ? recentBills.map((bill) => (
-          <ResidentBillListItem key={bill.id} bill={bill} />
+        {recentBills.length ? recentBills.map((bill, index) => (
+          <ResidentBillListItem key={bill.id} bill={bill} className={index > 2 ? "hidden sm:block" : ""} />
         )) : (
           <p className="rounded-lg border border-line bg-white/60 p-4 text-sm text-slate-500">No bills have been recorded for your account yet.</p>
         )}
@@ -5635,12 +5693,12 @@ function ResidentHomePaymentsSection({ payments, bills }: { payments: Payment[];
   );
 }
 
-function ResidentBillListItem({ bill }: { bill: Bill }) {
+function ResidentBillListItem({ bill, className = "" }: { bill: Bill; className?: string }) {
   const paid = numberValue(bill.paidAmount);
   const outstanding = Math.max(0, bill.amount - paid);
 
   return (
-    <div className="rounded-lg border border-line/70 bg-white/70 p-4">
+    <div className={`rounded-lg border border-line/70 bg-white/70 p-4 ${className}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="font-semibold text-white">{residentBillTitle(bill)}</p>
@@ -5658,13 +5716,15 @@ function ResidentBillListItem({ bill }: { bill: Bill }) {
 }
 
 function ResidentBillsLiveTable({ bills }: { bills: Bill[] }) {
+  const [mobileLimit, setMobileLimit] = useState(6);
   const orderedBills = [...bills].sort((left, right) => residentDateSortValue(right.dueDate) - residentDateSortValue(left.dueDate));
+  const mobileBills = orderedBills.slice(0, mobileLimit);
 
   return (
     <Card>
       <CardHeader title="Resident billing" description="All live bills connected to this resident account." />
       <div className="grid gap-3 md:hidden">
-        {orderedBills.length ? orderedBills.map((bill) => {
+        {mobileBills.length ? mobileBills.map((bill) => {
           const paid = numberValue(bill.paidAmount);
           const outstanding = Math.max(0, bill.amount - paid);
 
@@ -5687,6 +5747,11 @@ function ResidentBillsLiveTable({ bills }: { bills: Bill[] }) {
         }) : (
           <p className="rounded-lg border border-line bg-white/60 p-4 text-sm text-slate-500">No bills have been recorded for your account yet.</p>
         )}
+        {orderedBills.length > mobileLimit ? (
+          <Button type="button" variant="secondary" className="min-h-11" onClick={() => setMobileLimit((current) => current + 6)}>
+            Load more bills
+          </Button>
+        ) : null}
       </div>
       <div className="hidden max-w-full overflow-x-auto overscroll-x-contain rounded-lg border border-line/70 bg-white/40 md:block">
         <table className="w-full table-auto border-separate border-spacing-0 text-left text-sm">
@@ -6325,15 +6390,50 @@ export function SecurityDashboard() {
   const { state } = useLocalEstateStore();
   const checkedInCount = state.visitors.filter((visitor) => visitor.status === "checked-in").length;
   const verifiedCount = state.visitors.filter((visitor) => visitor.status === "verified").length;
+  const recentVisitors = state.visitors.slice(0, 4);
 
   return (
     <>
       <PageHeader title="Security dashboard" description="Verify access and record gate movement." />
-      <VerifyVisitorPage compact />
+      <div className="grid gap-3 sm:hidden">
+        <Link href="/security/verify-visitor">
+          <Button className="min-h-[72px] w-full justify-center text-base">
+            <QrCode className="h-6 w-6" />
+            Scan QR Code
+          </Button>
+        </Link>
+        <Link href="/security/verify-visitor">
+          <Button variant="secondary" className="min-h-[72px] w-full justify-center text-base">
+            <Search className="h-6 w-6" />
+            Enter Code Manually
+          </Button>
+        </Link>
+        <Card>
+          <CardHeader title="Recent gate activity" description="Latest visitor invitations and movements." />
+          <div className="grid gap-3">
+            {recentVisitors.length ? recentVisitors.map((visitor) => (
+              <div key={visitor.id} className="rounded-lg border border-line/70 bg-white/70 p-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-white">{visitor.visitorName}</p>
+                    <p className="mt-1 text-xs text-slate-500">{visitor.code} - {formatClockTime(visitor.arrivalTime)}</p>
+                  </div>
+                  <StatusBadge status={visitor.status} />
+                </div>
+              </div>
+            )) : (
+              <p className="rounded-lg border border-line bg-white/60 p-3 text-sm text-slate-500">No recent visitor activity.</p>
+            )}
+          </div>
+        </Card>
+      </div>
+      <div className="hidden sm:block">
+        <VerifyVisitorPage compact />
+      </div>
       <div className="mt-6">
         <h2 className="text-lg font-semibold text-white">Today at the gate</h2>
       </div>
-      <div className="mt-4 grid gap-4 md:grid-cols-3">
+      <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
         <StatCard label="Expected today" value={String(state.visitors.length)} helper="All gates" icon={<CalendarClock className="h-5 w-5" />} />
         <StatCard label="Checked in" value={String(checkedInCount)} helper="Currently inside" icon={<DoorOpen className="h-5 w-5" />} />
         <StatCard label="Verified codes" value={String(verifiedCount)} helper="Awaiting check-in" icon={<BadgeCheck className="h-5 w-5" />} />
@@ -6371,6 +6471,17 @@ export function CsoDashboard() {
   const offlineLogs = patrols.filter((patrol) => patrol.isOfflineLog === true);
   const openIncidents = incidents.filter((incident) => incident.status === "open" || incident.status === "acknowledged");
   const pendingReviews = reviews.filter((review) => review.status === "open" || review.status === "pending");
+
+  useEffect(() => {
+    function syncTabFromHash() {
+      setActiveTab(window.location.hash === "#checkpoints" ? "checkpoints" : "feed");
+    }
+
+    syncTabFromHash();
+    window.addEventListener("hashchange", syncTabFromHash);
+
+    return () => window.removeEventListener("hashchange", syncTabFromHash);
+  }, []);
 
   useEffect(() => {
     let active = true;
@@ -6542,7 +6653,7 @@ export function CsoDashboard() {
 
       {message ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{message}</p> : null}
 
-      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-6">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
         <StatCard label="Patrols today" value={String(patrolsToday.length)} helper="Checkpoint scans recorded" icon={<ShieldCheck className="h-5 w-5" />} />
         <StatCard label="Active guards" value={String(activeGuards.size)} helper="Seen in last 24 hours" icon={<Users className="h-5 w-5" />} />
         <StatCard label="GPS violations" value={String(gpsViolations.length)} helper="Needs CSO review" icon={<AlertTriangle className="h-5 w-5" />} />
@@ -7119,7 +7230,7 @@ function CheckpointCard({
           </style>
         </head>
         <body>
-          <img src="${qrDataUrl}" alt="Checkpoint QR" />
+          <img src="${qrDataUrl}" alt="Checkpoint QR" loading="lazy" />
           <h1>${safeName}</h1>
           <p class="token">${safePayload}</p>
           <p>LBS View Estate Guard Tour Checkpoint</p>
@@ -7155,7 +7266,7 @@ function CheckpointCard({
         <div className="rounded-lg border border-white/10 bg-white p-2">
           {qrDataUrl ? (
             // eslint-disable-next-line @next/next/no-img-element
-            <img alt={`QR code for ${checkpoint.checkpointName}`} className="aspect-square w-full rounded-md object-contain" src={qrDataUrl} />
+            <img alt={`QR code for ${checkpoint.checkpointName}`} className="aspect-square w-full rounded-md object-contain" src={qrDataUrl} loading="lazy" decoding="async" />
           ) : (
             <div className="grid aspect-square place-items-center rounded-md bg-slate-100 text-xs font-semibold text-slate-500">
               QR loading
@@ -7258,7 +7369,7 @@ function EmergencyAlertsFlow({ audience = "security" }: { audience?: "security" 
 
       <SosAlertSoundControl activeAlerts={activeAlerts} />
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
         <StatCard label="Active alerts" value={String(activeAlerts.length)} helper="Needs immediate response" icon={<Siren className="h-5 w-5" />} />
         <StatCard label="Acknowledged" value={String(acknowledgedAlerts.length)} helper="Security has started response" icon={<BadgeCheck className="h-5 w-5" />} />
         <StatCard label="Closed incidents" value={String(closedAlerts.length)} helper="Resolved or false alarm" icon={<CheckCircle2 className="h-5 w-5" />} />
@@ -7648,7 +7759,7 @@ function QrScannerPanel({
   }
 
   return (
-    <div className="mt-4 rounded-lg border border-smart/30 bg-black p-4 shadow-glow">
+    <div className="fixed inset-0 z-[80] overflow-y-auto bg-black p-4 shadow-glow sm:static sm:mt-4 sm:rounded-lg sm:border sm:border-smart/30">
       <div className="flex items-center justify-between gap-3">
         <h3 className="text-base font-semibold text-white">{title}</h3>
         <Button type="button" variant="ghost" className="min-h-9 px-3" onClick={onClose}>
@@ -7657,7 +7768,7 @@ function QrScannerPanel({
         </Button>
       </div>
       <div className="mt-4 overflow-hidden rounded-lg border border-white/15 bg-ink">
-        <video ref={videoRef} className="aspect-[4/3] w-full object-cover" muted playsInline />
+        <video ref={videoRef} className="h-[62vh] w-full object-cover sm:aspect-[4/3] sm:h-auto" muted playsInline />
       </div>
       {message ? <p className="mt-3 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
     </div>
@@ -7827,21 +7938,29 @@ function shouldExpireVisitor(visitor: Visitor) {
 }
 
 export function ExpectedVisitorsPage() {
-  const { state } = useLocalEstateStore();
+  const { state, updateVisitorStatus } = useLocalEstateStore();
 
   return (
     <>
       <PageHeader title="Today's expected visitors" description="Visitor list for security guards to prepare gate checks." />
       <DataTable
         title="Expected visitors"
-        headers={["Code", "Visitor", "Resident", "Arrival", "Guests", "Status"]}
+        headers={["Code", "Visitor", "Resident", "Arrival", "Guests", "Status", "Action"]}
         rows={state.visitors.map((visitor) => [
           <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
           visitor.visitorName,
           state.residents.find((resident) => resident.id === visitor.residentId)?.name ?? "Unknown",
           formatClockTime(visitor.arrivalTime),
           visitor.count,
-          <StatusBadge key={visitor.status} status={visitor.status} />
+          <StatusBadge key={visitor.status} status={visitor.status} />,
+          <Button
+            key={`${visitor.id}-check-in`}
+            className="min-h-11 w-full px-3 py-2 text-xs sm:w-auto"
+            disabled={visitor.status === "checked-in" || visitor.status === "checked-out" || visitor.status === "cancelled" || visitor.status === "expired"}
+            onClick={() => updateVisitorStatus(visitor.id, "checked-in")}
+          >
+            Check in
+          </Button>
         ])}
       />
     </>
@@ -8731,10 +8850,10 @@ function VisitorVerificationCard({
           {windowState.message} Visitor codes are valid for {VISITOR_CODE_VALIDITY_HOURS} hours after generation.
         </div>
       ) : null}
-      <div className="mt-5 flex flex-wrap gap-3">
-        <Button disabled={checkInDisabled} onClick={onCheckIn}><CheckCircle2 className="h-4 w-4" />Check in</Button>
-        <Button variant="secondary" disabled={expired || !checkedIn} onClick={onCheckOut}>Check out</Button>
-        <Button variant="danger" disabled={checkedIn || checkedOut} onClick={onReject}>Reject</Button>
+      <div className="mt-5 grid gap-3 sm:flex sm:flex-wrap">
+        <Button className="min-h-16 sm:min-h-11" disabled={checkInDisabled} onClick={onCheckIn}><CheckCircle2 className="h-4 w-4" />Check in</Button>
+        <Button className="min-h-16 sm:min-h-11" variant="secondary" disabled={expired || !checkedIn} onClick={onCheckOut}>Check out</Button>
+        <Button className="min-h-16 sm:min-h-11" variant="danger" disabled={checkedIn || checkedOut} onClick={onReject}>Reject</Button>
       </div>
     </div>
   );
@@ -8800,7 +8919,7 @@ function QRCodeImage({ value }: { value: string }) {
     return <div className="mx-auto h-44 w-44 rounded-lg bg-white/80" />;
   }
 
-  return <img src={src} alt={`QR code for ${value}`} className="mx-auto h-44 w-44 rounded-lg" />;
+  return <img src={src} alt={`QR code for ${value}`} className="mx-auto h-44 w-44 rounded-lg" loading="lazy" decoding="async" />;
 }
 
 function HomeIcon() {

@@ -4,7 +4,7 @@ import { residentNav } from "@/components/layout/nav";
 
 export default function ResidentLayout({ children }: { children: ReactNode }) {
   return (
-    <AppShell roleLabel="Resident" navItems={residentNav} bottomNav>
+    <AppShell role="resident" roleLabel="Resident" navItems={residentNav}>
       {children}
     </AppShell>
   );

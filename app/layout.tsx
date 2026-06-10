@@ -9,7 +9,8 @@ export const metadata: Metadata = {
     template: "%s | Corso"
   },
   description: "A secure, mobile-first PWA for gated estate and community access control.",
-  manifest: "/manifest.webmanifest",
+  applicationName: "Corso",
+  manifest: "/manifest.json",
   icons: {
     icon: [
       { url: "/favicon.ico", sizes: "16x16 32x32 48x48" },
@@ -26,15 +27,17 @@ export const metadata: Metadata = {
   },
   appleWebApp: {
     capable: true,
-    statusBarStyle: "default",
+    statusBarStyle: "black-translucent",
     title: "Corso"
   }
 };
 
 export const viewport: Viewport = {
-  themeColor: "#000000",
+  themeColor: "#1a7c4a",
   width: "device-width",
   initialScale: 1,
+  maximumScale: 1,
+  userScalable: false,
   viewportFit: "cover",
   interactiveWidget: "resizes-content"
 };

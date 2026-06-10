@@ -4,7 +4,7 @@ import { securityNav } from "@/components/layout/nav";
 
 export default function SecurityLayout({ children }: { children: ReactNode }) {
   return (
-    <AppShell roleLabel="Security Guard" navItems={securityNav}>
+    <AppShell role="security_guard" roleLabel="Security Guard" navItems={securityNav}>
       {children}
     </AppShell>
   );

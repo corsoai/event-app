@@ -4,7 +4,7 @@ import { csoNav } from "@/components/layout/nav";
 
 export default function CsoLayout({ children }: { children: ReactNode }) {
   return (
-    <AppShell roleLabel="Chief Security Officer" navItems={csoNav}>
+    <AppShell role="cso" roleLabel="Chief Security Officer" navItems={csoNav}>
       {children}
     </AppShell>
   );

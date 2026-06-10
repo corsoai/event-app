@@ -31,7 +31,9 @@ import {
 import type { ReactNode } from "react";
 import { useEffect, useState } from "react";
 import { BrandMark } from "@/components/layout/brand-mark";
+import { MobileBottomNav } from "@/components/layout/MobileBottomNav";
 import { cn } from "@/lib/utils";
+import type { UserRole } from "@/lib/types";
 
 const icons = {
   BarChart3,
@@ -67,15 +69,15 @@ export type NavItem = {
 };
 
 export function AppShell({
+  role,
   roleLabel,
   navItems,
-  children,
-  bottomNav = false
+  children
 }: {
+  role: UserRole | "admin";
   roleLabel: string;
   navItems: NavItem[];
   children: ReactNode;
-  bottomNav?: boolean;
 }) {
   const pathname = usePathname();
   const router = useRouter();
@@ -186,58 +188,39 @@ export function AppShell({
         ) : null}
       </div>
 
-      <aside className="fixed inset-y-0 left-0 z-30 hidden w-64 flex-col border-r border-white/10 bg-black/40 px-3 py-5 shadow-[10px_0_40px_rgba(0,0,0,0.2)] backdrop-blur-2xl lg:flex">
+      <aside className="fixed inset-y-0 left-0 z-30 hidden w-16 flex-col border-r border-white/10 bg-black/40 px-2 py-5 shadow-[10px_0_40px_rgba(0,0,0,0.2)] backdrop-blur-2xl lg:flex xl:w-64 xl:px-3">
         <div className="shrink-0">
-          <Link href={dashboardHref} className="flex items-center gap-3 px-2 text-white">
+          <Link href={dashboardHref} className="flex items-center justify-center gap-3 px-2 text-white xl:justify-start" title="Corso dashboard">
             <BrandMark className="h-11 w-11" />
-            <span>
+            <span className="hidden xl:block">
               <span className="block text-base font-semibold">Corso</span>
               <span className="text-xs text-slate-400">{roleLabel}</span>
             </span>
           </Link>
-          <div className="mt-4 grid grid-cols-2 gap-2 px-1">
+          <div className="mt-4 grid gap-2 px-1 xl:grid-cols-2">
             <ThemeToggleButton theme={theme} onToggle={() => setTheme((value) => value === "dark" ? "light" : "dark")} compact />
             <button
               onClick={logout}
+              title="Sign out"
               className="inline-flex min-h-10 items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/10 px-3 text-sm font-semibold text-slate-100 transition hover:bg-white/15 hover:text-white"
             >
               <LogOut className="h-4 w-4" />
-              <span>Sign out</span>
+              <span className="hidden xl:inline">Sign out</span>
             </button>
           </div>
         </div>
         <nav className="mt-6 grid flex-1 gap-1 overflow-y-auto overscroll-contain pr-1">
           {navItems.map((item) => (
-            <NavLink key={item.href} item={item} active={pathname === item.href} />
+            <NavLink key={item.href} item={item} active={pathname === item.href} collapseLabel />
           ))}
         </nav>
       </aside>
 
-      <main className={cn("px-4 pb-24 pt-20 lg:ml-64 lg:px-5 lg:py-7 xl:px-6", bottomNav && "pb-28")}>
+      <main className="px-4 pb-[calc(6rem+env(safe-area-inset-bottom))] pt-20 lg:ml-16 lg:px-5 lg:py-7 xl:ml-64 xl:px-6">
         {children}
       </main>
 
-      {bottomNav ? (
-        <nav className="fixed inset-x-0 bottom-0 z-40 grid grid-cols-5 border-t border-white/10 bg-black/55 px-2 py-2 backdrop-blur-2xl lg:hidden">
-          {navItems.slice(0, 5).map((item) => {
-            const Icon = icons[item.icon];
-            const active = pathname === item.href;
-            return (
-              <Link
-                key={item.href}
-                href={item.href}
-                className={cn(
-                  "grid min-h-14 place-items-center gap-1 rounded-lg text-[11px] font-medium text-slate-400",
-                  active && "bg-white/10 text-smart"
-                )}
-              >
-                <Icon className="h-5 w-5" />
-                <span>{item.label.split(" ")[0]}</span>
-              </Link>
-            );
-          })}
-        </nav>
-      ) : null}
+      <MobileBottomNav role={role} />
     </div>
   );
 }
@@ -268,24 +251,36 @@ function ThemeToggleButton({
       )}
     >
       <Icon className="h-4 w-4" />
-      <span className={cn("hidden", wide || compact ? "lg:inline" : "sm:inline")}>{showingDark ? "Light" : "Dark"}</span>
+      <span className={cn("hidden", wide || compact ? "xl:inline" : "sm:inline")}>{showingDark ? "Light" : "Dark"}</span>
     </button>
   );
 }
 
-function NavLink({ item, active, onNavigate }: { item: NavItem; active: boolean; onNavigate?: () => void }) {
+function NavLink({
+  item,
+  active,
+  onNavigate,
+  collapseLabel = false
+}: {
+  item: NavItem;
+  active: boolean;
+  onNavigate?: () => void;
+  collapseLabel?: boolean;
+}) {
   const Icon = icons[item.icon];
   return (
     <Link
       href={item.href}
       onClick={onNavigate}
+      title={item.label}
       className={cn(
         "flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white",
+        collapseLabel ? "justify-center xl:justify-start" : "justify-start",
         active && "bg-white/10 text-smart shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]"
       )}
     >
       <Icon className="h-4 w-4" />
-      {item.label}
+      <span className={collapseLabel ? "hidden xl:inline" : ""}>{item.label}</span>
     </Link>
   );
 }
