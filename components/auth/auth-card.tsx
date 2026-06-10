@@ -247,7 +247,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
           persistSession(appwriteResult.user);
           const destination = params.get("next") ?? roleHome[appwriteResult.user.role];
           router.prefetch(destination);
-          router.push(destination);
+          window.location.assign(destination);
           return;
         }
 
@@ -281,7 +281,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
             persistSession(profile);
             const destination = params.get("next") ?? roleHome[profile.role];
             router.prefetch(destination);
-            router.push(destination);
+            window.location.assign(destination);
             return;
           }
 
@@ -318,7 +318,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
           persistSession(appwriteResult.user);
           const destination = params.get("next") ?? roleHome[appwriteResult.user.role];
           router.prefetch(destination);
-          router.push(destination);
+          window.location.assign(destination);
           return;
         }
 
@@ -349,7 +349,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
           });
           const destination = params.get("next") ?? roleHome[approvedUser.role];
           router.prefetch(destination);
-          router.push(destination);
+          window.location.assign(destination);
           return;
         }
 
@@ -390,7 +390,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
       });
       const destination = params.get("next") ?? roleHome[demoUser.role];
       router.prefetch(destination);
-      router.push(destination);
+      window.location.assign(destination);
     } catch (error) {
       setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "The access request could not be submitted. Please try again.");
