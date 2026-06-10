@@ -1,6 +1,7 @@
 import type { AuditLog, Bill, Payment, PaymentChannel, Resident } from "@/lib/types";
 import { APPWRITE_LBSVIEW_ESTATE_ID, appwriteRequest, appwriteUpsertRow, getAppwriteServerConfig, safeAppwriteId, setupAppwriteOnboardingSchema } from "@/lib/appwrite/server";
 import { listAppwriteResidentDirectory, listAppwriteTableRows, type AppwriteResidentDirectory } from "@/lib/appwrite/residents";
+import { allocatePayment, type AllocationResult } from "@/lib/appwrite/payment-allocation";
 import { normalizePhoneNumber } from "@/lib/utils";
 
 type AppwriteBillRow = {
@@ -8,6 +9,8 @@ type AppwriteBillRow = {
   estateId?: string;
   propertyId?: string;
   unitId?: string;
+  propertyCode?: string;
+  unitCode?: string;
   residentId?: string;
   category?: string;
   title?: string;
@@ -22,6 +25,8 @@ type AppwritePaymentRow = {
   estateId?: string;
   propertyId?: string;
   unitId?: string;
+  propertyCode?: string;
+  unitCode?: string;
   residentId?: string;
   billId?: string;
   amount?: number;
@@ -34,6 +39,14 @@ type AppwritePaymentRow = {
   source?: string;
   confirmedAt?: string;
   confirmedBy?: string;
+  recordedBy?: string;
+  allocations?: string;
+  advanceCreditGenerated?: number;
+  monnifyTransactionRef?: string;
+  monnifyPaymentRef?: string;
+  notes?: string;
+  createdAt?: string;
+  updatedAt?: string;
 };
 
 type AppwriteAuditRow = {
@@ -85,6 +98,12 @@ export type AppwritePaymentInput = {
   reference: string;
   channel: PaymentChannel;
   date?: string;
+};
+
+export type AppwritePaymentResult = {
+  payment: Payment;
+  bill: Bill;
+  allocation: AllocationResult;
 };
 
 export type AppwriteBillInput = {
@@ -268,7 +287,7 @@ export async function getAppwriteAccountingSummary(options: { bypassCache?: bool
   return data;
 }
 
-export async function recordAppwriteAdminPayment(input: AppwritePaymentInput) {
+export async function recordAppwriteAdminPayment(input: AppwritePaymentInput): Promise<AppwritePaymentResult> {
   const billId = input.billId.trim();
   const reference = input.reference.trim();
   const amount = Math.max(0, Number(input.amount));
@@ -285,69 +304,41 @@ export async function recordAppwriteAdminPayment(input: AppwritePaymentInput) {
   const resident = billRow.residentId
     ? (await listAppwriteResidentDirectory({ ensureSchema: false })).residents.find((item) => item.id === billRow.residentId)
     : undefined;
-  const now = new Date().toISOString();
-  const date = input.date || now.slice(0, 10);
-  const existingPayments = await listAppwriteTableRows<AppwritePaymentRow>("payments");
-  const paidBefore = existingPayments
-    .filter((payment) => payment.billId === billId && payment.status === "confirmed")
-    .reduce((sum, payment) => sum + numberOrZero(payment.amount), 0);
-  const billAmount = numberOrZero(billRow.amount);
-  const paymentAmount = amount;
-  const paidAmount = paidBefore + paymentAmount;
-  const paymentId = safeAppwriteId("pay", `${reference}-${billId}`);
-
-  const payment = await appwriteUpsertRow<AppwritePaymentRow>("payments", paymentId, {
+  if (!resident && !billRow.residentId) {
+    throw new Error("The selected bill is not linked to a resident.");
+  }
+  const date = input.date || new Date().toISOString().slice(0, 10);
+  const residentId = billRow.residentId ?? resident?.id ?? "";
+  const allocation = await allocatePayment({
+    residentId,
     estateId: billRow.estateId ?? resident?.estateId ?? APPWRITE_LBSVIEW_ESTATE_ID,
-    propertyId: billRow.propertyId ?? resident?.propertyId,
-    unitId: billRow.unitId ?? resident?.unitId,
-    residentId: billRow.residentId ?? resident?.id,
-    billId,
-    amount: paymentAmount,
-    reference,
-    processor: "manual",
+    amountPaid: amount,
+    paymentDate: date,
     channel: input.channel,
-    providerReference: reference,
-    date,
-    status: "confirmed",
-    source: "admin",
-    confirmedAt: now,
-    confirmedBy: "Estate admin"
+    reference,
+    source: "manual_admin",
+    recordedBy: "Estate admin",
+    notes: `Recorded from admin payment form for bill ${billId}.`
   });
+  if (!allocation.success) {
+    console.error("Payment allocation reconciliation failed", allocation.errorMessage);
+  }
 
-  const updatedBill = await appwriteUpsertRow<AppwriteBillRow>("bills", billId, {
-    estateId: billRow.estateId ?? resident?.estateId ?? APPWRITE_LBSVIEW_ESTATE_ID,
-    propertyId: billRow.propertyId ?? resident?.propertyId,
-    unitId: billRow.unitId ?? resident?.unitId,
-    residentId: billRow.residentId ?? resident?.id,
-    category: billRow.category ?? "Service charge",
-    title: billRow.title ?? "Resident bill",
-    amount: billAmount,
-    paidAmount,
-    dueDate: billRow.dueDate ?? date,
-    status: billStatus(billAmount, paidAmount, billRow.status)
-  });
-
-  await appwriteUpsertRow<AppwriteAuditRow>("audit_logs", safeAppwriteId("audit", `admin-payment-${paymentId}-${now}`), {
-    estateId: billRow.estateId ?? resident?.estateId ?? APPWRITE_LBSVIEW_ESTATE_ID,
-    actor: "Estate admin",
-    action: "recorded manual payment",
-    entityType: "payment",
-    entityId: paymentId,
-    metadata: JSON.stringify({
-      billId,
-      residentId: billRow.residentId ?? "",
-      amount: paymentAmount,
-      channel: input.channel,
-      reference
-    }),
-    createdAt: now
-  });
+  const payment = await appwriteRequest<AppwritePaymentRow>(
+    `/tablesdb/${config.databaseId}/tables/payments/rows/${encodeURIComponent(allocation.paymentId)}`,
+    { method: "GET" }
+  );
+  const updatedBill = await appwriteRequest<AppwriteBillRow>(
+    `/tablesdb/${config.databaseId}/tables/bills/rows/${encodeURIComponent(billId)}`,
+    { method: "GET" }
+  );
 
   clearAppwriteAccountingCache();
 
   return {
     payment: mapPaymentRow(payment),
-    bill: mapBillRow(updatedBill, resident)
+    bill: mapBillRow(updatedBill, resident),
+    allocation
   };
 }
 

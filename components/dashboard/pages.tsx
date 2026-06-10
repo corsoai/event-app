@@ -250,6 +250,34 @@ type HouseholdApiResponse = {
   error?: string;
 };
 
+type PaymentAllocationSummary = {
+  totalPaidAllTime: number;
+  outstandingBalance: number;
+  advanceCredit: number;
+  coverageThroughDate: string;
+  nextDueDate: string;
+  accountStatus: "fully_paid" | "in_credit" | "partially_paid" | "unpaid";
+};
+
+type PaymentAllocationResult = {
+  paymentId: string;
+  totalAllocated: number;
+  advanceCreditGenerated: number;
+  monthsCreditCovers: number;
+  residentSummary: PaymentAllocationSummary;
+  success: boolean;
+  errorMessage?: string;
+};
+
+type AdminPaymentConfirmation = {
+  residentName: string;
+  unitLabel: string;
+  amount: number;
+  channel: string;
+  monthlyRate: number;
+  allocation: PaymentAllocationResult;
+};
+
 type LbsviewOnboardingPreviewRow = {
   sourceRow: number;
   fullName: string;
@@ -2749,6 +2777,10 @@ export function PaymentsAdminPage() {
   const { accountingState, accounting, summary, accountingStatus, loadingAccounting, loadingAccountingDetails, refreshAccounting } = useAdminAccountingState(state);
   const [paymentMessage, setPaymentMessage] = useState("");
   const [savingPayment, setSavingPayment] = useState(false);
+  const [selectedBillId, setSelectedBillId] = useState("");
+  const [paymentAmount, setPaymentAmount] = useState("");
+  const [paymentChannel, setPaymentChannel] = useState<Payment["channel"]>("bank_transfer");
+  const [paymentConfirmation, setPaymentConfirmation] = useState<AdminPaymentConfirmation | null>(null);
   const expected = summary?.expectedRevenue ?? accountingState.bills.reduce((sum, bill) => sum + bill.amount, 0);
   const confirmed = summary?.paidAmount ?? accountingState.payments.filter((payment) => payment.status === "confirmed").reduce((sum, payment) => sum + payment.amount, 0);
   const pendingReview = summary?.pendingReviewAmount ?? accountingState.payments.filter((payment) => payment.status === "pending").reduce((sum, payment) => sum + payment.amount, 0);
@@ -2757,19 +2789,34 @@ export function PaymentsAdminPage() {
   const netReceivable = summary?.netReceivable ?? Math.max(0, outstanding - credit);
   const debtors = summary?.debtorsCount ?? accountingState.residents.filter((resident) => residentBillingBalance(accountingState, resident.id).netReceivable > 0).length;
   const payableBills = accountingState.bills.filter((bill) => billOutstandingAmount(accountingState, bill) > 0);
+  const selectedBill = accountingState.bills.find((bill) => bill.id === selectedBillId) ?? payableBills[0];
+  const selectedResident = selectedBill ? accountingState.residents.find((resident) => resident.id === selectedBill.residentId) : undefined;
+  const selectedBalance = selectedResident ? residentBillingBalance(accountingState, selectedResident.id) : null;
+  const selectedMonthlyRate = selectedResident?.expectedMonthly ?? 0;
+  const paymentPreview = selectedBalance && selectedResident
+    ? buildPaymentPreview(Number(paymentAmount || 0), selectedBalance.netReceivable, selectedMonthlyRate)
+    : null;
+
+  useEffect(() => {
+    if (!selectedBillId && payableBills[0]?.id) {
+      setSelectedBillId(payableBills[0].id);
+    }
+  }, [payableBills, selectedBillId]);
 
   async function submitAdminPayment(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSavingPayment(true);
     setPaymentMessage("");
+    setPaymentConfirmation(null);
 
     const form = new FormData(event.currentTarget);
-    const billId = String(form.get("billId") ?? "");
+    const billId = String(form.get("billId") || selectedBillId);
     const bill = accountingState.bills.find((item) => item.id === billId);
-    const amount = Number(form.get("amount") ?? 0);
+    const amount = Number(form.get("amount") || paymentAmount || 0);
     const reference = String(form.get("reference") || `ADMIN-${Date.now()}`);
-    const channel = String(form.get("channel") ?? "bank_transfer") as Payment["channel"];
+    const channel = String(form.get("channel") || paymentChannel || "bank_transfer") as Payment["channel"];
     const date = String(form.get("date") || dateInputValue());
+    const resident = bill ? accountingState.residents.find((item) => item.id === bill.residentId) : undefined;
 
     if (!bill || amount <= 0) {
       setPaymentMessage("Select a bill and enter a payment amount.");
@@ -2785,9 +2832,22 @@ export function PaymentsAdminPage() {
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ billId: bill.id, amount, reference, channel, date })
         });
-        const payload = await response.json().catch(() => null) as { error?: string } | null;
+        const payload = await response.json().catch(() => null) as {
+          allocation?: PaymentAllocationResult;
+          error?: string;
+        } | null;
         if (!response.ok) {
           throw new Error(payload?.error ?? "Unable to record Appwrite payment.");
+        }
+        if (payload?.allocation && resident) {
+          setPaymentConfirmation({
+            residentName: resident.name,
+            unitLabel: residentUnitLabel(accountingState, resident),
+            amount,
+            channel,
+            monthlyRate: resident.expectedMonthly ?? 0,
+            allocation: payload.allocation
+          });
         }
         await refreshAccounting({ bypassCache: true });
       } else {
@@ -2803,6 +2863,7 @@ export function PaymentsAdminPage() {
       }
 
       setPaymentMessage(`Payment ${reference} has been recorded and the reports have been updated.`);
+      setPaymentAmount("");
       event.currentTarget.reset();
     } catch (error) {
       setPaymentMessage(error instanceof Error ? error.message : "Payment could not be recorded.");
@@ -2821,6 +2882,7 @@ export function PaymentsAdminPage() {
       </PageHeader>
       <p className="mb-4 rounded-lg border border-line bg-ink/50 px-3 py-2 text-sm text-slate-300">{accountingStatus}</p>
       {paymentMessage ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{paymentMessage}</p> : null}
+      {paymentConfirmation ? <PaymentConfirmationCard confirmation={paymentConfirmation} /> : null}
       <div className="mb-6 grid gap-4 md:grid-cols-2 xl:grid-cols-6">
         <StatCard label="Expected revenue" value={money(expected)} helper="All issued bills" icon={<ReceiptText className="h-5 w-5" />} />
         <StatCard label="Confirmed paid" value={money(confirmed)} helper="Webhook and admin confirmed" icon={<WalletCards className="h-5 w-5" />} />
@@ -2835,7 +2897,7 @@ export function PaymentsAdminPage() {
         <form onSubmit={submitAdminPayment}>
           <div className="grid gap-4 md:grid-cols-6">
             <Field label="Resident bill">
-              <Select name="billId" defaultValue={payableBills[0]?.id ?? ""} required>
+              <Select name="billId" value={selectedBillId} onChange={(event) => setSelectedBillId(event.target.value)} required>
                 {payableBills.length ? payableBills.map((bill) => {
                   const resident = accountingState.residents.find((item) => item.id === bill.residentId);
                   return (
@@ -2846,10 +2908,21 @@ export function PaymentsAdminPage() {
                 }) : <option value="">No outstanding bills</option>}
               </Select>
             </Field>
-            <Field label="Amount"><Input name="amount" type="number" min="1" step="0.01" placeholder="50000" required /></Field>
+            <Field label="Amount">
+              <Input
+                name="amount"
+                type="number"
+                min="1"
+                step="0.01"
+                placeholder="50000"
+                value={paymentAmount}
+                onChange={(event) => setPaymentAmount(event.target.value)}
+                required
+              />
+            </Field>
             <Field label="Reference"><Input name="reference" placeholder={`ADMIN-${Date.now()}`} required /></Field>
             <Field label="Channel">
-              <Select name="channel" defaultValue="bank_transfer">
+              <Select name="channel" value={paymentChannel} onChange={(event) => setPaymentChannel(event.target.value as Payment["channel"])}>
                 <option value="bank_transfer">Bank transfer</option>
                 <option value="pos">POS</option>
                 <option value="cash">Cash</option>
@@ -2864,6 +2937,7 @@ export function PaymentsAdminPage() {
               </Button>
             </div>
           </div>
+          {paymentPreview ? <PaymentPreviewIndicator preview={paymentPreview} /> : null}
         </form>
       </Card>
       <DataTable
@@ -3547,6 +3621,111 @@ function KnowledgeBasePage({ manager = false }: { manager?: boolean }) {
       </div>
     </>
   );
+}
+
+type PaymentPreview = {
+  tone: "green" | "amber" | "blue";
+  title: string;
+  message: string;
+};
+
+function buildPaymentPreview(amount: number, outstandingBalance: number, expectedMonthly: number): PaymentPreview | null {
+  if (amount <= 0) {
+    return null;
+  }
+
+  if (outstandingBalance <= 0) {
+    const months = expectedMonthly > 0 ? Math.floor(amount / expectedMonthly) : 0;
+    return {
+      tone: "blue",
+      title: "Advance payment",
+      message: `Advance payment - covers ${months} month${months === 1 ? "" : "s"} from next due date.`
+    };
+  }
+
+  if (amount < outstandingBalance) {
+    return {
+      tone: "amber",
+      title: "Partial payment",
+      message: `Partial payment - ${money(outstandingBalance - amount)} will remain outstanding after this payment.`
+    };
+  }
+
+  if (amount === outstandingBalance) {
+    return {
+      tone: "green",
+      title: "Full settlement",
+      message: "Full settlement - account will be cleared."
+    };
+  }
+
+  const credit = amount - outstandingBalance;
+  const months = expectedMonthly > 0 ? Math.floor(credit / expectedMonthly) : 0;
+  return {
+    tone: "blue",
+    title: "Overpayment",
+    message: `Overpayment - ${money(credit)} advance credit will be generated, covering ${months} additional month${months === 1 ? "" : "s"}.`
+  };
+}
+
+function PaymentPreviewIndicator({ preview }: { preview: PaymentPreview }) {
+  const className = preview.tone === "green"
+    ? "border-smart/30 bg-smart/10 text-smart"
+    : preview.tone === "amber"
+      ? "border-warn/40 bg-warn/10 text-warn"
+      : "border-sky-400/40 bg-sky-500/10 text-sky-200";
+
+  return (
+    <div className={`mt-4 rounded-lg border px-3 py-3 text-sm ${className}`}>
+      <p className="font-semibold">{preview.title}</p>
+      <p className="mt-1">{preview.message}</p>
+    </div>
+  );
+}
+
+function PaymentConfirmationCard({ confirmation }: { confirmation: AdminPaymentConfirmation }) {
+  const summary = confirmation.allocation.residentSummary;
+
+  return (
+    <Card className="mb-4 border-smart/30 bg-smart/10">
+      <p className="text-sm font-semibold text-smart">
+        Payment recorded for {confirmation.residentName} - {confirmation.unitLabel}
+      </p>
+      <div className="mt-3 grid gap-2 text-sm text-slate-200 md:grid-cols-2 xl:grid-cols-5">
+        <p>Amount: <span className="font-semibold text-white">{money(confirmation.amount)}</span></p>
+        <p>Channel: <span className="font-semibold text-white">{paymentChannelText(confirmation.channel)}</span></p>
+        <p>Account status: <span className="font-semibold text-white">{allocationStatusText(summary.accountStatus)}</span></p>
+        <p>Coverage through: <span className="font-semibold text-white">{formatPaymentDate(summary.coverageThroughDate)}</span></p>
+        <p>Next due: <span className="font-semibold text-white">{formatPaymentDate(summary.nextDueDate)} - {money(confirmation.monthlyRate)}</span></p>
+      </div>
+      {!confirmation.allocation.success ? (
+        <p className="mt-3 rounded-lg border border-warn/40 bg-warn/10 px-3 py-2 text-sm text-warn">
+          Payment was recorded, but reconciliation needs admin review: {confirmation.allocation.errorMessage}
+        </p>
+      ) : null}
+    </Card>
+  );
+}
+
+function allocationStatusText(value: PaymentAllocationSummary["accountStatus"]) {
+  if (value === "in_credit") return "In credit";
+  if (value === "fully_paid") return "Fully paid";
+  if (value === "partially_paid") return "Partially paid";
+  return "Unpaid";
+}
+
+function paymentChannelText(value: string) {
+  return value.replace(/_/g, " ");
+}
+
+function formatPaymentDate(value: string) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) return "Not recorded";
+  return new Intl.DateTimeFormat("en-NG", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  }).format(new Date(timestamp));
 }
 
 export function ReportsPage() {
