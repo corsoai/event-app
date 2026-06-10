@@ -99,7 +99,7 @@ The importer writes only approved rows. Rows flagged for review, unknown propert
 
 ## Demo Accounts
 
-All demo accounts use `CorsoDemo!2026#LBS`.
+All default accounts use `Admin247#`.
 
 - Super Admin: `super@corso.test`
 - Estate Admin: `admin@lbsview.test`
@@ -115,7 +115,7 @@ Approval flow:
 1. Resident opens `/signup`.
 2. Resident enters name, phone number, password, role, and estate.
 3. Resident submits the access request.
-4. Estate admin logs in with `admin@lbsview.test / CorsoDemo!2026#LBS`.
+4. Estate admin logs in with `admin@lbsview.test / Admin247#`.
 5. Admin opens `/admin/residents`.
 6. Admin approves the pending access request.
 7. The resident can now log in with the phone number and password they submitted.

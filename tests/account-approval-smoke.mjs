@@ -7,7 +7,7 @@ const residentName = "Adaku Agbonifo";
 const residentPhone = "+2348102001234";
 const residentPhoneDisplay = "2348102001234";
 const residentPassword = "AdakuDemo!2026#LBS";
-const demoPassword = "CorsoDemo!2026#LBS";
+const demoPassword = "Admin247#";
 
 async function clearSession(page) {
   await page.goto(baseUrl);

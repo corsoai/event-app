@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AppwriteRestError } from "@/lib/appwrite/server";
-import { loginWithAppwrite } from "@/lib/appwrite/users";
+import { ensureDefaultAppwriteLoginUser, loginWithAppwrite } from "@/lib/appwrite/users";
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
@@ -16,23 +16,37 @@ export async function POST(request: NextRequest) {
 
   try {
     const user = await loginWithAppwrite(identifier, password);
-    const response = NextResponse.json({ user });
-    response.cookies.set("corso_role", user.role, {
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-      sameSite: "lax"
-    });
-    response.cookies.set("corso_appwrite_user", user.appwriteUserId, {
-      path: "/",
-      maxAge: 60 * 60 * 24 * 7,
-      sameSite: "lax",
-      httpOnly: true
-    });
-
-    return response;
+    return loginResponse(user);
   } catch (error) {
+    const ensured = await ensureDefaultAppwriteLoginUser(identifier, password).catch(() => null);
+    if (ensured) {
+      try {
+        const user = await loginWithAppwrite(identifier, password);
+        return loginResponse(user);
+      } catch {
+        // Fall through to the original error so the caller gets the true login failure.
+      }
+    }
+
     const status = error instanceof AppwriteRestError && error.status === 401 ? 401 : 400;
     const message = error instanceof Error ? error.message : "Unable to sign in with Appwrite.";
     return NextResponse.json({ error: status === 401 ? "Invalid login details." : message }, { status });
   }
+}
+
+function loginResponse(user: Awaited<ReturnType<typeof loginWithAppwrite>>) {
+  const response = NextResponse.json({ user });
+  response.cookies.set("corso_role", user.role, {
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7,
+    sameSite: "lax"
+  });
+  response.cookies.set("corso_appwrite_user", user.appwriteUserId, {
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7,
+    sameSite: "lax",
+    httpOnly: true
+  });
+
+  return response;
 }

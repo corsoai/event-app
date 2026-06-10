@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto";
 import type { UserRole } from "@/lib/types";
-import { getPasswordQualityError } from "@/lib/password-policy";
+import { DEMO_PASSWORD, getPasswordQualityError } from "@/lib/password-policy";
 import {
   DEFAULT_ESTATE_NAME,
   isPhoneAuthEmail,
@@ -123,6 +123,54 @@ type AppwriteResidentRow = {
   createdAt?: string;
   updatedAt?: string;
 };
+
+const defaultAppwriteUsers: AppwriteManagedUserInput[] = [
+  {
+    fullName: "Corso Platform Admin",
+    email: "super@corso.test",
+    phone: "2348000000001",
+    password: DEMO_PASSWORD,
+    role: "super_admin",
+    estateId: "platform",
+    houseNumber: ""
+  },
+  {
+    fullName: "LBS View Estate Manager",
+    email: "admin@lbsview.test",
+    phone: "2348011112040",
+    password: DEMO_PASSWORD,
+    role: "estate_admin",
+    estateId: APPWRITE_LBSVIEW_ESTATE_ID,
+    houseNumber: ""
+  },
+  {
+    fullName: "Resident User",
+    email: "resident@lbsview.test",
+    phone: "2348039204412",
+    password: DEMO_PASSWORD,
+    role: "resident",
+    estateId: APPWRITE_LBSVIEW_ESTATE_ID,
+    houseNumber: "LDI-03-A"
+  },
+  {
+    fullName: "Gate Officer Musa",
+    email: "security@lbsview.test",
+    phone: "2348060001122",
+    password: DEMO_PASSWORD,
+    role: "security_guard",
+    estateId: APPWRITE_LBSVIEW_ESTATE_ID,
+    houseNumber: ""
+  },
+  {
+    fullName: "LBS View CSO",
+    email: "cso@lbsview.test",
+    phone: "2348060001123",
+    password: DEMO_PASSWORD,
+    role: "cso",
+    estateId: APPWRITE_LBSVIEW_ESTATE_ID,
+    houseNumber: ""
+  }
+];
 
 export async function listAppwriteManagedUsers(scope: "admin" | "super-admin"): Promise<ManagedAppwriteUser[]> {
   const config = getAppwriteServerConfig();
@@ -258,6 +306,125 @@ export async function createAppwriteManagedUser(input: AppwriteManagedUserInput)
       active: true,
       createdAt: now
     }
+  };
+}
+
+export async function ensureDefaultAppwriteLoginUser(identifier: string, password: string) {
+  const normalizedEmail = identifier.trim().toLowerCase();
+  const normalizedPhone = normalizePhoneNumber(identifier);
+  const account = defaultAppwriteUsers.find((user) =>
+    user.email.toLowerCase() === normalizedEmail ||
+    (!!normalizedPhone && normalizePhoneNumber(user.phone) === normalizedPhone)
+  );
+
+  if (!account || password !== account.password) {
+    return null;
+  }
+
+  return ensureAppwriteDefaultUser(account);
+}
+
+async function ensureAppwriteDefaultUser(input: AppwriteManagedUserInput) {
+  const fullName = input.fullName.trim();
+  const rawEmail = input.email.trim().toLowerCase();
+  const phone = normalizePhoneNumber(input.phone);
+  const role = input.role;
+  const estateId = role === "super_admin" ? "platform" : canonicalEstateId(input.estateId);
+  const houseNumber = normalizeUnitCode(input.houseNumber);
+  const password = input.password;
+  const now = new Date().toISOString();
+
+  const schema = await setupAppwriteOnboardingSchema();
+  if (!schema.ok) {
+    throw new Error(`Appwrite server configuration is missing: ${schema.missing.join(", ")}`);
+  }
+
+  await appwriteUpsertRow("estates", APPWRITE_LBSVIEW_ESTATE_ID, {
+    name: DEFAULT_ESTATE_NAME,
+    address: "LBS View Estate, Lagos",
+    contactEmail: "admin@lbsviewestate.example",
+    contactPhone: "+2348011112040",
+    gateName: "Main Gate",
+    createdAt: now,
+    updatedAt: now
+  });
+
+  const existing = await findAuthUserByEmailOrPhone(rawEmail, phone);
+  const user = existing ?? await createAuthUser({
+    fullName,
+    email: rawEmail,
+    phone,
+    password,
+    role,
+    estateId,
+    houseNumber
+  });
+
+  await appwriteRequest<AppwriteUser>(`/users/${encodeURIComponent(user.$id)}/password`, {
+    method: "PATCH",
+    body: { password }
+  });
+  await appwriteRequest<AppwriteUser>(`/users/${encodeURIComponent(user.$id)}/name`, {
+    method: "PATCH",
+    body: { name: fullName.slice(0, 128) }
+  });
+  await appwriteRequest<AppwriteUser>(`/users/${encodeURIComponent(user.$id)}/phone`, {
+    method: "PATCH",
+    body: { number: appwritePhone(phone) }
+  });
+  await appwriteRequest<AppwriteUser>(`/users/${encodeURIComponent(user.$id)}/status`, {
+    method: "PATCH",
+    body: { status: true }
+  });
+  await updateUserPrefs(user.$id, {
+    fullName,
+    phone,
+    role,
+    estateId,
+    estateName: role === "super_admin" ? "All estates" : DEFAULT_ESTATE_NAME,
+    houseNumber,
+    loginIdentifier: rawEmail
+  });
+
+  await appwriteUpsertRow("profiles", profileIdFor(user.$id), {
+    estateId,
+    userId: user.$id,
+    fullName,
+    email: rawEmail,
+    phone,
+    role,
+    status: "active",
+    houseNumber,
+    createdAt: now,
+    updatedAt: now
+  });
+
+  if (role === "resident") {
+    await syncResidentRows({
+      fullName,
+      email: rawEmail,
+      phone,
+      estateId,
+      unitCode: houseNumber,
+      now
+    });
+  }
+
+  await appwriteUpsertRow("audit_logs", safeAppwriteId("audit", `ensure-default-user:${user.$id}:${now}`), {
+    estateId,
+    actor: "corso-system",
+    action: "ensured_default_appwrite_user",
+    entityType: "system",
+    entityId: user.$id,
+    metadata: JSON.stringify({ role, email: rawEmail, phone }),
+    createdAt: now,
+    updatedAt: now
+  });
+
+  return {
+    email: rawEmail,
+    role,
+    userId: user.$id
   };
 }
 
@@ -432,6 +599,26 @@ async function resolveLoginEmail(identifier: string) {
   const user = (payload.users ?? []).find((item) => normalizePhoneNumber(item.phone ?? "") === phone);
 
   return user?.email ?? phoneAuthEmail(phone);
+}
+
+async function findAuthUserByEmailOrPhone(email: string, phone: string) {
+  const normalizedEmail = email.trim().toLowerCase();
+  const normalizedPhone = normalizePhoneNumber(phone);
+  const searches = [normalizedEmail, normalizedPhone].filter(Boolean);
+
+  for (const search of searches) {
+    const payload = await appwriteRequest<AppwriteUserList>(`/users?search=${encodeURIComponent(search)}`);
+    const user = (payload.users ?? []).find((item) =>
+      (!!normalizedEmail && String(item.email ?? "").trim().toLowerCase() === normalizedEmail) ||
+      (!!normalizedPhone && normalizePhoneNumber(item.phone ?? "") === normalizedPhone)
+    );
+
+    if (user) {
+      return user;
+    }
+  }
+
+  return undefined;
 }
 
 async function createAuthUser(input: {
