@@ -14,6 +14,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Phone/email and password are required." }, { status: 400 });
   }
 
+  await ensureDefaultAppwriteLoginUser(identifier, password).catch(() => null);
+
   try {
     const user = await loginWithAppwrite(identifier, password);
     return loginResponse(user);
