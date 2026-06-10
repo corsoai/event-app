@@ -83,9 +83,10 @@ import {
   syncPendingTourLogs
 } from "@/lib/guard-tour";
 import { APPWRITE_ONBOARDING_DATABASE_ID } from "@/lib/appwrite/schema";
-import type { AppwriteAnnouncement, Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, Payment, Property, Resident, SecurityIncident, Unit, UserRole, Visitor } from "@/lib/types";
+import type { AppwriteAnnouncement, AppwriteComplaint, Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, Payment, Property, Resident, SecurityIncident, Unit, UserRole, Visitor } from "@/lib/types";
 import { contactLabel, makeDigitalIdNumber, money } from "@/lib/utils";
 import { getVisitorWindowState, VISITOR_CODE_VALIDITY_HOURS } from "@/lib/visitor-window";
+import { useRouter } from "next/navigation";
 
 type BarcodeDetectorInstance = {
   detect(source: CanvasImageSource): Promise<Array<{ rawValue: string }>>;
@@ -207,6 +208,19 @@ type AnnouncementApiResponse = {
   announcements?: AppwriteAnnouncement[];
   announcement?: AppwriteAnnouncement;
   error?: string;
+};
+
+type ComplaintApiResponse = {
+  complaints?: AppwriteComplaint[];
+  complaint?: AppwriteComplaint;
+  error?: string;
+};
+
+type ComplaintFilters = {
+  status: string;
+  priority: string;
+  category: string;
+  search: string;
 };
 
 type LbsviewOnboardingPreviewRow = {
@@ -666,6 +680,134 @@ function announcementExpiryLabel(value?: string) {
   return days === 1 ? "Expires in 1 day" : `Expires in ${days} days`;
 }
 
+function useAdminComplaints(filters: ComplaintFilters) {
+  const [complaints, setComplaints] = useState<AppwriteComplaint[]>([]);
+  const [loadingComplaints, setLoadingComplaints] = useState(true);
+  const [complaintError, setComplaintError] = useState("");
+
+  async function refreshComplaints() {
+    setLoadingComplaints(true);
+    setComplaintError("");
+
+    try {
+      const params = new URLSearchParams();
+      if (filters.status) params.set("status", filters.status);
+      if (filters.priority) params.set("priority", filters.priority);
+      if (filters.category) params.set("category", filters.category);
+      if (filters.search.trim()) params.set("search", filters.search.trim());
+
+      const query = params.toString();
+      const response = await fetch(`/api/appwrite/admin/complaints${query ? `?${query}` : ""}`, { cache: "no-store" });
+      const payload = await response.json().catch(() => null) as ComplaintApiResponse | null;
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error ?? "Unable to load complaints.");
+      }
+
+      setComplaints(payload.complaints ?? []);
+    } catch (error) {
+      setComplaints([]);
+      setComplaintError(error instanceof Error ? error.message : "Unable to load complaints.");
+    } finally {
+      setLoadingComplaints(false);
+    }
+  }
+
+  useEffect(() => {
+    void refreshComplaints();
+  }, [filters.status, filters.priority, filters.category, filters.search]);
+
+  return {
+    complaints,
+    loadingComplaints,
+    complaintError,
+    refreshComplaints
+  };
+}
+
+function useResidentComplaints() {
+  const [complaints, setComplaints] = useState<AppwriteComplaint[]>([]);
+  const [loadingComplaints, setLoadingComplaints] = useState(true);
+  const [complaintError, setComplaintError] = useState("");
+
+  async function refreshComplaints() {
+    setLoadingComplaints(true);
+    setComplaintError("");
+
+    try {
+      const response = await fetch("/api/appwrite/resident/complaints", { cache: "no-store" });
+      const payload = await response.json().catch(() => null) as ComplaintApiResponse | null;
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error ?? "Unable to load complaints.");
+      }
+
+      setComplaints(payload.complaints ?? []);
+    } catch (error) {
+      setComplaints([]);
+      setComplaintError(error instanceof Error ? error.message : "Unable to load complaints.");
+    } finally {
+      setLoadingComplaints(false);
+    }
+  }
+
+  useEffect(() => {
+    void refreshComplaints();
+  }, []);
+
+  return {
+    complaints,
+    loadingComplaints,
+    complaintError,
+    refreshComplaints
+  };
+}
+
+function useAdminOpenComplaintsCount(fallbackCount: number) {
+  const [count, setCount] = useState(fallbackCount);
+
+  useEffect(() => {
+    let active = true;
+
+    fetch("/api/appwrite/admin/complaints?status=open", { cache: "no-store" })
+      .then((response) => response.json().then((payload) => ({ response, payload: payload as ComplaintApiResponse })))
+      .then(({ response, payload }) => {
+        if (active && response.ok) {
+          setCount(payload.complaints?.length ?? 0);
+        }
+      })
+      .catch(() => {
+        if (active) {
+          setCount(fallbackCount);
+        }
+      });
+
+    return () => {
+      active = false;
+    };
+  }, [fallbackCount]);
+
+  return count;
+}
+
+function complaintStatusLabel(status: AppwriteComplaint["status"]) {
+  return status === "in_progress" ? "in progress" : status;
+}
+
+function formatComplaintDate(value: string) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return "Not recorded";
+  }
+
+  return new Intl.DateTimeFormat("en-NG", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true
+  }).format(new Date(timestamp));
+}
+
 export function AdminDashboard() {
   const { state } = useLocalEstateStore();
   const { accountingState, summary } = useAdminAccountingState(state);
@@ -677,6 +819,7 @@ export function AdminDashboard() {
   const onlinePayments = confirmedPayments.filter((payment) => payment.channel === "online").reduce((sum, payment) => sum + payment.amount, 0);
   const manualPayments = confirmedPayments.filter((payment) => payment.channel !== "online").reduce((sum, payment) => sum + payment.amount, 0);
   const pendingPayments = summary?.pendingReviewAmount ?? accountingState.payments.filter((payment) => payment.status === "pending").reduce((sum, payment) => sum + payment.amount, 0);
+  const openComplaints = useAdminOpenComplaintsCount(state.complaints.filter((item) => item.status !== "resolved").length);
 
   return (
     <>
@@ -694,7 +837,7 @@ export function AdminDashboard() {
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard label="Total residents" value={String(state.residents.length)} helper="Across active demo estates" icon={<Users className="h-5 w-5" />} />
         <StatCard label="Visitors today" value={String(state.visitors.length)} helper="Expected and checked in" icon={<QrCode className="h-5 w-5" />} />
-        <StatCard label="Open complaints" value={String(state.complaints.filter((item) => item.status !== "resolved").length)} helper="Needs admin action" icon={<ClipboardList className="h-5 w-5" />} />
+        <StatCard label="Open complaints" value={String(openComplaints)} helper="Needs admin action" icon={<ClipboardList className="h-5 w-5" />} />
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
         <DataTable
@@ -2625,23 +2768,162 @@ export function PaymentsAdminPage() {
 }
 
 export function ComplaintsAdminPage() {
-  const { state } = useLocalEstateStore();
+  const [filters, setFilters] = useState<ComplaintFilters>({
+    status: "",
+    priority: "",
+    category: "",
+    search: ""
+  });
+  const {
+    complaints,
+    loadingComplaints,
+    complaintError,
+    refreshComplaints
+  } = useAdminComplaints(filters);
+  const [selectedComplaint, setSelectedComplaint] = useState<AppwriteComplaint | null>(null);
+  const [adminResponse, setAdminResponse] = useState("");
+  const [complaintMessage, setComplaintMessage] = useState("");
+  const openCount = complaints.filter((complaint) => complaint.status === "open").length;
+
+  async function patchComplaint(complaint: AppwriteComplaint, updates: Partial<AppwriteComplaint>) {
+    setComplaintMessage("");
+
+    try {
+      const response = await fetch(`/api/appwrite/admin/complaints/${encodeURIComponent(complaint.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(updates)
+      });
+      const payload = await response.json().catch(() => null) as ComplaintApiResponse | null;
+      if (!response.ok || !payload?.complaint) {
+        throw new Error(payload?.error ?? "Unable to update complaint.");
+      }
+
+      setSelectedComplaint(payload.complaint);
+      setAdminResponse(payload.complaint.adminResponse ?? "");
+      setComplaintMessage("Complaint updated.");
+      await refreshComplaints();
+    } catch (error) {
+      setComplaintMessage(error instanceof Error ? error.message : "Unable to update complaint.");
+    }
+  }
+
+  function selectComplaint(complaint: AppwriteComplaint) {
+    setSelectedComplaint(complaint);
+    setAdminResponse(complaint.adminResponse ?? "");
+  }
+
+  async function submitAdminResponse(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!selectedComplaint) {
+      return;
+    }
+
+    await patchComplaint(selectedComplaint, { adminResponse });
+  }
 
   return (
     <>
-      <PageHeader title="Complaints" description="Assign maintenance requests, update status, track priority, and keep resident history in one place." />
+      <PageHeader title="Complaints" description={`${openCount} open complaints. Assign maintenance requests, update status, track priority, and keep resident history in one place.`} />
+      <Card className="mb-6">
+        <CardHeader title="Complaint filters" description="Filter complaint records from Appwrite." />
+        <div className="grid gap-4 md:grid-cols-4">
+          <Field label="Search">
+            <Input
+              value={filters.search}
+              placeholder="Resident or subject"
+              onChange={(event) => setFilters((current) => ({ ...current, search: event.target.value }))}
+            />
+          </Field>
+          <Field label="Status">
+            <Select value={filters.status} onChange={(event) => setFilters((current) => ({ ...current, status: event.target.value }))}>
+              <option value="">all statuses</option>
+              <option value="open">open</option>
+              <option value="in_progress">in progress</option>
+              <option value="resolved">resolved</option>
+              <option value="closed">closed</option>
+            </Select>
+          </Field>
+          <Field label="Priority">
+            <Select value={filters.priority} onChange={(event) => setFilters((current) => ({ ...current, priority: event.target.value }))}>
+              <option value="">all priorities</option>
+              <option value="low">low</option>
+              <option value="medium">medium</option>
+              <option value="high">high</option>
+            </Select>
+          </Field>
+          <Field label="Category">
+            <Select value={filters.category} onChange={(event) => setFilters((current) => ({ ...current, category: event.target.value }))}>
+              <option value="">all categories</option>
+              <option value="security">security</option><option value="power">power</option><option value="water">water</option><option value="waste">waste</option><option value="noise">noise</option><option value="road">road</option><option value="facility">facility</option><option value="other">other</option>
+            </Select>
+          </Field>
+        </div>
+      </Card>
+      {loadingComplaints ? <Card className="mb-6"><p className="text-sm text-slate-400">Loading complaints...</p></Card> : null}
+      {complaintError ? <Card className="mb-6"><p className="text-sm text-danger">Unable to load complaints. Please refresh the page.</p></Card> : null}
+      {!loadingComplaints && !complaintError && !complaints.length ? <Card className="mb-6"><p className="text-sm text-slate-400">No complaints matching your filters.</p></Card> : null}
       <DataTable
         title="Maintenance and complaint queue"
-        headers={["Ticket", "Category", "Priority", "Assigned to", "Created", "Status"]}
-        rows={state.complaints.map((complaint) => [
-          <div key={complaint.id}><p className="font-medium text-white">{complaint.title}</p><p className="text-xs text-slate-500">{complaint.id.toUpperCase()}</p></div>,
+        headers={["Ticket", "Category", "Priority", "Assigned to", "Created", "Status", "Action"]}
+        rows={complaints.map((complaint) => [
+          <button key={complaint.id} type="button" className="text-left" onClick={() => selectComplaint(complaint)}>
+            <p className="font-medium text-white">{complaint.subject}</p>
+            <p className="text-xs text-slate-500">{complaint.residentName} - {complaint.id.toUpperCase()}</p>
+          </button>,
           complaint.category,
           <StatusBadge key={complaint.priority} status={complaint.priority} />,
-          complaint.assignedTo,
-          complaint.createdAt,
-          <StatusBadge key={complaint.status} status={complaint.status} />
+          complaint.assignedToName ?? complaint.assignedTo ?? "Unassigned",
+          formatComplaintDate(complaint.createdAt),
+          <StatusBadge key={complaint.status} status={complaintStatusLabel(complaint.status)} />,
+          <Button key={`${complaint.id}-view`} type="button" variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={() => selectComplaint(complaint)}>View</Button>
         ])}
       />
+      {selectedComplaint ? (
+        <Card className="mt-6">
+          <CardHeader title={selectedComplaint.subject} description={`${selectedComplaint.residentName} - ${selectedComplaint.unitCode || "No unit recorded"}`} />
+          <div className="grid gap-4 text-sm text-slate-300">
+            <p>{selectedComplaint.description}</p>
+            <div className="grid gap-4 md:grid-cols-3">
+              <Field label="Status">
+                <Select
+                  value={selectedComplaint.status}
+                  onChange={(event) => void patchComplaint(selectedComplaint, { status: event.target.value as AppwriteComplaint["status"] })}
+                >
+                  <option value="open">open</option>
+                  <option value="in_progress">in progress</option>
+                  <option value="resolved">resolved</option>
+                  <option value="closed">closed</option>
+                </Select>
+              </Field>
+              <Field label="Priority">
+                <Select
+                  value={selectedComplaint.priority}
+                  onChange={(event) => void patchComplaint(selectedComplaint, { priority: event.target.value as AppwriteComplaint["priority"] })}
+                >
+                  <option value="low">low</option>
+                  <option value="medium">medium</option>
+                  <option value="high">high</option>
+                </Select>
+              </Field>
+              <Field label="Assigned to">
+                <Input
+                  value={selectedComplaint.assignedToName ?? ""}
+                  onChange={(event) => setSelectedComplaint((current) => current ? { ...current, assignedToName: event.target.value } : current)}
+                  onBlur={(event) => void patchComplaint(selectedComplaint, { assignedToName: event.target.value })}
+                />
+              </Field>
+            </div>
+            <form className="grid gap-3" onSubmit={submitAdminResponse}>
+              <Field label="Admin response">
+                <Textarea value={adminResponse} onChange={(event) => setAdminResponse(event.target.value)} placeholder="Write response to the resident" />
+              </Field>
+              {complaintMessage ? <p className="rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{complaintMessage}</p> : null}
+              <Button className="w-fit">Save response</Button>
+            </form>
+          </div>
+        </Card>
+      ) : null}
     </>
   );
 }
@@ -4478,9 +4760,12 @@ export function PaymentHistoryPage() {
 }
 
 export function MyComplaintsPage() {
-  const { state } = useLocalEstateStore();
-  const resident = useCurrentResidentProfile(state);
-  const myComplaints = state.complaints.filter((complaint) => complaint.residentId === resident.id);
+  const {
+    complaints,
+    loadingComplaints,
+    complaintError
+  } = useResidentComplaints();
+  const [selectedComplaint, setSelectedComplaint] = useState<AppwriteComplaint | null>(null);
 
   return (
     <>
@@ -4489,36 +4774,82 @@ export function MyComplaintsPage() {
           <Button><ClipboardList className="h-4 w-4" />New complaint</Button>
         </Link>
       </PageHeader>
+      {loadingComplaints ? <Card className="mb-6"><p className="text-sm text-slate-400">Loading complaints...</p></Card> : null}
+      {complaintError ? <Card className="mb-6"><p className="text-sm text-danger">Unable to load complaints. Please refresh the page.</p></Card> : null}
+      {!loadingComplaints && !complaintError && !complaints.length ? <Card className="mb-6"><p className="text-sm text-slate-400">You have not submitted any complaints yet.</p></Card> : null}
       <DataTable
         title="Complaint history"
-        headers={["Title", "Category", "Priority", "Assigned", "Status"]}
-        rows={myComplaints.map((complaint) => [
-          complaint.title,
+        headers={["Title", "Category", "Priority", "Assigned", "Status", "Reply"]}
+        rows={complaints.map((complaint) => [
+          <button key={complaint.id} type="button" className="text-left font-medium text-white" onClick={() => setSelectedComplaint(complaint)}>
+            {complaint.subject}
+          </button>,
           complaint.category,
           <StatusBadge key={complaint.priority} status={complaint.priority} />,
-          complaint.assignedTo,
-          <StatusBadge key={complaint.status} status={complaint.status} />
+          complaint.assignedToName ?? complaint.assignedTo ?? "Unassigned",
+          <StatusBadge key={complaint.status} status={complaintStatusLabel(complaint.status)} />,
+          complaint.adminResponse ? <StatusBadge key={`${complaint.id}-reply`} status="Admin replied" tone="blue" /> : "No reply yet"
         ])}
       />
+      {selectedComplaint ? (
+        <Card className="mt-6">
+          <CardHeader title={selectedComplaint.subject} description={`${selectedComplaint.category} - ${formatComplaintDate(selectedComplaint.createdAt)}`} />
+          <div className="grid gap-4 text-sm text-slate-300">
+            <p>{selectedComplaint.description}</p>
+            <div className="flex flex-wrap gap-2">
+              <StatusBadge status={selectedComplaint.priority} />
+              <StatusBadge status={complaintStatusLabel(selectedComplaint.status)} />
+              {selectedComplaint.adminResponse ? <StatusBadge status="Admin replied" tone="blue" /> : null}
+            </div>
+            {selectedComplaint.adminResponse ? (
+              <div className="rounded-lg border border-line bg-ink/50 p-4">
+                <p className="text-xs uppercase tracking-[0.18em] text-slate-500">Admin response</p>
+                <p className="mt-2 text-sm leading-6 text-slate-300">{selectedComplaint.adminResponse}</p>
+              </div>
+            ) : null}
+          </div>
+        </Card>
+      ) : null}
     </>
   );
 }
 
 export function SubmitComplaintPage() {
-  const { addComplaint } = useLocalEstateStore();
+  const router = useRouter();
   const [complaintMessage, setComplaintMessage] = useState("");
+  const [submittingComplaint, setSubmittingComplaint] = useState(false);
 
-  function submitComplaint(event: FormEvent<HTMLFormElement>) {
+  async function submitComplaint(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setSubmittingComplaint(true);
+    setComplaintMessage("");
     const form = new FormData(event.currentTarget);
-    const complaint = addComplaint({
-      category: String(form.get("category") ?? "other") as Parameters<typeof addComplaint>[0]["category"],
-      title: String(form.get("title") ?? ""),
+    const requestBody = {
+      category: String(form.get("category") ?? "other"),
+      subject: String(form.get("title") ?? ""),
       description: String(form.get("description") ?? ""),
-      priority: String(form.get("priority") ?? "medium") as Parameters<typeof addComplaint>[0]["priority"]
-    });
-    setComplaintMessage(`Complaint ${complaint.id.toUpperCase()} saved locally for admin review.`);
-    event.currentTarget.reset();
+      priority: String(form.get("priority") ?? "medium")
+    };
+
+    try {
+      const response = await fetch("/api/appwrite/resident/complaints", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(requestBody)
+      });
+      const payload = await response.json().catch(() => null) as ComplaintApiResponse | null;
+      if (!response.ok || !payload?.complaint) {
+        throw new Error(payload?.error ?? "Failed to submit complaint. Please try again.");
+      }
+
+      setComplaintMessage("Your complaint has been submitted successfully.");
+      event.currentTarget.reset();
+      window.setTimeout(() => router.push("/resident/complaints"), 2000);
+    } catch {
+      setComplaintMessage("Failed to submit complaint. Please try again.");
+    } finally {
+      setSubmittingComplaint(false);
+    }
   }
 
   return (
@@ -4539,7 +4870,7 @@ export function SubmitComplaintPage() {
           <Field label="Title"><Input name="title" placeholder="Brief issue title" required /></Field>
           <Field label="Description"><Textarea name="description" placeholder="Describe the issue, location, and any urgency." required /></Field>
           {complaintMessage ? <p className="rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{complaintMessage}</p> : null}
-          <Button className="w-fit">Submit complaint</Button>
+          <Button className="w-fit" disabled={submittingComplaint}>{submittingComplaint ? "Submitting..." : "Submit complaint"}</Button>
         </form>
       </Card>
     </>
