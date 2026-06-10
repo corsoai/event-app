@@ -2779,7 +2779,7 @@ export function PaymentsAdminPage() {
   const [savingPayment, setSavingPayment] = useState(false);
   const [selectedBillId, setSelectedBillId] = useState("");
   const [paymentAmount, setPaymentAmount] = useState("");
-  const [paymentChannel, setPaymentChannel] = useState<Payment["channel"]>("bank_transfer");
+  const [paymentChannel, setPaymentChannel] = useState<NonNullable<Payment["channel"]>>("bank_transfer");
   const [paymentConfirmation, setPaymentConfirmation] = useState<AdminPaymentConfirmation | null>(null);
   const expected = summary?.expectedRevenue ?? accountingState.bills.reduce((sum, bill) => sum + bill.amount, 0);
   const confirmed = summary?.paidAmount ?? accountingState.payments.filter((payment) => payment.status === "confirmed").reduce((sum, payment) => sum + payment.amount, 0);
@@ -2814,7 +2814,7 @@ export function PaymentsAdminPage() {
     const bill = accountingState.bills.find((item) => item.id === billId);
     const amount = Number(form.get("amount") || paymentAmount || 0);
     const reference = String(form.get("reference") || `ADMIN-${Date.now()}`);
-    const channel = String(form.get("channel") || paymentChannel || "bank_transfer") as Payment["channel"];
+    const channel = String(form.get("channel") || paymentChannel || "bank_transfer") as NonNullable<Payment["channel"]>;
     const date = String(form.get("date") || dateInputValue());
     const resident = bill ? accountingState.residents.find((item) => item.id === bill.residentId) : undefined;
 
@@ -2922,7 +2922,7 @@ export function PaymentsAdminPage() {
             </Field>
             <Field label="Reference"><Input name="reference" placeholder={`ADMIN-${Date.now()}`} required /></Field>
             <Field label="Channel">
-              <Select name="channel" value={paymentChannel} onChange={(event) => setPaymentChannel(event.target.value as Payment["channel"])}>
+              <Select name="channel" value={paymentChannel} onChange={(event) => setPaymentChannel(event.target.value as NonNullable<Payment["channel"]>)}>
                 <option value="bank_transfer">Bank transfer</option>
                 <option value="pos">POS</option>
                 <option value="cash">Cash</option>
