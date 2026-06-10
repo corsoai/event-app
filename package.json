@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "dev:local": "next dev -H 127.0.0.1 -p 3012",
-    "build": "next build",
+    "build": "node scripts/print-build-env.mjs && next build",
     "start": "next start",
     "lint": "next lint",
     "typecheck": "tsc -p tsconfig.typecheck.json --noEmit",
