@@ -94,7 +94,7 @@ import {
   syncPendingTourLogs
 } from "@/lib/guard-tour";
 import { APPWRITE_ONBOARDING_DATABASE_ID } from "@/lib/appwrite/schema";
-import type { AppwriteAnnouncement, AppwriteComplaint, AppwriteKnowledgeBaseArticle, Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, HouseholdMember, Payment, Property, Resident, SecurityIncident, Unit, UserRole, Visitor } from "@/lib/types";
+import type { AppwriteAnnouncement, AppwriteComplaint, AppwriteKnowledgeBaseArticle, Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, HouseholdMember, Payment, Property, Resident, SecurityIncident, StatusTone, Unit, UserRole, Visitor } from "@/lib/types";
 import { contactLabel, makeDigitalIdNumber, money } from "@/lib/utils";
 import { getVisitorWindowState, VISITOR_CODE_VALIDITY_HOURS } from "@/lib/visitor-window";
 import { useRouter } from "next/navigation";
@@ -190,10 +190,28 @@ type AppwriteAccountingDirectory = AppwriteResidentDirectory & {
   bills: Bill[];
   payments: Payment[];
   auditLogs: LocalEstateState["auditLogs"];
+  matchedResidentId?: string | null;
+  resident?: Resident | null;
+  summary?: ResidentAccountingSummary | null;
   total: AppwriteResidentDirectory["total"] & {
     bills: number;
     payments: number;
   };
+};
+
+type ResidentAccountingSummary = {
+  totalBilled: number;
+  totalPaid: number;
+  outstandingBalance: number;
+  advanceCredit: number;
+  monthlyRate: number;
+  monthsCreditCovers: number;
+  coverageThroughDate: string;
+  nextDueDate: string;
+  accountStatus: "fully_paid" | "in_credit" | "partially_paid" | "unpaid";
+  statusBannerText: string;
+  lastPaymentDate: string | null;
+  lastPaymentAmount: number;
 };
 
 type AppwriteAccountingSummary = {
@@ -519,9 +537,11 @@ function useResidentAccountingState(state: LocalEstateState) {
   const [accounting, setAccounting] = useState<AppwriteAccountingDirectory | null>(null);
   const [loadingAccounting, setLoadingAccounting] = useState(false);
   const [accountingStatus, setAccountingStatus] = useState("Loading your account...");
+  const [accountingError, setAccountingError] = useState("");
 
   async function refreshAccounting(options: { bypassCache?: boolean } = {}) {
     setLoadingAccounting(true);
+    setAccountingError("");
     const cached = options.bypassCache ? null : readCachedResidentAccounting();
     if (cached) {
       setAccounting(cached);
@@ -548,7 +568,9 @@ function useResidentAccountingState(state: LocalEstateState) {
         : "No resident accounting record matched this login yet.");
     } catch (error) {
       setAccounting(null);
-      setAccountingStatus(error instanceof Error ? error.message : "Unable to load your account.");
+      const message = error instanceof Error ? error.message : "Unable to load your account.";
+      setAccountingError(message);
+      setAccountingStatus(message);
     } finally {
       setLoadingAccounting(false);
     }
@@ -578,6 +600,7 @@ function useResidentAccountingState(state: LocalEstateState) {
     residentState: mergeAccountingState(state, accounting),
     accounting,
     accountingStatus,
+    accountingError,
     loadingAccounting,
     refreshAccounting
   };
@@ -5106,9 +5129,12 @@ function TemporaryCredentialBox({ credential }: { credential: TemporaryCredentia
 
 export function ResidentDashboard() {
   const { state } = useLocalEstateStore();
-  const { residentState, accountingStatus, loadingAccounting, refreshAccounting } = useResidentAccountingState(state);
+  const { residentState, accounting, accountingError, loadingAccounting, refreshAccounting } = useResidentAccountingState(state);
   const resident = useCurrentResidentProfile(residentState);
-  const balance = residentBillingBalance(residentState, resident.id);
+  const summary = accounting?.summary ?? null;
+  const liveBills = accounting?.bills ?? [];
+  const livePayments = accounting?.payments ?? [];
+  const showSkeleton = loadingAccounting && !summary && !accountingError;
   return (
     <>
       <PageHeader title={`Welcome, ${resident.name}`} description="Invite visitors, check bills, submit complaints, read announcements, and keep your digital ID ready." >
@@ -5122,14 +5148,25 @@ export function ResidentDashboard() {
           </Link>
         </div>
       </PageHeader>
-      <p className="mb-4 rounded-lg border border-line bg-white/70 px-3 py-2 text-sm text-slate-600">{accountingStatus}</p>
-      <div className="grid gap-4 md:grid-cols-3">
-        <StatCard label="Subscription balance" value={money(balance.netReceivable)} helper="Outstanding after credit" icon={<ReceiptText className="h-5 w-5" />} />
-        <StatCard label="Credit available" value={money(balance.availableCredit)} helper="Advance payment balance" icon={<BadgeCheck className="h-5 w-5" />} />
+      {showSkeleton ? <ResidentFinancialSkeleton /> : null}
+      {!showSkeleton && accountingError ? <ResidentAccountError /> : null}
+      {!showSkeleton && !accountingError && summary ? (
+        <>
+          <ResidentStatusBanner summary={summary} />
+          <ResidentSummaryCards summary={summary} />
+        </>
+      ) : null}
+      <div className="mt-4 grid gap-4 md:grid-cols-2">
         <StatCard label="Expected visitors" value={String(residentState.visitors.filter((visitor) => visitor.residentId === resident.id).length)} helper="Pending access codes" icon={<DoorOpen className="h-5 w-5" />} />
         <StatCard label="My complaints" value={String(residentState.complaints.filter((complaint) => complaint.residentId === resident.id).length)} helper="Open and resolved tickets" icon={<ClipboardList className="h-5 w-5" />} />
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
+        {!showSkeleton && !accountingError && summary ? (
+          <>
+            <ResidentHomeBillsSection bills={liveBills} />
+            <ResidentHomePaymentsSection bills={liveBills} payments={livePayments} />
+          </>
+        ) : null}
         <Card>
           <CardHeader title="Resident actions" description="The core mobile-first resident flow." />
           <div className="grid gap-3">
@@ -5478,12 +5515,348 @@ export function MyVisitorsPage() {
   );
 }
 
+function ResidentFinancialSkeleton({ cards = 4 }: { cards?: number }) {
+  return (
+    <div className={`grid gap-4 ${cards === 4 ? "md:grid-cols-4" : "md:grid-cols-3"}`}>
+      {Array.from({ length: cards }, (_, index) => (
+        <Card key={index} className="p-4">
+          <div className="h-10 w-10 animate-pulse rounded-lg bg-slate-200/70" />
+          <div className="mt-5 h-4 w-28 animate-pulse rounded bg-slate-200/70" />
+          <div className="mt-3 h-7 w-36 animate-pulse rounded bg-slate-200/80" />
+          <div className="mt-3 h-3 w-32 animate-pulse rounded bg-slate-200/60" />
+        </Card>
+      ))}
+    </div>
+  );
+}
+
+function ResidentAccountError() {
+  return (
+    <Card>
+      <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm font-medium text-danger">
+        Unable to load your account information. Please refresh the page.
+      </div>
+    </Card>
+  );
+}
+
+function ResidentStatusBanner({ summary }: { summary: ResidentAccountingSummary }) {
+  const toneClass = summary.accountStatus === "fully_paid" || summary.accountStatus === "in_credit"
+    ? "border-smart/30 bg-smart/10 text-emerald-700"
+    : summary.accountStatus === "partially_paid"
+      ? "border-warn/40 bg-warn/10 text-amber-700"
+      : "border-danger/30 bg-danger/10 text-danger";
+
+  return (
+    <div className={`mb-4 rounded-lg border px-3 py-3 text-sm font-medium ${toneClass}`}>
+      {summary.statusBannerText}
+    </div>
+  );
+}
+
+function ResidentSummaryCards({ summary }: { summary: ResidentAccountingSummary }) {
+  const creditHelper = summary.advanceCredit > 0
+    ? `${summary.monthsCreditCovers} months ahead`
+    : "No advance credit";
+  const nextDueHelper = summary.outstandingBalance > 0
+    ? "Overdue - pay now"
+    : `${money(summary.monthlyRate)} subscription`;
+
+  return (
+    <div className="grid gap-4 md:grid-cols-4">
+      <StatCard label="Net amount due" value={money(summary.outstandingBalance)} helper="Outstanding after credit" icon={<ReceiptText className="h-5 w-5" />} />
+      <StatCard label="Total confirmed paid" value={money(summary.totalPaid)} helper="Lifetime recorded payments" icon={<WalletCards className="h-5 w-5" />} />
+      <StatCard label="Credit / advance balance" value={money(summary.advanceCredit)} helper={creditHelper} icon={<BadgeCheck className="h-5 w-5" />} />
+      <Card className={`p-4 ${summary.outstandingBalance > 0 ? "border-danger/40" : ""}`}>
+        <div className="flex items-start justify-between gap-4">
+          <div className="rounded-lg border border-smart/20 bg-smart/15 p-3 text-smart shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]">
+            <CalendarClock className="h-5 w-5" />
+          </div>
+          <ChevronRight className="h-4 w-4 text-slate-400" aria-hidden="true" />
+        </div>
+        <p className="mt-5 text-sm text-slate-300">Next billing due</p>
+        <p className="mt-1 text-2xl font-semibold text-white">{formatResidentDate(summary.nextDueDate)}</p>
+        <p className={`mt-2 text-xs ${summary.outstandingBalance > 0 ? "text-danger" : "text-slate-400"}`}>{nextDueHelper}</p>
+      </Card>
+    </div>
+  );
+}
+
+function ResidentHomeBillsSection({ bills }: { bills: Bill[] }) {
+  const recentBills = [...bills]
+    .sort((left, right) => residentDateSortValue(right.dueDate) - residentDateSortValue(left.dueDate))
+    .slice(0, 6);
+
+  return (
+    <Card>
+      <CardHeader
+        title="My bills"
+        description="Latest subscription and opening balance records."
+        action={<Link className="text-sm font-semibold text-smart" href="/resident/bills">View all bills -&gt;</Link>}
+      />
+      <div className="grid gap-3">
+        {recentBills.length ? recentBills.map((bill) => (
+          <ResidentBillListItem key={bill.id} bill={bill} />
+        )) : (
+          <p className="rounded-lg border border-line bg-white/60 p-4 text-sm text-slate-500">No bills have been recorded for your account yet.</p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function ResidentHomePaymentsSection({ payments, bills }: { payments: Payment[]; bills: Bill[] }) {
+  const billById = new Map(bills.map((bill) => [bill.id, bill.title]));
+  const recentPayments = [...payments]
+    .sort((left, right) => residentDateSortValue(right.date) - residentDateSortValue(left.date))
+    .slice(0, 3);
+
+  return (
+    <Card>
+      <CardHeader title="My payments" description="Latest confirmed resident payment records." />
+      <div className="grid gap-3">
+        {recentPayments.length ? recentPayments.map((payment) => (
+          <div key={payment.id} className="rounded-lg border border-line/70 bg-white/70 p-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="font-semibold text-white">{money(payment.amount)}</p>
+                <p className="mt-1 text-xs text-slate-500">{formatResidentDate(payment.date)} - {paymentChannelLabel(payment)}</p>
+              </div>
+              <StatusBadge status={payment.status} />
+            </div>
+            <p className="mt-3 text-xs text-slate-500">Reference: <span className="font-mono text-slate-200">{payment.reference}</span></p>
+            <p className="mt-1 text-xs text-slate-500">Applied to: {billById.get(payment.billId) ?? "Resident account"}</p>
+          </div>
+        )) : (
+          <p className="rounded-lg border border-line bg-white/60 p-4 text-sm text-slate-500">No payments recorded yet.</p>
+        )}
+      </div>
+    </Card>
+  );
+}
+
+function ResidentBillListItem({ bill }: { bill: Bill }) {
+  const paid = numberValue(bill.paidAmount);
+  const outstanding = Math.max(0, bill.amount - paid);
+
+  return (
+    <div className="rounded-lg border border-line/70 bg-white/70 p-4">
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-semibold text-white">{residentBillTitle(bill)}</p>
+          <p className="mt-1 text-xs text-slate-500">{residentBillPeriod(bill)}</p>
+        </div>
+        <StatusBadge status={residentBillStatusLabel(bill)} tone={residentBillStatusTone(bill)} />
+      </div>
+      <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
+        <p><span className="block text-slate-500">Expected</span><span className="font-semibold text-slate-100">{money(bill.amount)}</span></p>
+        <p><span className="block text-slate-500">Paid</span><span className="font-semibold text-slate-100">{money(paid)}</span></p>
+        <p><span className="block text-slate-500">Outstanding</span><span className="font-semibold text-slate-100">{money(outstanding)}</span></p>
+      </div>
+    </div>
+  );
+}
+
+function ResidentBillsLiveTable({ bills }: { bills: Bill[] }) {
+  const orderedBills = [...bills].sort((left, right) => residentDateSortValue(right.dueDate) - residentDateSortValue(left.dueDate));
+
+  return (
+    <Card>
+      <CardHeader title="Resident billing" description="All live bills connected to this resident account." />
+      <div className="grid gap-3 md:hidden">
+        {orderedBills.length ? orderedBills.map((bill) => {
+          const paid = numberValue(bill.paidAmount);
+          const outstanding = Math.max(0, bill.amount - paid);
+
+          return (
+            <article key={bill.id} className="rounded-lg border border-line/70 bg-white/70 p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="font-semibold text-white">{residentBillTitle(bill)}</p>
+                  {bill.category === "opening_balance" ? (
+                    <p className="mt-1 text-xs text-slate-500">Account history before system migration</p>
+                  ) : null}
+                </div>
+                <StatusBadge status={residentBillStatusLabel(bill)} tone={residentBillStatusTone(bill)} />
+              </div>
+              <p className="mt-3 text-sm text-slate-300">{residentBillPeriod(bill)}</p>
+              <p className="mt-3 text-sm text-slate-300">Expected amount: <span className="font-semibold text-white">{money(bill.amount)}</span></p>
+              <p className="mt-2 text-sm text-slate-300">Paid: <span className="font-semibold text-white">{money(paid)}</span> - Outstanding: <span className="font-semibold text-white">{money(outstanding)}</span></p>
+            </article>
+          );
+        }) : (
+          <p className="rounded-lg border border-line bg-white/60 p-4 text-sm text-slate-500">No bills have been recorded for your account yet.</p>
+        )}
+      </div>
+      <div className="hidden max-w-full overflow-x-auto overscroll-x-contain rounded-lg border border-line/70 bg-white/40 md:block">
+        <table className="w-full table-auto border-separate border-spacing-0 text-left text-sm">
+          <thead>
+            <tr>
+              {["Bill", "Period / Due date", "Expected", "Paid", "Outstanding", "Status"].map((header) => (
+                <th key={header} className="border-b border-line/70 px-3 py-3 font-semibold text-slate-400">{header}</th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {orderedBills.map((bill) => {
+              const paid = numberValue(bill.paidAmount);
+              const outstanding = Math.max(0, bill.amount - paid);
+
+              return (
+                <tr key={bill.id}>
+                  <td className="border-b border-line/50 px-3 py-4 align-top">
+                    <p className="font-semibold text-white">{residentBillTitle(bill)}</p>
+                    {bill.category === "opening_balance" ? <p className="mt-1 text-xs text-slate-500">Account history before system migration</p> : null}
+                  </td>
+                  <td className="border-b border-line/50 px-3 py-4 align-top text-slate-200">{residentBillPeriod(bill)}</td>
+                  <td className="border-b border-line/50 px-3 py-4 align-top text-slate-200">{money(bill.amount)}</td>
+                  <td className="border-b border-line/50 px-3 py-4 align-top text-slate-200">{money(paid)}</td>
+                  <td className="border-b border-line/50 px-3 py-4 align-top text-slate-200">{money(outstanding)}</td>
+                  <td className="border-b border-line/50 px-3 py-4 align-top"><StatusBadge status={residentBillStatusLabel(bill)} tone={residentBillStatusTone(bill)} /></td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </Card>
+  );
+}
+
+function ResidentPaymentsLiveTable({ payments, bills }: { payments: Payment[]; bills: Bill[] }) {
+  const billById = new Map(bills.map((bill) => [bill.id, residentBillTitle(bill)]));
+  const orderedPayments = [...payments].sort((left, right) => residentDateSortValue(right.date) - residentDateSortValue(left.date));
+
+  return (
+    <Card>
+      <CardHeader title="Payment history" description="All confirmed payments and credit applications connected to your account." />
+      {orderedPayments.length ? (
+        <>
+          <div className="grid gap-3 md:hidden">
+            {orderedPayments.map((payment) => (
+              <article key={payment.id} className="rounded-lg border border-line/70 bg-white/70 p-4">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <p className="font-semibold text-white">{money(payment.amount)}</p>
+                    <p className="mt-1 text-xs text-slate-500">{formatResidentDate(payment.date)}</p>
+                  </div>
+                  <StatusBadge status={payment.status} />
+                </div>
+                <dl className="mt-3 grid gap-2 text-sm">
+                  <ResidentFact label="Channel" value={paymentChannelLabel(payment)} />
+                  <ResidentFact label="Reference" value={payment.reference} mono />
+                  <ResidentFact label="Applied to" value={billById.get(payment.billId) ?? "Resident account"} />
+                </dl>
+              </article>
+            ))}
+          </div>
+          <div className="hidden max-w-full overflow-x-auto overscroll-x-contain rounded-lg border border-line/70 bg-white/40 md:block">
+            <table className="w-full table-auto border-separate border-spacing-0 text-left text-sm">
+              <thead>
+                <tr>
+                  {["Date", "Amount", "Channel", "Reference", "Status", "Applied to"].map((header) => (
+                    <th key={header} className="border-b border-line/70 px-3 py-3 font-semibold text-slate-400">{header}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {orderedPayments.map((payment) => (
+                  <tr key={payment.id}>
+                    <td className="border-b border-line/50 px-3 py-4 align-top text-slate-200">{formatResidentDate(payment.date)}</td>
+                    <td className="border-b border-line/50 px-3 py-4 align-top text-slate-200">{money(payment.amount)}</td>
+                    <td className="border-b border-line/50 px-3 py-4 align-top text-slate-200 capitalize">{paymentChannelLabel(payment)}</td>
+                    <td className="border-b border-line/50 px-3 py-4 align-top font-mono text-smart">{payment.reference}</td>
+                    <td className="border-b border-line/50 px-3 py-4 align-top"><StatusBadge status={payment.status} /></td>
+                    <td className="border-b border-line/50 px-3 py-4 align-top text-slate-200">{billById.get(payment.billId) ?? "Resident account"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
+      ) : (
+        <p className="rounded-lg border border-line bg-white/60 p-4 text-sm text-slate-500">No payments recorded yet.</p>
+      )}
+    </Card>
+  );
+}
+
+function ResidentFact({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
+  return (
+    <div className="grid grid-cols-[6.5rem_1fr] gap-3">
+      <dt className="text-slate-500">{label}</dt>
+      <dd className={`min-w-0 break-words text-slate-100 ${mono ? "font-mono text-xs" : ""}`}>{value}</dd>
+    </div>
+  );
+}
+
+function residentBillTitle(bill: Bill) {
+  return bill.category === "opening_balance" ? "Opening Balance (Legacy)" : bill.title;
+}
+
+function residentBillPeriod(bill: Bill) {
+  if (bill.billingMonth) {
+    return `${formatResidentMonth(bill.billingMonth)} - Due ${formatResidentDate(bill.dueDate)}`;
+  }
+
+  return `Due ${formatResidentDate(bill.dueDate)}`;
+}
+
+function residentBillStatusLabel(bill: Bill) {
+  const paid = numberValue(bill.paidAmount);
+  if (paid > bill.amount) return "Credit";
+  if (bill.status === "paid") return "Paid";
+  if (bill.status === "partially paid") return "Partial";
+  if (bill.status === "overdue") return "Overdue";
+  return "Unpaid";
+}
+
+function residentBillStatusTone(bill: Bill): StatusTone {
+  const label = residentBillStatusLabel(bill);
+  if (label === "Credit") return "blue";
+  if (label === "Paid") return "green";
+  if (label === "Partial") return "yellow";
+  return "red";
+}
+
+function numberValue(value?: number) {
+  const numeric = Number(value);
+  return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function residentDateSortValue(value?: string) {
+  if (!value) return 0;
+  const date = new Date(`${value.slice(0, 10)}T00:00:00`);
+  return Number.isNaN(date.getTime()) ? 0 : date.getTime();
+}
+
+function formatResidentDate(value: string) {
+  const date = new Date(`${value.slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value || "Not recorded";
+  return new Intl.DateTimeFormat("en-NG", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: LAGOS_TIME_ZONE
+  }).format(date);
+}
+
+function formatResidentMonth(value: string) {
+  const date = new Date(`${value.slice(0, 7)}-01T00:00:00`);
+  if (Number.isNaN(date.getTime())) return value;
+  return new Intl.DateTimeFormat("en-NG", {
+    month: "long",
+    year: "numeric",
+    timeZone: LAGOS_TIME_ZONE
+  }).format(date);
+}
+
 export function MyBillsPage() {
   const { state } = useLocalEstateStore();
-  const { residentState, accountingStatus, loadingAccounting, refreshAccounting } = useResidentAccountingState(state);
-  const resident = useCurrentResidentProfile(residentState);
-  const myBills = residentState.bills.filter((bill) => bill.residentId === resident.id);
-  const balance = residentBillingBalance(residentState, resident.id);
+  const { accounting, accountingError, loadingAccounting, refreshAccounting } = useResidentAccountingState(state);
+  const summary = accounting?.summary ?? null;
+  const liveBills = accounting?.bills ?? [];
+  const showSkeleton = loadingAccounting && !summary && !accountingError;
 
   return (
     <>
@@ -5493,63 +5866,27 @@ export function MyBillsPage() {
           {loadingAccounting ? "Refreshing" : "Refresh account"}
         </Button>
       </PageHeader>
-      <p className="mb-4 rounded-lg border border-line bg-white/70 px-3 py-2 text-sm text-slate-600">{accountingStatus}</p>
-      <div className="mb-6 grid gap-4 md:grid-cols-3">
-        <StatCard label="Net amount due" value={money(balance.netReceivable)} helper="Outstanding after credit" icon={<ReceiptText className="h-5 w-5" />} />
-        <StatCard label="Credit available" value={money(balance.availableCredit)} helper="Advance payment balance" icon={<BadgeCheck className="h-5 w-5" />} />
-        <StatCard label="Confirmed paid" value={money(balance.paidAmount)} helper="Recorded payments" icon={<WalletCards className="h-5 w-5" />} />
-      </div>
-      <BillsTable title="Resident billing" rows={myBills} state={residentState} residentsDirectory={residentState.residents} />
+      {showSkeleton ? <ResidentFinancialSkeleton /> : null}
+      {!showSkeleton && accountingError ? <ResidentAccountError /> : null}
+      {!showSkeleton && !accountingError && summary ? (
+        <>
+          <div className="mb-6">
+            <ResidentSummaryCards summary={summary} />
+          </div>
+          <ResidentBillsLiveTable bills={liveBills} />
+        </>
+      ) : null}
     </>
   );
 }
 
 export function PaymentHistoryPage() {
-  const { state, addPayment } = useLocalEstateStore();
-  const { residentState, accountingStatus, loadingAccounting, refreshAccounting } = useResidentAccountingState(state);
-  const resident = useCurrentResidentProfile(residentState);
-  const myBills = residentState.bills.filter((bill) => bill.residentId === resident.id);
-  const payableBills = myBills.filter((bill) => billOutstandingAmount(residentState, bill) > 0);
-  const myPayments = residentState.payments.filter((payment) => payment.residentId === resident.id);
-  const balance = residentBillingBalance(residentState, resident.id);
-  const [paymentMessage, setPaymentMessage] = useState("");
-
-  function submitOnlinePayment(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const billId = String(form.get("billId") ?? payableBills[0]?.id);
-    const bill = payableBills.find((item) => item.id === billId) ?? payableBills[0];
-    const processor = String(form.get("processor") ?? "paystack") as Payment["processor"];
-    if (!bill) {
-      return;
-    }
-
-    const payment = addPayment({
-      billId: bill.id,
-      amount: billOutstandingAmount(residentState, bill),
-      reference: `${processor?.toUpperCase() ?? "ONLINE"}-${Date.now()}`,
-      channel: "online",
-      processor,
-      source: "webhook"
-    });
-    setPaymentMessage(`${payment.reference} confirmed automatically by ${processor} webhook.`);
-    event.currentTarget.reset();
-  }
-
-  function submitManualPayment(event: FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const payment = addPayment({
-      billId: String(form.get("billId") ?? payableBills[0]?.id),
-      amount: Number(form.get("amount") ?? 0),
-      reference: String(form.get("reference") || `LOCAL-${Date.now()}`),
-      channel: String(form.get("channel") ?? "bank_transfer") as Payment["channel"],
-      processor: "manual",
-      source: "resident"
-    });
-    setPaymentMessage(`Manual payment proof ${payment.reference} saved for admin confirmation.`);
-    event.currentTarget.reset();
-  }
+  const { state } = useLocalEstateStore();
+  const { accounting, accountingError, loadingAccounting, refreshAccounting } = useResidentAccountingState(state);
+  const summary = accounting?.summary ?? null;
+  const liveBills = accounting?.bills ?? [];
+  const livePayments = accounting?.payments ?? [];
+  const showSkeleton = loadingAccounting && !summary && !accountingError;
 
   return (
     <>
@@ -5559,94 +5896,31 @@ export function PaymentHistoryPage() {
           {loadingAccounting ? "Refreshing" : "Refresh account"}
         </Button>
       </PageHeader>
-      <p className="mb-4 rounded-lg border border-line bg-white/70 px-3 py-2 text-sm text-slate-600">{accountingStatus}</p>
-      <div className="mb-6 grid gap-4 md:grid-cols-3">
-        <StatCard label="Net amount due" value={money(balance.netReceivable)} helper="Outstanding after credit" icon={<ReceiptText className="h-5 w-5" />} />
-        <StatCard label="Credit available" value={money(balance.availableCredit)} helper="Applied to future subscription" icon={<BadgeCheck className="h-5 w-5" />} />
-        <StatCard label="Confirmed paid" value={money(balance.paidAmount)} helper="Payment history total" icon={<WalletCards className="h-5 w-5" />} />
-      </div>
-      {payableBills.length ? (
-        <Card className="mb-6">
-          <CardHeader title="Pay online" description="Demo flow: the processor webhook confirms the payment, updates the bill, resident balance, reports, and audit trail automatically." />
-          <form onSubmit={submitOnlinePayment}>
-            <div className="grid gap-4 md:grid-cols-4">
-              <Field label="Bill">
-                <Select name="billId" defaultValue={myBills[0]?.id}>
-                  {payableBills.map((bill) => (
-                    <option key={bill.id} value={bill.id}>
-                      {bill.title} - {money(billOutstandingAmount(residentState, bill))}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label="Processor">
-                <Select name="processor" defaultValue="paystack">
-                  <option value="paystack">Paystack</option>
-                  <option value="flutterwave">Flutterwave</option>
-                  <option value="monnify">Monnify</option>
-                  <option value="gtbank_squad">GTBank Squad</option>
-                </Select>
-              </Field>
-              <Field label="Unit"><Input value={residentUnitLabel(residentState, resident)} readOnly /></Field>
-              <div className="flex items-end">
-                <Button className="w-full"><WalletCards className="h-4 w-4" />Pay online</Button>
-              </div>
-            </div>
-          </form>
-        </Card>
-      ) : (
-        <Card className="mb-6">
-          <CardHeader
-            title={balance.availableCredit > 0 ? "Advance payment available" : "No outstanding bills"}
-            description={balance.availableCredit > 0
-              ? "Your account is in credit. Future subscription bills can be deducted from this balance before new payment is requested."
-              : "All assigned bills are fully paid or no bills have been assigned to this resident."}
-          />
-        </Card>
-      )}
-      {payableBills.length ? (
-        <Card className="mb-6">
-          <CardHeader title="Manual payment fallback" description="Use this only for bank transfers, cash, POS, or WhatsApp receipt payments that need admin confirmation." />
-          <form onSubmit={submitManualPayment}>
-            <div className="grid gap-4 md:grid-cols-5">
-              <Field label="Bill">
-                <Select name="billId" defaultValue={payableBills[0]?.id}>
-                  {payableBills.map((bill) => (
-                    <option key={bill.id} value={bill.id}>
-                      {bill.title}
-                    </option>
-                  ))}
-                </Select>
-              </Field>
-              <Field label="Payment reference"><Input name="reference" placeholder="BANK-TRANSFER-REF" required /></Field>
-              <Field label="Amount"><Input name="amount" type="number" placeholder="4000" min={1} required /></Field>
-              <Field label="Channel">
-                <Select name="channel" defaultValue="bank_transfer">
-                  <option value="bank_transfer">Bank transfer</option>
-                  <option value="cash">Cash</option>
-                  <option value="pos">POS</option>
-                  <option value="whatsapp_receipt">WhatsApp receipt</option>
-                </Select>
-              </Field>
-              <Field label="Proof upload"><Input type="file" /></Field>
-            </div>
-            <Button className="mt-5"><Upload className="h-4 w-4" />Submit manual proof</Button>
-          </form>
-        </Card>
+      {showSkeleton ? <ResidentFinancialSkeleton /> : null}
+      {!showSkeleton && accountingError ? <ResidentAccountError /> : null}
+      {!showSkeleton && !accountingError && summary ? (
+        <>
+          <div className="mb-6">
+            <ResidentSummaryCards summary={summary} />
+          </div>
+          {summary.outstandingBalance === 0 ? (
+            <Card className="mb-6">
+              <CardHeader
+                title="No outstanding bills"
+                description="All assigned bills are fully paid or covered by recorded credit."
+              />
+            </Card>
+          ) : (
+            <Card className="mb-6">
+              <CardHeader
+                title="Payment required"
+                description={`${money(summary.outstandingBalance)} remains outstanding on your resident account.`}
+              />
+            </Card>
+          )}
+          <ResidentPaymentsLiveTable bills={liveBills} payments={livePayments} />
+        </>
       ) : null}
-      {paymentMessage ? <p className="mb-6 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{paymentMessage}</p> : null}
-      <DataTable
-        title="Payment history"
-        headers={["Reference", "Bill", "Amount", "Channel", "Date", "Status"]}
-        rows={myPayments.map((payment) => [
-          <span key={payment.reference} className="font-mono text-smart">{payment.reference}</span>,
-          residentState.bills.find((bill) => bill.id === payment.billId)?.title ?? "Unknown bill",
-          money(payment.amount),
-          paymentChannelLabel(payment),
-          payment.date,
-          <StatusBadge key={payment.status} status={payment.status} />
-        ])}
-      />
     </>
   );
 }

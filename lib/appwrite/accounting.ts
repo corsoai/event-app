@@ -66,6 +66,23 @@ type AppwriteAccountingResidentRow = {
   expectedMonthly?: number;
 };
 
+export type ResidentAccountStatus = "fully_paid" | "in_credit" | "partially_paid" | "unpaid";
+
+export type ResidentAccountingSummary = {
+  totalBilled: number;
+  totalPaid: number;
+  outstandingBalance: number;
+  advanceCredit: number;
+  monthlyRate: number;
+  monthsCreditCovers: number;
+  coverageThroughDate: string;
+  nextDueDate: string;
+  accountStatus: ResidentAccountStatus;
+  statusBannerText: string;
+  lastPaymentDate: string | null;
+  lastPaymentAmount: number;
+};
+
 export type AppwriteAccountingData = AppwriteResidentDirectory & {
   bills: Bill[];
   payments: Payment[];
@@ -168,7 +185,11 @@ export async function listAppwriteAccounting(options: { bypassCache?: boolean; e
 export async function listAppwriteResidentAccounting(
   identity: AppwriteResidentAccountingIdentity,
   options: { bypassCache?: boolean; ensureSchema?: boolean } = {}
-): Promise<AppwriteAccountingData & { matchedResidentId: string | null }> {
+): Promise<AppwriteAccountingData & {
+  matchedResidentId: string | null;
+  resident: Resident | null;
+  summary: ResidentAccountingSummary | null;
+}> {
   const accounting = await listAppwriteAccounting(options);
   const resident = findAccountingResident(accounting.residents, identity);
 
@@ -187,17 +208,24 @@ export async function listAppwriteResidentAccounting(
         bills: 0,
         payments: 0
       },
-      matchedResidentId: null
+      matchedResidentId: null,
+      resident: null,
+      summary: null
     };
   }
 
-  const bills = accounting.bills.filter((bill) => bill.residentId === resident.id);
+  const bills = accounting.bills
+    .filter((bill) => bill.residentId === resident.id)
+    .sort((left, right) => dateSortValue(left.dueDate) - dateSortValue(right.dueDate));
   const billIds = new Set(bills.map((bill) => bill.id));
-  const payments = accounting.payments.filter((payment) => payment.residentId === resident.id || billIds.has(payment.billId));
+  const payments = accounting.payments
+    .filter((payment) => payment.status === "confirmed" && (payment.residentId === resident.id || billIds.has(payment.billId)))
+    .sort((left, right) => dateSortValue(left.date) - dateSortValue(right.date));
   const propertyIds = new Set([resident.propertyId, ...bills.map((bill) => bill.propertyId)].filter(Boolean));
   const unitIds = new Set([resident.unitId, ...bills.map((bill) => bill.unitId)].filter(Boolean));
   const properties = accounting.properties.filter((property) => propertyIds.has(property.id));
   const units = accounting.units.filter((unit) => unitIds.has(unit.id) || unit.currentResidentId === resident.id);
+  const summary = buildResidentAccountingSummary(resident, bills, payments);
 
   return {
     properties,
@@ -213,7 +241,9 @@ export async function listAppwriteResidentAccounting(
       bills: bills.length,
       payments: payments.length
     },
-    matchedResidentId: resident.id
+    matchedResidentId: resident.id,
+    resident,
+    summary
   };
 }
 
@@ -472,6 +502,135 @@ function mapBillRow(row: AppwriteBillRow, resident?: Resident): Bill {
     billingMonth: optionalText(row.billingMonth),
     status: billStatus(amount, paidAmount, row.status)
   };
+}
+
+function buildResidentAccountingSummary(resident: Resident, bills: Bill[], payments: Payment[]): ResidentAccountingSummary {
+  const totalBilled = bills.reduce((sum, bill) => sum + bill.amount, 0);
+  const realPayments = payments.filter((payment) => payment.status === "confirmed" && payment.channel !== "credit_applied");
+  const totalPaid = realPayments.reduce((sum, payment) => sum + payment.amount, 0);
+  const outstandingBalance = Math.max(0, totalBilled - totalPaid);
+  const advanceCredit = Math.max(0, totalPaid - totalBilled);
+  const monthlyRate = numberOrZero(resident.expectedMonthly);
+  const monthsCreditCovers = monthlyRate > 0 ? Math.floor(advanceCredit / monthlyRate) : 0;
+  const latestPaidBill = [...bills]
+    .filter((bill) => bill.status === "paid")
+    .sort((left, right) => dateSortValue(right.dueDate) - dateSortValue(left.dueDate))[0];
+  const latestBill = [...bills].sort((left, right) => dateSortValue(right.dueDate) - dateSortValue(left.dueDate))[0];
+  const baseCoverageDate = parseIsoDate(latestPaidBill?.dueDate) ?? parseIsoDate(latestBill?.dueDate) ?? firstDayOfCurrentMonth();
+  const coverageThrough = addMonths(baseCoverageDate, monthsCreditCovers);
+  const nextDueDate = firstDayOfNextMonth(coverageThrough);
+  const lastPayment = realPayments[realPayments.length - 1] ?? null;
+  const accountStatus = residentAccountStatus(totalPaid, outstandingBalance, advanceCredit);
+
+  return {
+    totalBilled,
+    totalPaid,
+    outstandingBalance,
+    advanceCredit,
+    monthlyRate,
+    monthsCreditCovers,
+    coverageThroughDate: isoDate(coverageThrough),
+    nextDueDate: isoDate(nextDueDate),
+    accountStatus,
+    statusBannerText: residentStatusBannerText({
+      accountStatus,
+      outstandingBalance,
+      advanceCredit,
+      monthlyRate,
+      monthsCreditCovers,
+      coverageThroughDate: coverageThrough,
+      nextDueDate
+    }),
+    lastPaymentDate: lastPayment?.date ?? null,
+    lastPaymentAmount: lastPayment?.amount ?? 0
+  };
+}
+
+function residentAccountStatus(totalPaid: number, outstandingBalance: number, advanceCredit: number): ResidentAccountStatus {
+  if (advanceCredit > 0) return "in_credit";
+  if (outstandingBalance === 0) return "fully_paid";
+  if (totalPaid === 0) return "unpaid";
+  return "partially_paid";
+}
+
+function residentStatusBannerText(input: {
+  accountStatus: ResidentAccountStatus;
+  outstandingBalance: number;
+  advanceCredit: number;
+  monthlyRate: number;
+  monthsCreditCovers: number;
+  coverageThroughDate: Date;
+  nextDueDate: Date;
+}) {
+  const rate = currencyText(input.monthlyRate);
+  const nextDueDate = displayDate(input.nextDueDate);
+  const coverageMonth = monthYear(input.coverageThroughDate);
+
+  if (input.accountStatus === "fully_paid") {
+    return `Your subscription is fully paid through ${coverageMonth}. Next payment of ${rate} is due ${nextDueDate}.`;
+  }
+
+  if (input.accountStatus === "in_credit") {
+    return `You have ${currencyText(input.advanceCredit)} advance credit covering ${input.monthsCreditCovers} months through ${coverageMonth}. Next payment due ${nextDueDate}.`;
+  }
+
+  if (input.accountStatus === "partially_paid") {
+    return `You have ${currencyText(input.outstandingBalance)} outstanding. Please pay by ${nextDueDate} to keep your account current.`;
+  }
+
+  return `Your account has ${currencyText(input.outstandingBalance)} outstanding. Please make payment as soon as possible.`;
+}
+
+function parseIsoDate(value?: string) {
+  if (!value) return null;
+  const date = new Date(`${value.slice(0, 10)}T00:00:00.000Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function firstDayOfCurrentMonth() {
+  const now = new Date();
+  return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+}
+
+function addMonths(date: Date, months: number) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + months, date.getUTCDate()));
+}
+
+function firstDayOfNextMonth(date: Date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth() + 1, 1));
+}
+
+function isoDate(date: Date) {
+  return date.toISOString().slice(0, 10);
+}
+
+function dateSortValue(value?: string) {
+  return parseIsoDate(value)?.getTime() ?? 0;
+}
+
+function currencyText(value: number) {
+  return new Intl.NumberFormat("en-NG", {
+    style: "currency",
+    currency: "NGN",
+    maximumFractionDigits: 0
+  }).format(value);
+}
+
+function displayDate(date: Date) {
+  return new Intl.DateTimeFormat("en-NG", {
+    day: "numeric",
+    month: "short",
+    year: "numeric",
+    timeZone: "UTC"
+  }).format(date);
+}
+
+function monthYear(date: Date) {
+  return new Intl.DateTimeFormat("en-NG", {
+    month: "long",
+    year: "numeric",
+    timeZone: "UTC"
+  }).format(date);
 }
 
 function mapPaymentRow(row: AppwritePaymentRow): Payment {
