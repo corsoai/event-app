@@ -94,6 +94,8 @@ export type Bill = {
 
 export type PaymentChannel =
   | "online"
+  | "monnify_card"
+  | "monnify_transfer"
   | "bank_transfer"
   | "cash"
   | "pos"
@@ -121,7 +123,7 @@ export type Payment = {
   providerReference?: string;
   date: string;
   status: "pending" | "confirmed" | "rejected";
-  source?: "resident" | "admin" | "webhook";
+  source?: "resident" | "admin" | "webhook" | "monnify_online" | "monnify_webhook";
   confirmedAt?: string;
   confirmedBy?: string;
 };

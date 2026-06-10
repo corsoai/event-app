@@ -215,6 +215,20 @@ type ResidentAccountingSummary = {
   lastPaymentAmount: number;
 };
 
+type MonnifyInitiateBody = {
+  billId?: string;
+  months?: number;
+  amount?: number;
+};
+
+type MonnifyInitiateResponse = {
+  checkoutUrl?: string;
+  paymentReference?: string;
+  amount?: number;
+  transactionReference?: string;
+  error?: string;
+};
+
 type AppwriteAccountingSummary = {
   expectedRevenue: number;
   paidAmount: number;
@@ -605,6 +619,22 @@ function useResidentAccountingState(state: LocalEstateState) {
     loadingAccounting,
     refreshAccounting
   };
+}
+
+async function redirectToMonnifyCheckout(body: MonnifyInitiateBody) {
+  const response = await fetch("/api/monnify/initiate", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    cache: "no-store"
+  });
+  const payload = await response.json().catch(() => null) as MonnifyInitiateResponse | null;
+
+  if (!response.ok || !payload?.checkoutUrl) {
+    throw new Error(payload?.error ?? "Unable to initiate payment. Please try again or contact admin.");
+  }
+
+  window.location.assign(payload.checkoutUrl);
 }
 
 function useAdminAccountingState(state: LocalEstateState) {
@@ -1050,7 +1080,7 @@ export function AdminDashboard() {
   const expected = summary?.expectedRevenue ?? accountingState.bills.reduce((sum, bill) => sum + bill.amount, 0);
   const outstanding = summary?.outstandingBalance ?? accountingState.bills.reduce((sum, bill) => sum + billOutstandingAmount(accountingState, bill), 0);
   const credit = summary?.creditBalance ?? accountingState.bills.reduce((sum, bill) => sum + billCreditAmount(accountingState, bill), 0);
-  const onlinePayments = confirmedPayments.filter((payment) => payment.channel === "online").reduce((sum, payment) => sum + payment.amount, 0);
+  const onlinePayments = confirmedPayments.filter((payment) => isResidentOnlinePaymentChannel(payment.channel)).reduce((sum, payment) => sum + payment.amount, 0);
   const manualPayments = confirmedPayments.filter((payment) => payment.channel !== "online").reduce((sum, payment) => sum + payment.amount, 0);
   const pendingPayments = summary?.pendingReviewAmount ?? accountingState.payments.filter((payment) => payment.status === "pending").reduce((sum, payment) => sum + payment.amount, 0);
   const openComplaints = useAdminOpenComplaintsCount(state.complaints.filter((item) => item.status !== "resolved").length);
@@ -3994,7 +4024,7 @@ export function ReportsPage() {
       : payment.status === "pending"
         ? "Unconfirmed"
         : "Rejected";
-    const method = payment.channel === "online" ? "online" : "manual";
+    const method = isResidentOnlinePaymentChannel(payment.channel) ? "online" : "manual";
     const key = `${confirmation} ${method}`;
 
     totals[key] = {
@@ -5131,6 +5161,8 @@ function TemporaryCredentialBox({ credential }: { credential: TemporaryCredentia
 export function ResidentDashboard() {
   const { state } = useLocalEstateStore();
   const { residentState, accounting, accountingError, loadingAccounting, refreshAccounting } = useResidentAccountingState(state);
+  const [onlinePaymentLoading, setOnlinePaymentLoading] = useState(false);
+  const [onlinePaymentMessage, setOnlinePaymentMessage] = useState("");
   const resident = useCurrentResidentProfile(residentState);
   const summary = accounting?.summary ?? null;
   const liveBills = accounting?.bills ?? [];
@@ -5140,6 +5172,19 @@ export function ResidentDashboard() {
   const mobileStatusText = summary?.outstandingBalance
     ? `${money(summary.outstandingBalance)} Owed`
     : "Paid ✓";
+
+  async function startOutstandingPayment() {
+    setOnlinePaymentLoading(true);
+    setOnlinePaymentMessage("");
+
+    try {
+      await redirectToMonnifyCheckout({});
+    } catch (error) {
+      setOnlinePaymentMessage(error instanceof Error ? error.message : "Unable to initiate payment. Please try again or contact admin.");
+      setOnlinePaymentLoading(false);
+    }
+  }
+
   return (
     <>
       <div className="sticky top-16 z-20 -mx-4 mb-4 border-b border-line bg-ink/95 px-4 py-3 backdrop-blur sm:hidden">
@@ -5174,9 +5219,12 @@ export function ResidentDashboard() {
       {!showSkeleton && accountingError ? <ResidentAccountError /> : null}
       {!showSkeleton && !accountingError && summary ? (
         <>
-          <ResidentStatusBanner summary={summary} />
+          <ResidentStatusBanner summary={summary} onPayNow={startOutstandingPayment} paying={onlinePaymentLoading} />
+          {onlinePaymentMessage ? (
+            <p className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{onlinePaymentMessage}</p>
+          ) : null}
           <ResidentSummaryCards summary={summary} />
-          <ResidentMobileQuickActions summary={summary} />
+          <ResidentMobileQuickActions summary={summary} onPayNow={startOutstandingPayment} paying={onlinePaymentLoading} />
         </>
       ) : null}
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-4">
@@ -5200,13 +5248,23 @@ export function ResidentDashboard() {
         </Card>
         <ResidentAnnouncementsPage compact />
       </div>
-      {summary ? (
-        <Link
-          href={summary.outstandingBalance > 0 ? "/resident/payments" : "/resident/invite-visitor"}
-          className="fixed bottom-[5.25rem] right-4 z-40 grid h-14 w-14 place-items-center rounded-full bg-[#1a7c4a] text-white shadow-[0_12px_30px_rgba(26,124,74,0.35)] sm:hidden"
-          aria-label={summary.outstandingBalance > 0 ? "Pay now" : "Invite visitor"}
+      {summary ? summary.outstandingBalance > 0 ? (
+        <button
+          type="button"
+          className="fixed bottom-[5.25rem] right-4 z-40 grid h-14 w-14 place-items-center rounded-full bg-[#1a7c4a] text-white shadow-[0_12px_30px_rgba(26,124,74,0.35)] disabled:opacity-70 sm:hidden"
+          aria-label="Pay now"
+          onClick={startOutstandingPayment}
+          disabled={onlinePaymentLoading}
         >
-          {summary.outstandingBalance > 0 ? <CreditCard className="h-6 w-6" /> : <QrCode className="h-6 w-6" />}
+          <CreditCard className="h-6 w-6" />
+        </button>
+      ) : (
+        <Link
+          href="/resident/invite-visitor"
+          className="fixed bottom-[5.25rem] right-4 z-40 grid h-14 w-14 place-items-center rounded-full bg-[#1a7c4a] text-white shadow-[0_12px_30px_rgba(26,124,74,0.35)] sm:hidden"
+          aria-label="Invite visitor"
+        >
+          <QrCode className="h-6 w-6" />
         </Link>
       ) : null}
     </>
@@ -5572,7 +5630,15 @@ function ResidentAccountError() {
   );
 }
 
-function ResidentStatusBanner({ summary }: { summary: ResidentAccountingSummary }) {
+function ResidentStatusBanner({
+  summary,
+  onPayNow,
+  paying = false
+}: {
+  summary: ResidentAccountingSummary;
+  onPayNow?: () => void;
+  paying?: boolean;
+}) {
   const toneClass = summary.accountStatus === "fully_paid" || summary.accountStatus === "in_credit"
     ? "border-smart/30 bg-smart/10 text-emerald-700"
     : summary.accountStatus === "partially_paid"
@@ -5583,9 +5649,20 @@ function ResidentStatusBanner({ summary }: { summary: ResidentAccountingSummary 
     <div className={`mb-4 rounded-lg border px-3 py-3 text-sm font-medium sm:text-sm ${toneClass}`}>
       <p className="text-base leading-6 sm:text-sm sm:leading-5">{summary.statusBannerText}</p>
       {summary.outstandingBalance > 0 ? (
-        <Link href="/resident/payments" className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-[#1a7c4a] px-4 text-sm font-semibold text-white sm:hidden">
-          Pay now - {money(summary.outstandingBalance)}
-        </Link>
+        onPayNow ? (
+          <button
+            type="button"
+            className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-[#1a7c4a] px-4 text-sm font-semibold text-white disabled:opacity-70 sm:hidden"
+            onClick={onPayNow}
+            disabled={paying}
+          >
+            {paying ? "Starting payment..." : `Pay now - ${money(summary.outstandingBalance)}`}
+          </button>
+        ) : (
+          <Link href="/resident/payments" className="mt-3 inline-flex min-h-11 items-center rounded-lg bg-[#1a7c4a] px-4 text-sm font-semibold text-white sm:hidden">
+            Pay now - {money(summary.outstandingBalance)}
+          </Link>
+        )
       ) : null}
     </div>
   );
@@ -5619,14 +5696,39 @@ function ResidentSummaryCards({ summary }: { summary: ResidentAccountingSummary 
   );
 }
 
-function ResidentMobileQuickActions({ summary }: { summary: ResidentAccountingSummary }) {
+function ResidentMobileQuickActions({
+  summary,
+  onPayNow,
+  paying = false
+}: {
+  summary: ResidentAccountingSummary;
+  onPayNow?: () => void;
+  paying?: boolean;
+}) {
   const primaryHref = summary.outstandingBalance > 0 ? "/resident/payments" : "/resident/invite-visitor";
   const primaryLabel = summary.outstandingBalance > 0 ? "Pay now" : "Invite visitor";
 
   return (
     <div className="mt-4 grid grid-cols-2 gap-3 sm:hidden">
+      {summary.outstandingBalance > 0 && onPayNow ? (
+        <button
+          type="button"
+          className="flex min-h-16 items-center gap-3 rounded-lg border border-line bg-white/80 px-3 text-left text-sm font-semibold text-white shadow-sm disabled:opacity-70"
+          onClick={onPayNow}
+          disabled={paying}
+        >
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#1a7c4a]/10 text-[#1a7c4a]"><CreditCard className="h-5 w-5" /></span>
+          {paying ? "Starting..." : primaryLabel}
+        </button>
+      ) : (
+        <Link href={primaryHref} className="flex min-h-16 items-center gap-3 rounded-lg border border-line bg-white/80 px-3 text-sm font-semibold text-white shadow-sm">
+          <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg bg-[#1a7c4a]/10 text-[#1a7c4a]">
+            {summary.outstandingBalance > 0 ? <CreditCard className="h-5 w-5" /> : <QrCode className="h-5 w-5" />}
+          </span>
+          {primaryLabel}
+        </Link>
+      )}
       {[
-        { href: primaryHref, label: primaryLabel, icon: summary.outstandingBalance > 0 ? <CreditCard className="h-5 w-5" /> : <QrCode className="h-5 w-5" /> },
         { href: "/resident/payments", label: "Pay ahead", icon: <WalletCards className="h-5 w-5" /> },
         { href: "/resident/bills", label: "Statement", icon: <ReceiptText className="h-5 w-5" /> },
         { href: "/resident/invite-visitor", label: "Invite visitor", icon: <Users className="h-5 w-5" /> }
@@ -5715,7 +5817,15 @@ function ResidentBillListItem({ bill, className = "" }: { bill: Bill; className?
   );
 }
 
-function ResidentBillsLiveTable({ bills }: { bills: Bill[] }) {
+function ResidentBillsLiveTable({
+  bills,
+  onPayBill,
+  payingBillId = ""
+}: {
+  bills: Bill[];
+  onPayBill?: (bill: Bill) => void;
+  payingBillId?: string;
+}) {
   const [mobileLimit, setMobileLimit] = useState(6);
   const orderedBills = [...bills].sort((left, right) => residentDateSortValue(right.dueDate) - residentDateSortValue(left.dueDate));
   const mobileBills = orderedBills.slice(0, mobileLimit);
@@ -5742,6 +5852,12 @@ function ResidentBillsLiveTable({ bills }: { bills: Bill[] }) {
               <p className="mt-3 text-sm text-slate-300">{residentBillPeriod(bill)}</p>
               <p className="mt-3 text-sm text-slate-300">Expected amount: <span className="font-semibold text-white">{money(bill.amount)}</span></p>
               <p className="mt-2 text-sm text-slate-300">Paid: <span className="font-semibold text-white">{money(paid)}</span> - Outstanding: <span className="font-semibold text-white">{money(outstanding)}</span></p>
+              {outstanding > 0 && onPayBill ? (
+                <Button type="button" className="mt-4 min-h-11 w-full" onClick={() => onPayBill(bill)} disabled={payingBillId === bill.id}>
+                  <CreditCard className="h-4 w-4" />
+                  {payingBillId === bill.id ? "Starting payment..." : "Pay online"}
+                </Button>
+              ) : null}
             </article>
           );
         }) : (
@@ -5757,7 +5873,7 @@ function ResidentBillsLiveTable({ bills }: { bills: Bill[] }) {
         <table className="w-full table-auto border-separate border-spacing-0 text-left text-sm">
           <thead>
             <tr>
-              {["Bill", "Period / Due date", "Expected", "Paid", "Outstanding", "Status"].map((header) => (
+              {["Bill", "Period / Due date", "Expected", "Paid", "Outstanding", "Status", "Action"].map((header) => (
                 <th key={header} className="border-b border-line/70 px-3 py-3 font-semibold text-slate-400">{header}</th>
               ))}
             </tr>
@@ -5778,6 +5894,16 @@ function ResidentBillsLiveTable({ bills }: { bills: Bill[] }) {
                   <td className="border-b border-line/50 px-3 py-4 align-top text-slate-200">{money(paid)}</td>
                   <td className="border-b border-line/50 px-3 py-4 align-top text-slate-200">{money(outstanding)}</td>
                   <td className="border-b border-line/50 px-3 py-4 align-top"><StatusBadge status={residentBillStatusLabel(bill)} tone={residentBillStatusTone(bill)} /></td>
+                  <td className="border-b border-line/50 px-3 py-4 align-top">
+                    {outstanding > 0 && onPayBill ? (
+                      <Button type="button" className="min-h-9 px-3 py-1 text-xs" onClick={() => onPayBill(bill)} disabled={payingBillId === bill.id}>
+                        <CreditCard className="h-3.5 w-3.5" />
+                        {payingBillId === bill.id ? "Starting" : "Pay online"}
+                      </Button>
+                    ) : (
+                      <span className="text-xs text-slate-500">No payment due</span>
+                    )}
+                  </td>
                 </tr>
               );
             })}
@@ -5916,12 +6042,136 @@ function formatResidentMonth(value: string) {
   }).format(date);
 }
 
+function ResidentSubscriptionPaymentPanel({
+  summary,
+  selectedMonths,
+  paying,
+  onSelectMonths,
+  onPay
+}: {
+  summary: ResidentAccountingSummary;
+  selectedMonths: number;
+  paying: boolean;
+  onSelectMonths: (months: number) => void;
+  onPay: () => void;
+}) {
+  const totalAmount = selectedMonths * summary.monthlyRate;
+
+  return (
+    <Card className="mb-6">
+      <CardHeader
+        title="Pay subscription"
+        description="Choose how many months to pay ahead. Confirmed payments update your resident account automatically."
+      />
+      <div className="grid gap-4 lg:grid-cols-[1fr_0.75fr]">
+        <div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {[1, 3, 6, 12].map((months) => (
+              <button
+                key={months}
+                type="button"
+                className={`min-h-12 rounded-lg border px-3 text-sm font-semibold transition ${
+                  selectedMonths === months
+                    ? "border-[#1a7c4a] bg-[#1a7c4a] text-white"
+                    : "border-line bg-white/80 text-slate-800 hover:border-[#1a7c4a]/60"
+                }`}
+                onClick={() => onSelectMonths(months)}
+              >
+                {months} {months === 1 ? "month" : "months"}
+              </button>
+            ))}
+          </div>
+          <p className="mt-4 text-sm text-slate-300">
+            Pay {selectedMonths} {selectedMonths === 1 ? "month" : "months"} = <span className="font-semibold text-white">{money(totalAmount)}</span>
+          </p>
+          <p className="mt-1 text-sm text-slate-500">
+            Covers {subscriptionCoverageLabel(summary.nextDueDate, selectedMonths)}
+          </p>
+        </div>
+        <div className="rounded-lg border border-line bg-white/70 p-4">
+          <p className="text-sm text-slate-500">Monthly subscription</p>
+          <p className="mt-1 text-2xl font-semibold text-white">{money(summary.monthlyRate)}</p>
+          <Button type="button" className="mt-4 w-full" onClick={onPay} disabled={paying || totalAmount <= 0}>
+            <CreditCard className="h-4 w-4" />
+            {paying ? "Starting payment..." : "Pay online now"}
+          </Button>
+        </div>
+      </div>
+    </Card>
+  );
+}
+
+function ResidentPaymentReturnBanner({
+  tone,
+  message
+}: {
+  tone: "success" | "error";
+  message: string;
+}) {
+  const className = tone === "success"
+    ? "border-smart/30 bg-smart/10 text-emerald-700"
+    : "border-danger/30 bg-danger/10 text-danger";
+
+  return (
+    <div className={`mb-4 rounded-lg border px-3 py-3 text-sm font-medium ${className}`}>
+      {message}
+    </div>
+  );
+}
+
+function subscriptionCoverageLabel(nextDueDate: string, months: number) {
+  const start = new Date(`${nextDueDate.slice(0, 10)}T00:00:00`);
+  if (Number.isNaN(start.getTime())) {
+    return `${months} ${months === 1 ? "month" : "months"}`;
+  }
+
+  const end = new Date(start);
+  end.setMonth(end.getMonth() + Math.max(1, months) - 1);
+
+  return `${formatResidentMonth(start.toISOString().slice(0, 10))} to ${formatResidentMonth(end.toISOString().slice(0, 10))}`;
+}
+
 export function MyBillsPage() {
   const { state } = useLocalEstateStore();
   const { accounting, accountingError, loadingAccounting, refreshAccounting } = useResidentAccountingState(state);
+  const [selectedMonths, setSelectedMonths] = useState(1);
+  const [payingBillId, setPayingBillId] = useState("");
+  const [payingSubscription, setPayingSubscription] = useState(false);
+  const [paymentMessage, setPaymentMessage] = useState("");
   const summary = accounting?.summary ?? null;
   const liveBills = accounting?.bills ?? [];
   const showSkeleton = loadingAccounting && !summary && !accountingError;
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("payment") === "failed") {
+      setPaymentMessage("Payment was not completed. Your account has not been charged. Please try again.");
+    }
+  }, []);
+
+  async function payBillOnline(bill: Bill) {
+    setPayingBillId(bill.id);
+    setPaymentMessage("");
+
+    try {
+      await redirectToMonnifyCheckout({ billId: bill.id });
+    } catch {
+      setPaymentMessage("Unable to initiate payment. Please try again or contact admin.");
+      setPayingBillId("");
+    }
+  }
+
+  async function paySubscriptionOnline() {
+    setPayingSubscription(true);
+    setPaymentMessage("");
+
+    try {
+      await redirectToMonnifyCheckout({ months: selectedMonths });
+    } catch {
+      setPaymentMessage("Unable to initiate payment. Please try again or contact admin.");
+      setPayingSubscription(false);
+    }
+  }
 
   return (
     <>
@@ -5931,6 +6181,7 @@ export function MyBillsPage() {
           {loadingAccounting ? "Refreshing" : "Refresh account"}
         </Button>
       </PageHeader>
+      {paymentMessage ? <ResidentPaymentReturnBanner tone="error" message={paymentMessage} /> : null}
       {showSkeleton ? <ResidentFinancialSkeleton /> : null}
       {!showSkeleton && accountingError ? <ResidentAccountError /> : null}
       {!showSkeleton && !accountingError && summary ? (
@@ -5938,7 +6189,14 @@ export function MyBillsPage() {
           <div className="mb-6">
             <ResidentSummaryCards summary={summary} />
           </div>
-          <ResidentBillsLiveTable bills={liveBills} />
+          <ResidentSubscriptionPaymentPanel
+            summary={summary}
+            selectedMonths={selectedMonths}
+            paying={payingSubscription}
+            onSelectMonths={setSelectedMonths}
+            onPay={paySubscriptionOnline}
+          />
+          <ResidentBillsLiveTable bills={liveBills} onPayBill={payBillOnline} payingBillId={payingBillId} />
         </>
       ) : null}
     </>
@@ -5948,10 +6206,32 @@ export function MyBillsPage() {
 export function PaymentHistoryPage() {
   const { state } = useLocalEstateStore();
   const { accounting, accountingError, loadingAccounting, refreshAccounting } = useResidentAccountingState(state);
+  const [returnBanner, setReturnBanner] = useState<{ tone: "success" | "error"; message: string } | null>(null);
   const summary = accounting?.summary ?? null;
   const liveBills = accounting?.bills ?? [];
   const livePayments = accounting?.payments ?? [];
   const showSkeleton = loadingAccounting && !summary && !accountingError;
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    if (params.get("paid") === "true") {
+      setReturnBanner({
+        tone: "success",
+        message: "Payment confirmed successfully! Your account has been updated."
+      });
+      const timer = window.setTimeout(() => setReturnBanner(null), 5000);
+      return () => window.clearTimeout(timer);
+    }
+
+    if (params.get("payment") === "failed") {
+      setReturnBanner({
+        tone: "error",
+        message: "Payment was not completed. Your account has not been charged. Please try again."
+      });
+    }
+
+    return undefined;
+  }, []);
 
   return (
     <>
@@ -5961,6 +6241,7 @@ export function PaymentHistoryPage() {
           {loadingAccounting ? "Refreshing" : "Refresh account"}
         </Button>
       </PageHeader>
+      {returnBanner ? <ResidentPaymentReturnBanner tone={returnBanner.tone} message={returnBanner.message} /> : null}
       {showSkeleton ? <ResidentFinancialSkeleton /> : null}
       {!showSkeleton && accountingError ? <ResidentAccountError /> : null}
       {!showSkeleton && !accountingError && summary ? (
@@ -8939,6 +9220,10 @@ function paymentChannelLabel(payment: Payment) {
   }
 
   return (payment.channel ?? "manual").replaceAll("_", " ");
+}
+
+function isResidentOnlinePaymentChannel(channel?: Payment["channel"]) {
+  return channel === "online" || channel === "monnify_card" || channel === "monnify_transfer";
 }
 
 function scrollToSection(id: string) {

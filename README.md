@@ -35,6 +35,10 @@ NEXT_PUBLIC_APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1
 APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1
 APPWRITE_DATABASE_ID=lbsview_estate
 # CORSO_APPWRITE_API_KEY=server-api-key-with-users-and-tablesdb-access
+MONNIFY_API_KEY=your_monnify_api_key
+MONNIFY_SECRET_KEY=your_monnify_secret_key
+MONNIFY_CONTRACT_CODE=your_contract_code
+MONNIFY_BASE_URL=https://sandbox.monnify.com
 ```
 
 The current Appwrite Sites deployment uses Appwrite Auth and Appwrite TablesDB. Local demo mode is only for localhost development when `NEXT_PUBLIC_ENABLE_LOCAL_DEMO=true`.
@@ -79,9 +83,29 @@ NEXT_PUBLIC_APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1
 APPWRITE_ENDPOINT=https://fra.cloud.appwrite.io/v1
 APPWRITE_DATABASE_ID=lbsview_estate
 CORSO_APPWRITE_API_KEY=server-api-key-with-users-and-tablesdb-access
+MONNIFY_API_KEY=your_monnify_api_key
+MONNIFY_SECRET_KEY=your_monnify_secret_key
+MONNIFY_CONTRACT_CODE=your_contract_code
+MONNIFY_BASE_URL=https://sandbox.monnify.com
 ```
 
 Backend migration notes are tracked in `docs/appwrite-migration-plan.md`. The target model is property first, unit second, resident third, with online payment webhooks updating bills, balances, reports, and audit logs automatically.
+
+## Monnify Payment Links
+
+Resident online payments use Monnify payment links in Phase 1. Residents can pay a specific outstanding bill or choose 1, 3, 6, or 12 subscription months from `/resident/bills`. Monnify redirects back to `/api/monnify/confirm`, where the transaction is verified before the existing Appwrite allocation flow updates `payments`, `bills`, resident balances, reports, and audit logs.
+
+Required server environment variables:
+
+```bash
+MONNIFY_API_KEY=your_monnify_api_key
+MONNIFY_SECRET_KEY=your_monnify_secret_key
+MONNIFY_CONTRACT_CODE=your_contract_code
+MONNIFY_BASE_URL=https://sandbox.monnify.com
+NEXT_PUBLIC_APP_URL=https://lbsview-estate.appwrite.network
+```
+
+Use `MONNIFY_BASE_URL=https://sandbox.monnify.com` for testing and `MONNIFY_BASE_URL=https://api.monnify.com` for production. Manual payment recording remains available in the admin payment screen for bank transfer, POS, cash, and WhatsApp receipt updates.
 
 ## Appwrite Resident Import
 

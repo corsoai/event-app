@@ -283,7 +283,7 @@ export async function getAppwriteAccountingSummary(options: { bypassCache?: bool
       : payment.status === "pending"
         ? "Unconfirmed"
         : "Rejected";
-    const method = payment.channel === "online" ? "online" : "manual";
+    const method = isOnlinePaymentChannel(payment.channel) ? "online" : "manual";
     const key = `${confirmation} ${method}`;
     totals[key] = {
       count: (totals[key]?.count ?? 0) + 1,
@@ -648,7 +648,7 @@ function mapPaymentRow(row: AppwritePaymentRow): Payment {
     providerReference: optionalText(row.providerReference),
     date: row.date ?? "",
     status: row.status === "pending" || row.status === "rejected" ? row.status : "confirmed",
-    source: row.source === "resident" || row.source === "webhook" ? row.source : "admin",
+    source: mapPaymentSource(row.source),
     confirmedAt: optionalText(row.confirmedAt),
     confirmedBy: optionalText(row.confirmedBy)
   };
@@ -682,7 +682,15 @@ function mapProcessor(value?: string): Payment["processor"] {
 }
 
 function mapChannel(value?: string): Payment["channel"] {
-  if (value === "online" || value === "cash" || value === "pos" || value === "whatsapp_receipt" || value === "credit_applied") {
+  if (
+    value === "online" ||
+    value === "monnify_card" ||
+    value === "monnify_transfer" ||
+    value === "cash" ||
+    value === "pos" ||
+    value === "whatsapp_receipt" ||
+    value === "credit_applied"
+  ) {
     return value;
   }
 
@@ -693,6 +701,10 @@ function channelLabel(value?: Payment["channel"]) {
   switch (value) {
     case "online":
       return "Online";
+    case "monnify_card":
+      return "Monnify card";
+    case "monnify_transfer":
+      return "Monnify transfer";
     case "cash":
       return "Cash";
     case "pos":
@@ -705,6 +717,23 @@ function channelLabel(value?: Payment["channel"]) {
     default:
       return "Bank transfer";
   }
+}
+
+function isOnlinePaymentChannel(value?: Payment["channel"]) {
+  return value === "online" || value === "monnify_card" || value === "monnify_transfer";
+}
+
+function mapPaymentSource(value?: string): Payment["source"] {
+  if (
+    value === "resident" ||
+    value === "webhook" ||
+    value === "monnify_online" ||
+    value === "monnify_webhook"
+  ) {
+    return value;
+  }
+
+  return "admin";
 }
 
 function mapAuditEntity(value?: string): AuditLog["entityType"] {

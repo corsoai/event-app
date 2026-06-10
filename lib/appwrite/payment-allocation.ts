@@ -22,7 +22,7 @@ export interface AllocationParams {
   paymentDate: string;
   channel: string;
   reference: string;
-  source: "manual_admin" | "monnify_webhook" | "system";
+  source: "manual_admin" | "monnify_webhook" | "monnify_online" | "system";
   recordedBy: string;
   monnifyTransactionRef?: string;
   monnifyPaymentRef?: string;
@@ -303,7 +303,7 @@ async function createPaymentRecord(
     billId: primaryBillId,
     amount: params.amountPaid,
     reference: params.reference,
-    processor: params.source === "monnify_webhook" ? "monnify" : "manual",
+    processor: params.source.startsWith("monnify") ? "monnify" : "manual",
     channel: params.channel,
     providerReference: params.monnifyPaymentRef ?? params.reference,
     date: params.paymentDate,

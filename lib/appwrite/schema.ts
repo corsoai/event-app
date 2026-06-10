@@ -354,8 +354,12 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
       { key: "processor", type: "string", size: 64, required: true },
       { key: "channel", type: "string", size: 64, required: true },
       { key: "checkoutUrl", type: "string", size: 1024, required: false },
+      { key: "transactionReference", type: "string", size: 128, required: false },
+      { key: "paymentReference", type: "string", size: 128, required: false },
       { key: "status", type: "string", size: 32, required: true },
-      { key: "expiresAt", type: "datetime", required: false }
+      { key: "expiresAt", type: "datetime", required: false },
+      { key: "metadata", type: "string", size: 4096, required: false },
+      { key: "errorMessage", type: "string", size: 1024, required: false }
     ],
     indexes: [
       { key: "payment_intent_reference_unique", type: "unique", attributes: ["reference"] },
