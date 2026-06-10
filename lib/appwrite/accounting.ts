@@ -17,7 +17,9 @@ type AppwriteBillRow = {
   amount?: number;
   paidAmount?: number;
   dueDate?: string;
+  billingMonth?: string;
   status?: string;
+  createdBy?: string;
 };
 
 type AppwritePaymentRow = {
@@ -231,7 +233,7 @@ export async function getAppwriteAccountingSummary(options: { bypassCache?: bool
   ]);
   const payments = paymentRows.map(mapPaymentRow);
   const bills = normalizeBillsWithPayments(billRows.map((row) => mapBillRow(row)), payments);
-  const confirmedPayments = payments.filter((payment) => payment.status === "confirmed");
+  const confirmedPayments = payments.filter((payment) => payment.status === "confirmed" && payment.channel !== "credit_applied");
   const expectedRevenue = bills.reduce((sum, bill) => sum + bill.amount, 0);
   const paidAmount = confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
   const outstandingBalance = bills.reduce((sum, bill) => sum + Math.max(0, bill.amount - numberOrZero(bill.paidAmount)), 0);
@@ -467,6 +469,7 @@ function mapBillRow(row: AppwriteBillRow, resident?: Resident): Bill {
     amount,
     paidAmount,
     dueDate: row.dueDate ?? "",
+    billingMonth: optionalText(row.billingMonth),
     status: billStatus(amount, paidAmount, row.status)
   };
 }
@@ -520,7 +523,7 @@ function mapProcessor(value?: string): Payment["processor"] {
 }
 
 function mapChannel(value?: string): Payment["channel"] {
-  if (value === "online" || value === "cash" || value === "pos" || value === "whatsapp_receipt") {
+  if (value === "online" || value === "cash" || value === "pos" || value === "whatsapp_receipt" || value === "credit_applied") {
     return value;
   }
 
@@ -537,6 +540,8 @@ function channelLabel(value?: Payment["channel"]) {
       return "POS";
     case "whatsapp_receipt":
       return "WhatsApp receipt";
+    case "credit_applied":
+      return "Credit applied";
     case "bank_transfer":
     default:
       return "Bank transfer";

@@ -250,7 +250,9 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
       { key: "amount", type: "float", required: true },
       { key: "paidAmount", type: "float", required: false, default: 0 },
       { key: "dueDate", type: "string", size: 32, required: true },
-      { key: "status", type: "string", size: 32, required: true }
+      { key: "billingMonth", type: "string", size: 16, required: false },
+      { key: "status", type: "string", size: 32, required: true },
+      { key: "createdBy", type: "string", size: 64, required: false }
     ],
     indexes: [
       { key: "bill_resident_idx", type: "key", attributes: ["residentId"] },

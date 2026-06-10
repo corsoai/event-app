@@ -363,7 +363,12 @@ async function recalculateResidentSummary(
     listAppwriteTableRows<PaymentRow>(APPWRITE_TABLE_PAYMENTS),
     listAppwriteTableRows<BillRow>(APPWRITE_TABLE_BILLS)
   ]);
-  const residentPayments = payments.filter((payment) => payment.residentId === residentId && payment.status === "confirmed");
+  const residentPayments = payments.filter((payment) => (
+    payment.residentId === residentId &&
+    payment.status === "confirmed" &&
+    payment.channel !== "credit_applied" &&
+    payment.source !== "system"
+  ));
   const residentBills = bills.filter((bill) => bill.residentId === residentId);
   const totalPaidAllTime = residentPayments.reduce((sum, payment) => sum + numberOrZero(payment.amount), 0);
   const totalBilled = residentBills.reduce((sum, bill) => sum + numberOrZero(bill.amount), 0);

@@ -88,6 +88,7 @@ export type Bill = {
   amount: number;
   paidAmount?: number;
   dueDate: string;
+  billingMonth?: string;
   status: "unpaid" | "partially paid" | "paid" | "overdue";
 };
 
@@ -96,7 +97,8 @@ export type PaymentChannel =
   | "bank_transfer"
   | "cash"
   | "pos"
-  | "whatsapp_receipt";
+  | "whatsapp_receipt"
+  | "credit_applied";
 
 export type PaymentProcessor =
   | "paystack"

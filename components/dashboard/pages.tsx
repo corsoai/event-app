@@ -278,6 +278,43 @@ type AdminPaymentConfirmation = {
   allocation: PaymentAllocationResult;
 };
 
+type BillingRunSummaryRow = {
+  residentId: string;
+  residentName: string;
+  unitCode: string;
+  monthlyRate: number;
+  billCreated: boolean;
+  autoPaid: boolean;
+  creditUsed: number;
+  creditRemaining: number;
+  action: string;
+};
+
+type BillingRunResult = {
+  billingMonth: string;
+  dryRun: boolean;
+  totalResidents: number;
+  billsCreated: number;
+  autoPaidFromCredit: number;
+  requiresPayment: number;
+  skipped: number;
+  errors: number;
+  errorDetails: Array<{ residentId: string; residentName: string; reason: string }>;
+  summary: BillingRunSummaryRow[];
+};
+
+type BillingRunHistoryRow = {
+  id: string;
+  billingMonth: string;
+  runDate: string;
+  runByName: string;
+  billsCreated: number;
+  autoPaidFromCredit: number;
+  requiresPayment: number;
+  errors: number;
+  status: string;
+};
+
 type LbsviewOnboardingPreviewRow = {
   sourceRow: number;
   fullName: string;
@@ -2754,6 +2791,7 @@ export function BillsAdminPage() {
         </div>
       </PageHeader>
       <p className="mb-4 rounded-lg border border-line bg-ink/50 px-3 py-2 text-sm text-slate-400">{accountingStatus}</p>
+      <MonthlyBillingPanel onBillingRun={() => void refreshAccounting({ bypassCache: true })} />
       <BillComposer
         onCreated={() => void refreshAccounting({ bypassCache: true })}
         state={liveState}
@@ -2769,6 +2807,171 @@ export function BillsAdminPage() {
         />
       </div>
     </>
+  );
+}
+
+function MonthlyBillingPanel({ onBillingRun }: { onBillingRun: () => void }) {
+  const [billingMonth, setBillingMonth] = useState(currentMonthInputValue());
+  const [running, setRunning] = useState<"dry" | "live" | "">("");
+  const [result, setResult] = useState<BillingRunResult | null>(null);
+  const [history, setHistory] = useState<BillingRunHistoryRow[]>([]);
+  const [message, setMessage] = useState("");
+  const completedForMonth = history.some((run) => run.billingMonth === billingMonth && run.status === "completed");
+
+  async function refreshHistory() {
+    try {
+      const response = await fetch("/api/appwrite/admin/billing/run", { cache: "no-store" });
+      const payload = await response.json().catch(() => null) as { runs?: BillingRunHistoryRow[]; error?: string } | null;
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error ?? "Unable to load billing run history.");
+      }
+      setHistory(payload.runs ?? []);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to load billing run history.");
+    }
+  }
+
+  useEffect(() => {
+    void refreshHistory();
+  }, []);
+
+  async function executeBillingRun(dryRun: boolean) {
+    setMessage("");
+    if (!dryRun && completedForMonth) {
+      setMessage("Billing already run for this month. Use preview to inspect expected results.");
+      return;
+    }
+    if (!dryRun) {
+      const confirmed = window.confirm(`This will create subscription bills for active residents for ${formatBillingMonth(billingMonth)}. Residents with advance credit will be auto-settled. This cannot be undone. Continue?`);
+      if (!confirmed) return;
+    }
+
+    setRunning(dryRun ? "dry" : "live");
+    try {
+      const response = await fetch("/api/appwrite/admin/billing/run", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ billingMonth, dryRun })
+      });
+      const payload = await response.json().catch(() => null) as (BillingRunResult & { error?: string }) | null;
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error ?? "Unable to run monthly billing.");
+      }
+
+      setResult(payload);
+      setMessage(dryRun ? `Billing preview for ${formatBillingMonth(billingMonth)} is ready.` : `Billing run complete for ${formatBillingMonth(billingMonth)}.`);
+      await refreshHistory();
+      if (!dryRun) {
+        onBillingRun();
+      }
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to run monthly billing.");
+    } finally {
+      setRunning("");
+    }
+  }
+
+  return (
+    <Card className="mb-6">
+      <CardHeader
+        title="Monthly Subscription Billing"
+        description="Generate subscription bills for all active residents for a given month."
+        action={(
+          <div className="flex flex-wrap gap-2">
+            <Button type="button" variant="secondary" onClick={() => void executeBillingRun(true)} disabled={Boolean(running)}>
+              <RefreshCw className={`h-4 w-4 ${running === "dry" ? "animate-spin" : ""}`} />
+              {running === "dry" ? "Previewing" : "Preview billing run"}
+            </Button>
+            <Button type="button" onClick={() => void executeBillingRun(false)} disabled={Boolean(running) || completedForMonth}>
+              <ReceiptText className={`h-4 w-4 ${running === "live" ? "animate-pulse" : ""}`} />
+              {running === "live" ? "Running" : `Run billing for ${formatBillingMonth(billingMonth)}`}
+            </Button>
+          </div>
+        )}
+      />
+      <div className="grid gap-4 md:grid-cols-[18rem_1fr]">
+        <Field label="Billing month">
+          <Input type="month" value={billingMonth} onChange={(event) => setBillingMonth(event.target.value)} />
+        </Field>
+        <div className="rounded-lg border border-line bg-ink/50 px-3 py-3 text-sm text-slate-300">
+          {completedForMonth ? "Billing has already been completed for this month. Preview remains available." : "Choose a month, preview the run, then create bills when ready."}
+        </div>
+      </div>
+      {message ? <p className="mt-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{message}</p> : null}
+      {result ? <BillingRunResultPanel result={result} /> : null}
+      <div className="mt-6">
+        <DataTable
+          title="Billing run history"
+          headers={["Month", "Run date", "Run by", "Bills created", "Auto-paid", "Need payment", "Errors", "Status"]}
+          rows={history.map((run) => [
+            formatBillingMonth(run.billingMonth),
+            formatPaymentDate(run.runDate),
+            run.runByName,
+            String(run.billsCreated),
+            String(run.autoPaidFromCredit),
+            String(run.requiresPayment),
+            String(run.errors),
+            <StatusBadge key={run.id} status={run.status} tone={run.status === "completed" ? "green" : run.status === "partial" ? "yellow" : "red"} />
+          ])}
+        />
+      </div>
+    </Card>
+  );
+}
+
+function BillingRunResultPanel({ result }: { result: BillingRunResult }) {
+  return (
+    <div className="mt-6">
+      <h3 className="text-base font-semibold text-white">
+        {result.dryRun ? "Billing preview" : "Billing run complete"} for {formatBillingMonth(result.billingMonth)}
+      </h3>
+      <div className="mt-4 grid gap-4 md:grid-cols-3 xl:grid-cols-6">
+        <StatCard label="Total residents" value={String(result.totalResidents)} helper="Billable unit targets" icon={<Users className="h-5 w-5" />} />
+        <StatCard label="Bills to create" value={String(result.billsCreated)} helper={result.dryRun ? "Preview count" : "Created"} icon={<ReceiptText className="h-5 w-5" />} />
+        <StatCard label="Auto-paid" value={String(result.autoPaidFromCredit)} helper="Settled from credit" icon={<BadgeCheck className="h-5 w-5" />} />
+        <StatCard label="Requires payment" value={String(result.requiresPayment)} helper="Resident needs to pay" icon={<WalletCards className="h-5 w-5" />} />
+        <StatCard label="Skipped" value={String(result.skipped)} helper="Not billed" icon={<UserX className="h-5 w-5" />} />
+        <StatCard label="Errors" value={String(result.errors)} helper="Needs review" icon={<AlertTriangle className="h-5 w-5" />} />
+      </div>
+      {result.errors > 0 ? (
+        <details className="mt-4 rounded-lg border border-danger/40 bg-danger/10 p-4 text-sm text-red-100">
+          <summary className="cursor-pointer font-semibold">View billing errors</summary>
+          <div className="mt-3 grid gap-2">
+            {result.errorDetails.map((error) => (
+              <p key={`${error.residentId}-${error.reason}`}>{error.residentName}: {error.reason}</p>
+            ))}
+          </div>
+        </details>
+      ) : null}
+      <details className="mt-4 rounded-lg border border-line bg-ink/50 p-4">
+        <summary className="cursor-pointer text-sm font-semibold text-white">View full summary</summary>
+        <div className="mt-4 overflow-x-auto">
+          <table className="w-full border-separate border-spacing-0 text-left text-sm">
+            <thead>
+              <tr>
+                {["Resident", "Unit", "Rate", "Bill Created", "Auto-paid", "Action"].map((header) => (
+                  <th key={header} className="border-b border-line px-3 py-3 text-slate-300">{header}</th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {result.summary.map((row) => (
+                <tr key={`${row.residentId}-${row.unitCode}`}>
+                  <td className="border-b border-line/60 px-3 py-3 text-white">{row.residentName}</td>
+                  <td className="border-b border-line/60 px-3 py-3 font-mono text-smart">{row.unitCode}</td>
+                  <td className="border-b border-line/60 px-3 py-3 text-slate-200">{money(row.monthlyRate)}</td>
+                  <td className="border-b border-line/60 px-3 py-3 text-slate-200">{row.billCreated ? "Yes" : "No"}</td>
+                  <td className="border-b border-line/60 px-3 py-3 text-slate-200">{row.autoPaid ? "Yes" : "No"}</td>
+                  <td className="border-b border-line/60 px-3 py-3">
+                    <StatusBadge status={row.autoPaid ? "Paid from credit" : row.billCreated ? "Payment needed" : row.action} tone={row.autoPaid ? "green" : row.billCreated ? "yellow" : "slate"} />
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
+    </div>
   );
 }
 
@@ -8176,6 +8379,19 @@ function dateInputValue(date = new Date()) {
   const day = parts.find((part) => part.type === "day")?.value ?? String(date.getUTCDate()).padStart(2, "0");
 
   return `${year}-${month}-${day}`;
+}
+
+function currentMonthInputValue(date = new Date()) {
+  return dateInputValue(date).slice(0, 7);
+}
+
+function formatBillingMonth(value: string) {
+  const [year, month] = value.split("-").map(Number);
+  if (!year || !month) return value || "Selected month";
+  return new Intl.DateTimeFormat("en-NG", {
+    month: "long",
+    year: "numeric"
+  }).format(new Date(year, month - 1, 1));
 }
 
 function timeInputValue(date = new Date()) {
