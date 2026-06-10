@@ -58,7 +58,6 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { roleLabels } from "@/lib/auth";
 import {
   activityLogs,
-  announcements,
   knowledgeBase,
 } from "@/lib/demo-data";
 import {
@@ -84,7 +83,7 @@ import {
   syncPendingTourLogs
 } from "@/lib/guard-tour";
 import { APPWRITE_ONBOARDING_DATABASE_ID } from "@/lib/appwrite/schema";
-import type { Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, Payment, Property, Resident, SecurityIncident, Unit, UserRole, Visitor } from "@/lib/types";
+import type { AppwriteAnnouncement, Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, Payment, Property, Resident, SecurityIncident, Unit, UserRole, Visitor } from "@/lib/types";
 import { contactLabel, makeDigitalIdNumber, money } from "@/lib/utils";
 import { getVisitorWindowState, VISITOR_CODE_VALIDITY_HOURS } from "@/lib/visitor-window";
 
@@ -202,6 +201,12 @@ type AppwriteAccountingSummary = {
   paymentStatusTotals: Record<string, { count: number; amount: number }>;
   categoryTotals: Record<string, number>;
   generatedAt: string;
+};
+
+type AnnouncementApiResponse = {
+  announcements?: AppwriteAnnouncement[];
+  announcement?: AppwriteAnnouncement;
+  error?: string;
 };
 
 type LbsviewOnboardingPreviewRow = {
@@ -540,6 +545,125 @@ function useAdminAccountingState(state: LocalEstateState) {
 function filenameFromContentDisposition(value: string | null) {
   const match = value?.match(/filename="?([^"]+)"?/i);
   return match?.[1];
+}
+
+function useLiveAnnouncements(scope: "admin" | "resident") {
+  const [announcements, setAnnouncements] = useState<AppwriteAnnouncement[]>([]);
+  const [loadingAnnouncements, setLoadingAnnouncements] = useState(true);
+  const [announcementError, setAnnouncementError] = useState("");
+  const endpoint = scope === "admin"
+    ? "/api/appwrite/admin/announcements"
+    : "/api/appwrite/resident/announcements";
+
+  async function refreshAnnouncements() {
+    setLoadingAnnouncements(true);
+    setAnnouncementError("");
+
+    try {
+      const response = await fetch(endpoint, { cache: "no-store" });
+      const payload = await response.json().catch(() => null) as AnnouncementApiResponse | null;
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error ?? "Unable to load announcements.");
+      }
+
+      setAnnouncements(payload.announcements ?? []);
+    } catch (error) {
+      setAnnouncements([]);
+      setAnnouncementError(error instanceof Error ? error.message : "Unable to load announcements.");
+    } finally {
+      setLoadingAnnouncements(false);
+    }
+  }
+
+  useEffect(() => {
+    void refreshAnnouncements();
+  }, [endpoint]);
+
+  return {
+    announcements,
+    loadingAnnouncements,
+    announcementError,
+    refreshAnnouncements,
+    setAnnouncements
+  };
+}
+
+function emptyAnnouncementForm() {
+  return {
+    title: "",
+    message: "",
+    targetRole: "all" as AppwriteAnnouncement["targetRole"],
+    priority: "normal" as AppwriteAnnouncement["priority"],
+    status: "published" as AppwriteAnnouncement["status"],
+    expiresAt: "",
+    isPinned: false
+  };
+}
+
+function announcementTargetLabel(targetRole: AppwriteAnnouncement["targetRole"]) {
+  const labels: Record<AppwriteAnnouncement["targetRole"], string> = {
+    all: "all residents",
+    resident: "residents",
+    security: "security",
+    cso: "cso"
+  };
+
+  return labels[targetRole];
+}
+
+function announcementPriorityTone(priority: AppwriteAnnouncement["priority"]) {
+  if (priority === "urgent") {
+    return "red";
+  }
+
+  if (priority === "high") {
+    return "yellow";
+  }
+
+  return priority === "low" ? "slate" : "green";
+}
+
+function announcementCardClassName(announcement: AppwriteAnnouncement) {
+  if (announcement.priority === "urgent") {
+    return "rounded-lg border border-danger/50 bg-ink/50 p-4";
+  }
+
+  if (announcement.priority === "high") {
+    return "rounded-lg border border-warn/50 bg-ink/50 p-4";
+  }
+
+  return "rounded-lg border border-line bg-ink/50 p-4";
+}
+
+function formatAnnouncementDate(value: string) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return "Not published";
+  }
+
+  return new Intl.DateTimeFormat("en-NG", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  }).format(new Date(timestamp));
+}
+
+function announcementExpiryLabel(value?: string) {
+  if (!value) {
+    return "";
+  }
+
+  const expiry = Date.parse(value);
+  if (!Number.isFinite(expiry)) {
+    return "";
+  }
+
+  const days = Math.ceil((expiry - Date.now()) / 86_400_000);
+  if (days < 0 || days > 7) {
+    return "";
+  }
+
+  return days === 1 ? "Expires in 1 day" : `Expires in ${days} days`;
 }
 
 export function AdminDashboard() {
@@ -2523,12 +2647,85 @@ export function ComplaintsAdminPage() {
 }
 
 export function AnnouncementsAdminPage() {
+  const {
+    announcements,
+    loadingAnnouncements,
+    announcementError,
+    refreshAnnouncements
+  } = useLiveAnnouncements("admin");
   const [message, setMessage] = useState("");
+  const [editingAnnouncement, setEditingAnnouncement] = useState<AppwriteAnnouncement | null>(null);
+  const [announcementForm, setAnnouncementForm] = useState({
+    title: "",
+    message: "",
+    targetRole: "all" as AppwriteAnnouncement["targetRole"],
+    priority: "normal" as AppwriteAnnouncement["priority"],
+    status: "published" as AppwriteAnnouncement["status"],
+    expiresAt: "",
+    isPinned: false
+  });
 
-  function publishAnnouncement(event: FormEvent<HTMLFormElement>) {
+  async function publishAnnouncement(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setMessage("Announcement saved for this session. Email, SMS, and push delivery can be connected next.");
-    event.currentTarget.reset();
+    setMessage("");
+    const endpoint = editingAnnouncement
+      ? `/api/appwrite/admin/announcements/${encodeURIComponent(editingAnnouncement.id)}`
+      : "/api/appwrite/admin/announcements";
+    const method = editingAnnouncement ? "PATCH" : "POST";
+
+    try {
+      const response = await fetch(endpoint, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(announcementForm)
+      });
+      const payload = await response.json().catch(() => null) as AnnouncementApiResponse | null;
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error ?? "Unable to save announcement.");
+      }
+
+      setMessage(editingAnnouncement
+        ? "Announcement updated."
+        : "Announcement published to Appwrite.");
+      setEditingAnnouncement(null);
+      setAnnouncementForm(emptyAnnouncementForm());
+      await refreshAnnouncements();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to save announcement.");
+    }
+  }
+
+  function editAnnouncement(announcement: AppwriteAnnouncement) {
+    setEditingAnnouncement(announcement);
+    setAnnouncementForm({
+      title: announcement.title,
+      message: announcement.message,
+      targetRole: announcement.targetRole,
+      priority: announcement.priority,
+      status: announcement.status,
+      expiresAt: announcement.expiresAt ? announcement.expiresAt.slice(0, 10) : "",
+      isPinned: announcement.isPinned
+    });
+    scrollToSection("publish-announcement");
+  }
+
+  async function archiveExistingAnnouncement(announcement: AppwriteAnnouncement) {
+    setMessage("");
+
+    try {
+      const response = await fetch(`/api/appwrite/admin/announcements/${encodeURIComponent(announcement.id)}`, {
+        method: "DELETE"
+      });
+      const payload = await response.json().catch(() => null) as AnnouncementApiResponse | null;
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error ?? "Unable to archive announcement.");
+      }
+
+      setMessage("Announcement archived.");
+      await refreshAnnouncements();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to archive announcement.");
+    }
   }
 
   return (
@@ -2539,28 +2736,99 @@ export function AnnouncementsAdminPage() {
       <Card id="publish-announcement" className="scroll-mt-24">
         <CardHeader title="Publish update" description="Prepared for future email, SMS, and push notification delivery." />
         <form className="grid gap-4" onSubmit={publishAnnouncement}>
-          <Field label="Title"><Input name="title" placeholder="Power maintenance window" required /></Field>
-          <Field label="Message"><Textarea name="message" placeholder="Write announcement message" required /></Field>
+          <Field label="Title">
+            <Input
+              name="title"
+              placeholder="Power maintenance window"
+              required
+              value={announcementForm.title}
+              onChange={(event) => setAnnouncementForm((current) => ({ ...current, title: event.target.value }))}
+            />
+          </Field>
+          <Field label="Message">
+            <Textarea
+              name="message"
+              placeholder="Write announcement message"
+              required
+              value={announcementForm.message}
+              onChange={(event) => setAnnouncementForm((current) => ({ ...current, message: event.target.value }))}
+            />
+          </Field>
           <div className="grid gap-4 md:grid-cols-3">
             <Field label="Target audience">
-              <Select name="target" defaultValue="all residents">
-                <option>all residents</option>
-                <option>owners</option>
-                <option>tenants</option>
-                <option>security</option>
-                <option>vendors</option>
+              <Select
+                name="targetRole"
+                value={announcementForm.targetRole}
+                onChange={(event) => setAnnouncementForm((current) => ({
+                  ...current,
+                  targetRole: event.target.value as AppwriteAnnouncement["targetRole"]
+                }))}
+              >
+                <option value="all">all residents</option>
+                <option value="resident">residents</option>
+                <option value="security">security</option>
+                <option value="cso">cso</option>
               </Select>
             </Field>
             <Field label="Priority">
-              <Select name="priority" defaultValue="normal"><option>normal</option><option>urgent</option></Select>
+              <Select
+                name="priority"
+                value={announcementForm.priority}
+                onChange={(event) => setAnnouncementForm((current) => ({
+                  ...current,
+                  priority: event.target.value as AppwriteAnnouncement["priority"]
+                }))}
+              >
+                <option>low</option>
+                <option>normal</option>
+                <option>high</option>
+                <option>urgent</option>
+              </Select>
             </Field>
-            <Field label="Publish date"><Input name="publishDate" type="date" defaultValue="2026-05-15" /></Field>
+            <Field label="Publish date">
+              <Select
+                name="status"
+                value={announcementForm.status}
+                onChange={(event) => setAnnouncementForm((current) => ({
+                  ...current,
+                  status: event.target.value as AppwriteAnnouncement["status"]
+                }))}
+              >
+                <option value="published">publish now</option>
+                <option value="draft">save draft</option>
+                <option value="archived">archived</option>
+              </Select>
+            </Field>
           </div>
           {message ? <p className="rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{message}</p> : null}
-          <Button className="w-fit">Publish announcement</Button>
+          <div className="flex flex-wrap gap-2">
+            <Button className="w-fit">{editingAnnouncement ? "Update announcement" : "Publish announcement"}</Button>
+            {editingAnnouncement ? (
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-fit"
+                onClick={() => {
+                  setEditingAnnouncement(null);
+                  setAnnouncementForm(emptyAnnouncementForm());
+                }}
+              >
+                Cancel edit
+              </Button>
+            ) : null}
+          </div>
         </form>
       </Card>
       <div className="mt-6 grid gap-4 lg:grid-cols-3">
+        {loadingAnnouncements ? (
+          <Card><p className="text-sm text-slate-400">Loading announcements...</p></Card>
+        ) : null}
+        {announcementError ? (
+          <Card><p className="text-sm text-danger">Unable to load announcements. Please refresh the page.</p></Card>
+        ) : null}
+        {!loadingAnnouncements && !announcementError && !announcements.length ? (
+          <Card><p className="text-sm text-slate-400">No announcements yet. Create one above.</p></Card>
+        ) : null}
         {announcements.map((item) => (
           <Card key={item.id}>
             <div className="flex items-start justify-between gap-3">
@@ -2569,7 +2837,19 @@ export function AnnouncementsAdminPage() {
             </div>
             <h2 className="mt-5 text-lg font-semibold text-white">{item.title}</h2>
             <p className="mt-2 text-sm leading-6 text-slate-400">{item.message}</p>
-            <p className="mt-4 text-xs text-slate-500">{item.target} - {item.publishDate}</p>
+            <p className="mt-4 text-xs text-slate-500">{announcementTargetLabel(item.targetRole)} - {formatAnnouncementDate(item.publishedAt ?? item.createdAt)}</p>
+            <div className="mt-4 flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={() => editAnnouncement(item)}>
+                <Pencil className="h-3.5 w-3.5" />
+                Edit
+              </Button>
+              {item.status !== "archived" ? (
+                <Button type="button" variant="danger" className="min-h-9 px-3 py-1 text-xs" onClick={() => void archiveExistingAnnouncement(item)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Archive
+                </Button>
+              ) : null}
+            </div>
           </Card>
         ))}
       </div>
@@ -4267,20 +4547,48 @@ export function SubmitComplaintPage() {
 }
 
 export function ResidentAnnouncementsPage({ compact = false }: { compact?: boolean }) {
+  const {
+    announcements,
+    loadingAnnouncements,
+    announcementError
+  } = useLiveAnnouncements("resident");
+  const visibleAnnouncements = compact ? announcements.slice(0, 3) : announcements;
+
   return (
     <>
       {!compact ? <PageHeader title="Announcements" description="Estate communication targeted to residents, owners, tenants, security, and vendors." /> : null}
       <Card>
         <CardHeader title="Latest announcements" description="Prepared for push notification delivery." />
         <div className="grid gap-4">
-          {announcements.map((announcement) => (
-            <div key={announcement.id} className="rounded-lg border border-line bg-ink/50 p-4">
+          {loadingAnnouncements ? (
+            <div className="rounded-lg border border-line bg-ink/50 p-4">
+              <p className="text-sm text-slate-400">Loading announcements...</p>
+            </div>
+          ) : null}
+          {announcementError ? (
+            <div className="rounded-lg border border-line bg-ink/50 p-4">
+              <p className="text-sm text-danger">Unable to load announcements. Please refresh the page.</p>
+            </div>
+          ) : null}
+          {!loadingAnnouncements && !announcementError && !visibleAnnouncements.length ? (
+            <div className="rounded-lg border border-line bg-ink/50 p-4">
+              <p className="text-sm text-slate-400">{compact ? "No announcements" : "No announcements are available right now."}</p>
+            </div>
+          ) : null}
+          {visibleAnnouncements.map((announcement) => (
+            <div key={announcement.id} className={announcementCardClassName(announcement)}>
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <h2 className="font-semibold text-white">{announcement.title}</h2>
-                <StatusBadge status={announcement.priority} />
+                <div className="flex flex-wrap items-center gap-2">
+                  <h2 className="font-semibold text-white">{announcement.title}</h2>
+                  {announcement.isPinned ? <StatusBadge status="pinned" tone="blue" /> : null}
+                </div>
+                <StatusBadge status={announcement.priority} tone={announcementPriorityTone(announcement.priority)} />
               </div>
               <p className="mt-2 text-sm leading-6 text-slate-400">{announcement.message}</p>
-              <p className="mt-3 text-xs text-slate-500">{announcement.publishDate} - {announcement.target}</p>
+              <p className="mt-3 text-xs text-slate-500">
+                {formatAnnouncementDate(announcement.publishedAt ?? announcement.createdAt)} - {announcementTargetLabel(announcement.targetRole)}
+                {announcementExpiryLabel(announcement.expiresAt) ? ` - ${announcementExpiryLabel(announcement.expiresAt)}` : ""}
+              </p>
             </div>
           ))}
         </div>
