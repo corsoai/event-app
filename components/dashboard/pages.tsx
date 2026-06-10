@@ -58,7 +58,6 @@ import { StatusBadge } from "@/components/ui/status-badge";
 import { roleLabels } from "@/lib/auth";
 import {
   activityLogs,
-  knowledgeBase,
 } from "@/lib/demo-data";
 import {
   billCreditAmount,
@@ -83,7 +82,7 @@ import {
   syncPendingTourLogs
 } from "@/lib/guard-tour";
 import { APPWRITE_ONBOARDING_DATABASE_ID } from "@/lib/appwrite/schema";
-import type { AppwriteAnnouncement, AppwriteComplaint, Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, Payment, Property, Resident, SecurityIncident, Unit, UserRole, Visitor } from "@/lib/types";
+import type { AppwriteAnnouncement, AppwriteComplaint, AppwriteKnowledgeBaseArticle, Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, HouseholdMember, Payment, Property, Resident, SecurityIncident, Unit, UserRole, Visitor } from "@/lib/types";
 import { contactLabel, makeDigitalIdNumber, money } from "@/lib/utils";
 import { getVisitorWindowState, VISITOR_CODE_VALIDITY_HOURS } from "@/lib/visitor-window";
 import { useRouter } from "next/navigation";
@@ -221,6 +220,18 @@ type ComplaintFilters = {
   priority: string;
   category: string;
   search: string;
+};
+
+type KnowledgeApiResponse = {
+  articles?: AppwriteKnowledgeBaseArticle[];
+  article?: AppwriteKnowledgeBaseArticle;
+  error?: string;
+};
+
+type HouseholdApiResponse = {
+  members?: HouseholdMember[];
+  member?: HouseholdMember;
+  error?: string;
 };
 
 type LbsviewOnboardingPreviewRow = {
@@ -806,6 +817,112 @@ function formatComplaintDate(value: string) {
     minute: "2-digit",
     hour12: true
   }).format(new Date(timestamp));
+}
+
+function useKnowledgeArticles(manager: boolean) {
+  const [articles, setArticles] = useState<AppwriteKnowledgeBaseArticle[]>([]);
+  const [loadingArticles, setLoadingArticles] = useState(true);
+  const [articleError, setArticleError] = useState("");
+  const endpoint = manager ? "/api/appwrite/admin/knowledge-base" : "/api/appwrite/resident/knowledge-base";
+
+  async function refreshArticles() {
+    setLoadingArticles(true);
+    setArticleError("");
+
+    try {
+      const response = await fetch(endpoint, { cache: "no-store" });
+      const payload = await response.json().catch(() => null) as KnowledgeApiResponse | null;
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error ?? "Unable to load knowledge base articles.");
+      }
+
+      setArticles(payload.articles ?? []);
+    } catch (error) {
+      setArticles([]);
+      setArticleError(error instanceof Error ? error.message : "Unable to load knowledge base articles.");
+    } finally {
+      setLoadingArticles(false);
+    }
+  }
+
+  useEffect(() => {
+    void refreshArticles();
+  }, [endpoint]);
+
+  return { articles, loadingArticles, articleError, refreshArticles };
+}
+
+function emptyKnowledgeForm() {
+  return {
+    title: "",
+    category: "general" as AppwriteKnowledgeBaseArticle["category"],
+    content: "",
+    targetRole: "all" as AppwriteKnowledgeBaseArticle["targetRole"],
+    tags: "",
+    sortOrder: 0,
+    isPublished: true
+  };
+}
+
+function formatKnowledgeDate(value: string) {
+  const timestamp = Date.parse(value);
+  if (!Number.isFinite(timestamp)) {
+    return "Not recorded";
+  }
+
+  return new Intl.DateTimeFormat("en-NG", {
+    day: "numeric",
+    month: "short",
+    year: "numeric"
+  }).format(new Date(timestamp));
+}
+
+function useHouseholdMembers() {
+  const [members, setMembers] = useState<HouseholdMember[]>([]);
+  const [loadingMembers, setLoadingMembers] = useState(true);
+  const [memberError, setMemberError] = useState("");
+
+  async function refreshMembers() {
+    setLoadingMembers(true);
+    setMemberError("");
+
+    try {
+      const response = await fetch("/api/appwrite/resident/household", { cache: "no-store" });
+      const payload = await response.json().catch(() => null) as HouseholdApiResponse | null;
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error ?? "Unable to load household members.");
+      }
+
+      setMembers(payload.members ?? []);
+    } catch (error) {
+      setMembers([]);
+      setMemberError(error instanceof Error ? error.message : "Unable to load household members.");
+    } finally {
+      setLoadingMembers(false);
+    }
+  }
+
+  useEffect(() => {
+    void refreshMembers();
+  }, []);
+
+  return { members, loadingMembers, memberError, refreshMembers };
+}
+
+function emptyHouseholdForm() {
+  return {
+    fullName: "",
+    relationship: "relative" as HouseholdMember["relationship"],
+    phone: "",
+    idType: "none" as NonNullable<HouseholdMember["idType"]>,
+    idNumber: "",
+    hasEstateAccess: true,
+    accessNote: ""
+  };
+}
+
+function relationshipLabel(value: HouseholdMember["relationship"]) {
+  return value.replace(/_/g, " ");
 }
 
 export function AdminDashboard() {
@@ -3163,12 +3280,95 @@ export function KnowledgeBaseViewerPage() {
 }
 
 function KnowledgeBasePage({ manager = false }: { manager?: boolean }) {
+  const { articles, loadingArticles, articleError, refreshArticles } = useKnowledgeArticles(manager);
   const [message, setMessage] = useState("");
+  const [editingArticle, setEditingArticle] = useState<AppwriteKnowledgeBaseArticle | null>(null);
+  const [articleForm, setArticleForm] = useState(emptyKnowledgeForm());
 
-  function saveArticle(event: FormEvent<HTMLFormElement>) {
+  async function saveArticle(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setMessage("Knowledge base article saved for this session.");
-    event.currentTarget.reset();
+    setMessage("");
+    const endpoint = editingArticle
+      ? `/api/appwrite/admin/knowledge-base/${encodeURIComponent(editingArticle.id)}`
+      : "/api/appwrite/admin/knowledge-base";
+    const method = editingArticle ? "PATCH" : "POST";
+
+    try {
+      const response = await fetch(endpoint, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(articleForm)
+      });
+      const payload = await response.json().catch(() => null) as KnowledgeApiResponse | null;
+      if (!response.ok || !payload?.article) {
+        throw new Error(payload?.error ?? "Unable to save article.");
+      }
+
+      setMessage(editingArticle ? "Knowledge base article updated." : "Knowledge base article saved.");
+      setEditingArticle(null);
+      setArticleForm(emptyKnowledgeForm());
+      await refreshArticles();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to save article.");
+    }
+  }
+
+  function editArticle(article: AppwriteKnowledgeBaseArticle) {
+    setEditingArticle(article);
+    setArticleForm({
+      title: article.title,
+      category: article.category,
+      content: article.content,
+      targetRole: article.targetRole,
+      tags: article.tags ?? "",
+      sortOrder: article.sortOrder,
+      isPublished: article.isPublished
+    });
+    scrollToSection("new-article");
+  }
+
+  async function togglePublished(article: AppwriteKnowledgeBaseArticle) {
+    await patchArticle(article, { isPublished: !article.isPublished });
+  }
+
+  async function deleteArticle(article: AppwriteKnowledgeBaseArticle) {
+    setMessage("");
+
+    try {
+      const response = await fetch(`/api/appwrite/admin/knowledge-base/${encodeURIComponent(article.id)}`, {
+        method: "DELETE"
+      });
+      const payload = await response.json().catch(() => null) as KnowledgeApiResponse | null;
+      if (!response.ok || !payload?.article) {
+        throw new Error(payload?.error ?? "Unable to delete article.");
+      }
+
+      setMessage("Knowledge base article unpublished.");
+      await refreshArticles();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to delete article.");
+    }
+  }
+
+  async function patchArticle(article: AppwriteKnowledgeBaseArticle, update: Partial<AppwriteKnowledgeBaseArticle>) {
+    setMessage("");
+
+    try {
+      const response = await fetch(`/api/appwrite/admin/knowledge-base/${encodeURIComponent(article.id)}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(update)
+      });
+      const payload = await response.json().catch(() => null) as KnowledgeApiResponse | null;
+      if (!response.ok || !payload?.article) {
+        throw new Error(payload?.error ?? "Unable to update article.");
+      }
+
+      setMessage("Knowledge base article updated.");
+      await refreshArticles();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to update article.");
+    }
   }
 
   return (
@@ -3186,23 +3386,134 @@ function KnowledgeBasePage({ manager = false }: { manager?: boolean }) {
           <CardHeader title="New article" description="Publish estate rules, guides, payment instructions, and emergency contacts." />
           <form className="grid gap-4" onSubmit={saveArticle}>
             <div className="grid gap-4 md:grid-cols-2">
-              <Field label="Title"><Input name="title" placeholder="Estate access rules" required /></Field>
-              <Field label="Category"><Input name="category" placeholder="Security" required /></Field>
+              <Field label="Title">
+                <Input
+                  name="title"
+                  placeholder="Estate access rules"
+                  required
+                  value={articleForm.title}
+                  onChange={(event) => setArticleForm((current) => ({ ...current, title: event.target.value }))}
+                />
+              </Field>
+              <Field label="Category">
+                <Select
+                  name="category"
+                  value={articleForm.category}
+                  onChange={(event) => setArticleForm((current) => ({
+                    ...current,
+                    category: event.target.value as AppwriteKnowledgeBaseArticle["category"]
+                  }))}
+                >
+                  <option value="general">general</option>
+                  <option value="billing">billing</option>
+                  <option value="access">access</option>
+                  <option value="security">security</option>
+                  <option value="facilities">facilities</option>
+                  <option value="rules">rules</option>
+                  <option value="emergency">emergency</option>
+                </Select>
+              </Field>
             </div>
-            <Field label="Summary"><Textarea name="summary" placeholder="Write the article summary or instruction." required /></Field>
+            <div className="grid gap-4 md:grid-cols-3">
+              <Field label="Audience">
+                <Select
+                  name="targetRole"
+                  value={articleForm.targetRole}
+                  onChange={(event) => setArticleForm((current) => ({
+                    ...current,
+                    targetRole: event.target.value as AppwriteKnowledgeBaseArticle["targetRole"]
+                  }))}
+                >
+                  <option value="all">all</option>
+                  <option value="resident">resident</option>
+                  <option value="security">security</option>
+                  <option value="cso">cso</option>
+                </Select>
+              </Field>
+              <Field label="Status">
+                <Select
+                  name="isPublished"
+                  value={articleForm.isPublished ? "true" : "false"}
+                  onChange={(event) => setArticleForm((current) => ({ ...current, isPublished: event.target.value === "true" }))}
+                >
+                  <option value="true">published</option>
+                  <option value="false">draft</option>
+                </Select>
+              </Field>
+              <Field label="Sort order">
+                <Input
+                  name="sortOrder"
+                  type="number"
+                  value={articleForm.sortOrder}
+                  onChange={(event) => setArticleForm((current) => ({ ...current, sortOrder: Number(event.target.value) }))}
+                />
+              </Field>
+            </div>
+            <Field label="Summary">
+              <Textarea
+                name="summary"
+                placeholder="Write the article summary or instruction."
+                required
+                value={articleForm.content}
+                onChange={(event) => setArticleForm((current) => ({ ...current, content: event.target.value }))}
+              />
+            </Field>
+            <Field label="Tags">
+              <Input
+                name="tags"
+                placeholder="billing, access, rules"
+                value={articleForm.tags}
+                onChange={(event) => setArticleForm((current) => ({ ...current, tags: event.target.value }))}
+              />
+            </Field>
             {message ? <p className="rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{message}</p> : null}
-            <Button className="w-fit">Save article</Button>
+            <div className="flex flex-wrap gap-2">
+              <Button className="w-fit">{editingArticle ? "Update article" : "Save article"}</Button>
+              {editingArticle ? (
+                <Button
+                  type="button"
+                  variant="secondary"
+                  className="w-fit"
+                  onClick={() => {
+                    setEditingArticle(null);
+                    setArticleForm(emptyKnowledgeForm());
+                  }}
+                >
+                  Cancel edit
+                </Button>
+              ) : null}
+            </div>
           </form>
         </Card>
       ) : null}
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
-        {knowledgeBase.map((article) => (
+        {loadingArticles ? <Card><p className="text-sm text-slate-400">Loading knowledge base articles...</p></Card> : null}
+        {articleError ? <Card><p className="text-sm text-danger">Unable to load knowledge base articles. Please refresh the page.</p></Card> : null}
+        {!loadingArticles && !articleError && !articles.length ? (
+          <Card><p className="text-sm text-slate-400">{manager ? "No articles yet. Create one above." : "No knowledge base articles available yet."}</p></Card>
+        ) : null}
+        {articles.map((article) => (
           <Card key={article.id}>
             <BookOpen className="h-5 w-5 text-smart" />
             <p className="mt-4 text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">{article.category}</p>
             <h2 className="mt-2 text-lg font-semibold text-white">{article.title}</h2>
-            <p className="mt-3 text-sm leading-6 text-slate-400">{article.summary}</p>
-            <p className="mt-4 text-xs text-slate-500">Updated {article.updatedAt}</p>
+            <p className="mt-3 text-sm leading-6 text-slate-400">{article.content}</p>
+            <p className="mt-4 text-xs text-slate-500">Updated {formatKnowledgeDate(article.updatedAt)} - {article.viewCount} views</p>
+            {manager ? (
+              <div className="mt-4 flex flex-wrap gap-2">
+                <Button type="button" variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={() => editArticle(article)}>
+                  <Pencil className="h-3.5 w-3.5" />
+                  Edit
+                </Button>
+                <Button type="button" variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={() => void togglePublished(article)}>
+                  {article.isPublished ? "Unpublish" : "Publish"}
+                </Button>
+                <Button type="button" variant="danger" className="min-h-9 px-3 py-1 text-xs" onClick={() => void deleteArticle(article)}>
+                  <Trash2 className="h-3.5 w-3.5" />
+                  Delete
+                </Button>
+              </div>
+            ) : null}
           </Card>
         ))}
       </div>
@@ -4952,26 +5263,203 @@ export function ResidentDigitalIdPage() {
 }
 
 export function HouseholdPage() {
+  const { members, loadingMembers, memberError, refreshMembers } = useHouseholdMembers();
+  const [householdMessage, setHouseholdMessage] = useState("");
+  const [editingMember, setEditingMember] = useState<HouseholdMember | null>(null);
+  const [householdForm, setHouseholdForm] = useState(emptyHouseholdForm());
+
+  async function submitHouseholdMember(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setHouseholdMessage("");
+    const endpoint = editingMember
+      ? `/api/appwrite/resident/household/${encodeURIComponent(editingMember.id)}`
+      : "/api/appwrite/resident/household";
+    const method = editingMember ? "PATCH" : "POST";
+
+    try {
+      const response = await fetch(endpoint, {
+        method,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(householdForm)
+      });
+      const payload = await response.json().catch(() => null) as HouseholdApiResponse | null;
+      if (!response.ok || !payload?.member) {
+        throw new Error(payload?.error ?? "Unable to save household member.");
+      }
+
+      setHouseholdMessage(editingMember ? "Household member updated." : "Household member added.");
+      setEditingMember(null);
+      setHouseholdForm(emptyHouseholdForm());
+      await refreshMembers();
+    } catch (error) {
+      setHouseholdMessage(error instanceof Error ? error.message : "Unable to save household member.");
+    }
+  }
+
+  function editHouseholdMember(member: HouseholdMember) {
+    setEditingMember(member);
+    setHouseholdForm({
+      fullName: member.fullName,
+      relationship: member.relationship,
+      phone: member.phone ?? "",
+      idType: member.idType ?? "none",
+      idNumber: member.idNumber ?? "",
+      hasEstateAccess: member.hasEstateAccess,
+      accessNote: member.accessNote ?? ""
+    });
+  }
+
+  async function removeHouseholdMember(member: HouseholdMember) {
+    setHouseholdMessage("");
+
+    try {
+      const response = await fetch(`/api/appwrite/resident/household/${encodeURIComponent(member.id)}`, {
+        method: "DELETE"
+      });
+      const payload = await response.json().catch(() => null) as HouseholdApiResponse | null;
+      if (!response.ok || !payload?.member) {
+        throw new Error(payload?.error ?? "Unable to remove household member.");
+      }
+
+      setHouseholdMessage("Household member removed.");
+      await refreshMembers();
+    } catch (error) {
+      setHouseholdMessage(error instanceof Error ? error.message : "Unable to remove household member.");
+    }
+  }
+
   return (
     <>
       <PageHeader title="Household and domestic staff" description="Residents manage household members, domestic staff, vendors, and other people linked to their unit." />
+      <Card className="mb-6">
+        <CardHeader title={editingMember ? "Edit household member" : "Add household member"} description="Manage household members, domestic staff, vendors, and estate access." />
+        <form className="grid gap-4" onSubmit={submitHouseholdMember}>
+          <div className="grid gap-4 md:grid-cols-3">
+            <Field label="Full name">
+              <Input
+                value={householdForm.fullName}
+                onChange={(event) => setHouseholdForm((current) => ({ ...current, fullName: event.target.value }))}
+                required
+              />
+            </Field>
+            <Field label="Relationship">
+              <Select
+                value={householdForm.relationship}
+                onChange={(event) => setHouseholdForm((current) => ({
+                  ...current,
+                  relationship: event.target.value as HouseholdMember["relationship"]
+                }))}
+              >
+                <option value="spouse">spouse</option>
+                <option value="child">child</option>
+                <option value="parent">parent</option>
+                <option value="sibling">sibling</option>
+                <option value="relative">relative</option>
+                <option value="domestic_staff">domestic staff</option>
+                <option value="driver">driver</option>
+                <option value="guard">guard</option>
+                <option value="vendor">vendor</option>
+                <option value="other">other</option>
+              </Select>
+            </Field>
+            <Field label="Phone">
+              <Input
+                value={householdForm.phone}
+                onChange={(event) => setHouseholdForm((current) => ({ ...current, phone: event.target.value }))}
+              />
+            </Field>
+          </div>
+          <div className="grid gap-4 md:grid-cols-3">
+            <Field label="ID type">
+              <Select
+                value={householdForm.idType}
+                onChange={(event) => setHouseholdForm((current) => ({
+                  ...current,
+                  idType: event.target.value as NonNullable<HouseholdMember["idType"]>
+                }))}
+              >
+                <option value="none">none</option>
+                <option value="nin">nin</option>
+                <option value="bvn">bvn</option>
+                <option value="passport">passport</option>
+                <option value="drivers_license">drivers license</option>
+                <option value="other">other</option>
+              </Select>
+            </Field>
+            <Field label="ID number">
+              <Input
+                value={householdForm.idNumber}
+                onChange={(event) => setHouseholdForm((current) => ({ ...current, idNumber: event.target.value }))}
+              />
+            </Field>
+            <Field label="Estate access">
+              <Select
+                value={householdForm.hasEstateAccess ? "true" : "false"}
+                onChange={(event) => setHouseholdForm((current) => ({ ...current, hasEstateAccess: event.target.value === "true" }))}
+              >
+                <option value="true">Estate Access</option>
+                <option value="false">No Access</option>
+              </Select>
+            </Field>
+          </div>
+          <Field label="Access note">
+            <Input
+              value={householdForm.accessNote}
+              onChange={(event) => setHouseholdForm((current) => ({ ...current, accessNote: event.target.value }))}
+            />
+          </Field>
+          {householdMessage ? <p className="rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{householdMessage}</p> : null}
+          <div className="flex flex-wrap gap-2">
+            <Button className="w-fit">{editingMember ? "Update member" : "Add member"}</Button>
+            {editingMember ? (
+              <Button
+                type="button"
+                variant="secondary"
+                className="w-fit"
+                onClick={() => {
+                  setEditingMember(null);
+                  setHouseholdForm(emptyHouseholdForm());
+                }}
+              >
+                Cancel edit
+              </Button>
+            ) : null}
+          </div>
+        </form>
+      </Card>
+      {loadingMembers ? <Card className="mb-6"><p className="text-sm text-slate-400">Loading household members...</p></Card> : null}
+      {memberError ? <Card className="mb-6"><p className="text-sm text-danger">Unable to load household members. Please refresh the page.</p></Card> : null}
+      {!loadingMembers && !memberError && !members.length ? (
+        <Card className="mb-6"><p className="text-sm text-slate-400">No household members added yet. Add your first member below.</p></Card>
+      ) : null}
       <div className="grid gap-6 xl:grid-cols-2">
         <DataTable
           title="Household members"
-          headers={["Name", "Type", "Phone", "Status"]}
-          rows={[
-            ["Daniel Okafor", "Family member", "+234 801 220 1021", <StatusBadge key="active" status="active" />],
-            ["Sade Okafor", "Family member", "+234 809 481 2012", <StatusBadge key="active2" status="active" />]
-          ]}
+          headers={["Name", "Type", "Phone", "Access", "Action"]}
+          rows={members.filter((member) => member.relationship !== "domestic_staff").map((member) => [
+            member.fullName,
+            relationshipLabel(member.relationship),
+            member.phone ?? "Not recorded",
+            <StatusBadge key={`${member.id}-access`} status={member.hasEstateAccess ? "Estate Access" : "No Access"} tone={member.hasEstateAccess ? "green" : "slate"} />,
+            <div key={`${member.id}-actions`} className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={() => editHouseholdMember(member)}>Edit</Button>
+              <Button type="button" variant="danger" className="min-h-9 px-3 py-1 text-xs" onClick={() => void removeHouseholdMember(member)}>Remove</Button>
+            </div>
+          ])}
         />
         <DataTable
           title="Domestic staff"
-          headers={["Name", "Type", "ID", "Status"]}
-          rows={[
-            ["Grace Monday", "Domestic staff", "LBS-STA-0204", <StatusBadge key="active" status="active" />],
-            ["Bola Daniel", "Domestic staff", "LBS-STA-0317", <StatusBadge key="active2" status="active" />],
-            ["Peace James", "Care assistant", "LBS-STA-0411", <StatusBadge key="active3" status="active" />]
-          ]}
+          headers={["Name", "Type", "ID", "Access", "Action"]}
+          rows={members.filter((member) => member.relationship === "domestic_staff").map((member) => [
+            member.fullName,
+            relationshipLabel(member.relationship),
+            member.idNumber ?? "Not recorded",
+            <StatusBadge key={`${member.id}-access`} status={member.hasEstateAccess ? "Estate Access" : "No Access"} tone={member.hasEstateAccess ? "green" : "slate"} />,
+            <div key={`${member.id}-actions`} className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={() => editHouseholdMember(member)}>Edit</Button>
+              <Button type="button" variant="danger" className="min-h-9 px-3 py-1 text-xs" onClick={() => void removeHouseholdMember(member)}>Remove</Button>
+            </div>
+          ])}
         />
       </div>
     </>
