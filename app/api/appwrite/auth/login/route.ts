@@ -41,12 +41,14 @@ function loginResponse(user: Awaited<ReturnType<typeof loginWithAppwrite>>) {
   response.cookies.set("corso_role", user.role, {
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
-    sameSite: "lax"
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production"
   });
   response.cookies.set("corso_appwrite_user", user.appwriteUserId, {
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
     sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
     httpOnly: true
   });
 

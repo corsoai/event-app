@@ -557,6 +557,7 @@ async function signInWithAppwrite(identifier: string, password: string): Promise
     const response = await fetch("/api/appwrite/auth/login", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
+      credentials: "same-origin",
       body: JSON.stringify({ identifier, password })
     });
     const data = await response.json().catch(() => ({}));
@@ -609,5 +610,7 @@ function persistSession({
   estate: string;
 }) {
   localStorage.setItem("corso_user", JSON.stringify({ email, phone, name, role, estate }));
-  document.cookie = `corso_role=${role}; path=/; max-age=604800; SameSite=Lax`;
+  document.cookie = `corso_role=${role}; path=/; max-age=604800; SameSite=Lax${
+    window.location.protocol === "https:" ? "; Secure" : ""
+  }`;
 }
