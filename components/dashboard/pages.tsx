@@ -55,6 +55,18 @@ import { DataTable } from "@/components/ui/data-table";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { StatCard } from "@/components/ui/stat-card";
 import { StatusBadge } from "@/components/ui/status-badge";
+import { DebtorsAging } from "@/components/admin/reports/DebtorsAging";
+import { MonthlyTrendChart } from "@/components/admin/reports/MonthlyTrendChart";
+import { PropertyGroupBreakdown } from "@/components/admin/reports/PropertyGroupBreakdown";
+import { RateBreakdown } from "@/components/admin/reports/RateBreakdown";
+import { ReportsExportToolbar } from "@/components/admin/reports/ReportsExportToolbar";
+import {
+  buildDebtorAccounts,
+  buildResidentFinancialProfiles,
+  percent,
+  type AgingBucket,
+  type ReportDataset
+} from "@/components/admin/reports/report-data";
 import { roleLabels } from "@/lib/auth";
 import {
   activityLogs,
@@ -202,6 +214,10 @@ type AppwriteAccountingSummary = {
   categoryTotals: Record<string, number>;
   generatedAt: string;
 };
+
+let adminAccountingSessionCache: AppwriteAccountingDirectory | null = null;
+let adminAccountingSummarySessionCache: AppwriteAccountingSummary | null = null;
+let adminAccountingSessionUpdatedAt: number | null = null;
 
 type AnnouncementApiResponse = {
   announcements?: AppwriteAnnouncement[];
@@ -503,11 +519,14 @@ function useResidentAccountingState(state: LocalEstateState) {
 }
 
 function useAdminAccountingState(state: LocalEstateState) {
-  const [accounting, setAccounting] = useState<AppwriteAccountingDirectory | null>(null);
-  const [summary, setSummary] = useState<AppwriteAccountingSummary | null>(null);
+  const [accounting, setAccounting] = useState<AppwriteAccountingDirectory | null>(adminAccountingSessionCache);
+  const [summary, setSummary] = useState<AppwriteAccountingSummary | null>(adminAccountingSummarySessionCache);
   const [loadingAccounting, setLoadingAccounting] = useState(false);
   const [loadingAccountingDetails, setLoadingAccountingDetails] = useState(false);
-  const [accountingStatus, setAccountingStatus] = useState("Loading accounting summary...");
+  const [accountingStatus, setAccountingStatus] = useState(adminAccountingSummarySessionCache
+    ? `Loaded accounting summary for ${adminAccountingSummarySessionCache.billsCount} bills and ${adminAccountingSummarySessionCache.paymentsCount} payments.`
+    : "Loading accounting summary...");
+  const [lastUpdated, setLastUpdated] = useState<number | null>(adminAccountingSessionUpdatedAt);
 
   async function refreshAccounting(options: { bypassCache?: boolean } = {}) {
     setLoadingAccounting(true);
@@ -523,6 +542,9 @@ function useAdminAccountingState(state: LocalEstateState) {
       }
 
       setSummary(summaryPayload);
+      adminAccountingSummarySessionCache = summaryPayload;
+      adminAccountingSessionUpdatedAt = Date.now();
+      setLastUpdated(adminAccountingSessionUpdatedAt);
       setAccountingStatus(`Loaded accounting summary for ${summaryPayload.billsCount} bills and ${summaryPayload.paymentsCount} payments. Loading details...`);
       setLoadingAccounting(false);
       setLoadingAccountingDetails(true);
@@ -535,6 +557,9 @@ function useAdminAccountingState(state: LocalEstateState) {
         }
 
         setAccounting(payload);
+        adminAccountingSessionCache = payload;
+        adminAccountingSessionUpdatedAt = Date.now();
+        setLastUpdated(adminAccountingSessionUpdatedAt);
         setAccountingStatus(`Loaded ${payload.bills.length} bills and ${payload.payments.length} payments from Appwrite TablesDB.`);
       } catch (detailError) {
         setAccounting(null);
@@ -553,7 +578,9 @@ function useAdminAccountingState(state: LocalEstateState) {
   }
 
   useEffect(() => {
-    void refreshAccounting();
+    if (!adminAccountingSummarySessionCache) {
+      void refreshAccounting();
+    }
   }, []);
 
   return {
@@ -563,7 +590,8 @@ function useAdminAccountingState(state: LocalEstateState) {
     accountingStatus,
     loadingAccounting,
     loadingAccountingDetails,
-    refreshAccounting
+    refreshAccounting,
+    lastUpdated
   };
 }
 
@@ -3523,7 +3551,9 @@ function KnowledgeBasePage({ manager = false }: { manager?: boolean }) {
 
 export function ReportsPage() {
   const { state } = useLocalEstateStore();
-  const { accountingState, summary, accountingStatus, loadingAccounting, loadingAccountingDetails, refreshAccounting } = useAdminAccountingState(state);
+  const { accountingState, summary, accountingStatus, loadingAccounting, loadingAccountingDetails, refreshAccounting, lastUpdated } = useAdminAccountingState(state);
+  const [forcedAgingBucket, setForcedAgingBucket] = useState<AgingBucket | null>(null);
+  const sectionLoading = useProgressiveReportSections(loadingAccounting || loadingAccountingDetails);
   const expectedRevenue = summary?.expectedRevenue ?? accountingState.bills.reduce((sum, bill) => sum + bill.amount, 0);
   const confirmedPayments = accountingState.payments.filter((payment) => payment.status === "confirmed");
   const paidAmount = summary?.paidAmount ?? confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
@@ -3536,6 +3566,17 @@ export function ReportsPage() {
   }));
   const debtorResidents = residentBalances.filter(({ balance }) => balance.netReceivable > 0);
   const creditResidents = residentBalances.filter(({ balance }) => balance.availableCredit > 0);
+  const reportDataset = useMemo<ReportDataset>(() => ({
+    residents: accountingState.residents,
+    bills: accountingState.bills,
+    payments: accountingState.payments,
+    properties: accountingState.properties,
+    units: accountingState.units
+  }), [accountingState.bills, accountingState.payments, accountingState.properties, accountingState.residents, accountingState.units]);
+  const financialProfiles = useMemo(() => buildResidentFinancialProfiles(reportDataset), [reportDataset]);
+  const agedDebtors = useMemo(() => buildDebtorAccounts(financialProfiles), [financialProfiles]);
+  const criticalDebtorsCount = agedDebtors.filter((debtor) => debtor.monthsOverdue >= 24).length;
+  const collectionRate = percent(paidAmount, expectedRevenue);
   const channelTotals = summary?.channelTotals ?? confirmedPayments.reduce<Record<string, number>>((totals, payment) => {
     const channel = paymentChannelLabel(payment);
     totals[channel] = (totals[channel] ?? 0) + payment.amount;
@@ -3565,21 +3606,61 @@ export function ReportsPage() {
 
   return (
     <>
+      {criticalDebtorsCount > 0 ? (
+        <div className="mb-5 rounded-lg border border-danger/50 bg-danger/15 p-4 text-sm text-red-50">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex items-start gap-3">
+              <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-danger" />
+              <p>
+                <span className="font-semibold">{criticalDebtorsCount} residents</span> have outstanding balances exceeding 24 months. Immediate action recommended.
+              </p>
+            </div>
+            <button
+              type="button"
+              className="text-left text-sm font-semibold text-red-50 underline underline-offset-4"
+              onClick={() => {
+                setForcedAgingBucket("severe");
+                scrollToSection("debtors-aging");
+              }}
+            >
+              View critical accounts -&gt;
+            </button>
+          </div>
+        </div>
+      ) : null}
       <PageHeader title="Reports" description="Accounting and operations analytics for expected revenue, confirmed payments, outstanding balances, credit balances, debtors, channels, categories, and audit trail.">
-        <Button type="button" variant="secondary" onClick={() => void refreshAccounting({ bypassCache: true })} disabled={loadingAccounting || loadingAccountingDetails}>
-          <RefreshCw className="h-4 w-4" />
-          {loadingAccounting || loadingAccountingDetails ? "Refreshing" : "Refresh reports"}
-        </Button>
+        <div className="flex flex-col items-start gap-2 sm:items-end">
+          <p className="text-xs text-slate-400">Last updated {lastUpdatedLabel(lastUpdated)}</p>
+          <div className="flex flex-wrap gap-2">
+            <ReportsExportToolbar
+              profiles={financialProfiles}
+              payments={accountingState.payments}
+              expectedRevenue={expectedRevenue}
+              paidAmount={paidAmount}
+              outstandingBalance={outstandingBalance}
+              creditBalance={creditBalance}
+            />
+            <Button type="button" variant="secondary" onClick={() => void refreshAccounting({ bypassCache: true })} disabled={loadingAccounting || loadingAccountingDetails}>
+              <RefreshCw className="h-4 w-4" />
+              {loadingAccounting || loadingAccountingDetails ? "Refreshing" : "Refresh reports"}
+            </Button>
+          </div>
+        </div>
       </PageHeader>
       <p className="mb-4 rounded-lg border border-line bg-ink/50 px-3 py-2 text-sm text-slate-300">{accountingStatus}</p>
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-7">
+      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-8">
         <StatCard label="Expected revenue" value={money(expectedRevenue)} helper="All bills issued" icon={<ReceiptText className="h-5 w-5" />} />
         <StatCard label="Paid amount" value={money(paidAmount)} helper="Confirmed payments" icon={<WalletCards className="h-5 w-5" />} />
-        <StatCard label="Outstanding" value={money(outstandingBalance)} helper="Open balance" icon={<Landmark className="h-5 w-5" />} />
+        <ClickableReportCard onClick={() => scrollToSection("debtors-aging")}>
+          <StatCard label="Outstanding" value={money(outstandingBalance)} helper="Open balance" icon={<Landmark className="h-5 w-5" />} />
+        </ClickableReportCard>
         <StatCard label="Credit balance" value={money(creditBalance)} helper="Advance payments" icon={<BadgeCheck className="h-5 w-5" />} />
         <StatCard label="Net receivable" value={money(netReceivable)} helper="Outstanding after credits" icon={<ReceiptText className="h-5 w-5" />} />
         <StatCard label="In credit" value={String(summary?.residentsInCredit ?? creditResidents.length)} helper="Advance payment residents" icon={<BadgeCheck className="h-5 w-5" />} />
-        <StatCard label="Debtors" value={String(summary?.debtorsCount ?? debtorResidents.length)} helper="Residents with net balance" icon={<Users className="h-5 w-5" />} />
+        <ClickableReportCard onClick={() => scrollToSection("debtors-aging")}>
+          <StatCard label="Debtors" value={String(summary?.debtorsCount ?? debtorResidents.length)} helper="Residents with net balance" icon={<Users className="h-5 w-5" />} />
+        </ClickableReportCard>
+        <CollectionRateCard rate={collectionRate} onClick={() => scrollToSection("property-group-breakdown")} />
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <DataTable
@@ -3648,8 +3729,126 @@ export function ReportsPage() {
           ])}
         />
       </div>
+      <PropertyGroupBreakdown profiles={financialProfiles} loading={sectionLoading.propertyGroups} />
+      <RateBreakdown profiles={financialProfiles} expectedRevenue={expectedRevenue} outstanding={outstandingBalance} loading={sectionLoading.rateBreakdown} />
+      <MonthlyTrendChart dataset={reportDataset} profiles={financialProfiles} loading={sectionLoading.monthlyTrend} />
+      <DebtorsAging
+        profiles={financialProfiles}
+        forcedBucket={forcedAgingBucket}
+        onClearForcedBucket={() => setForcedAgingBucket(null)}
+        loading={sectionLoading.debtorsAging}
+      />
     </>
   );
+}
+
+function CollectionRateCard({ rate, onClick }: { rate: number; onClick: () => void }) {
+  const tone = rate >= 80 ? "text-smart" : rate >= 60 ? "text-warn" : "text-danger";
+  const stroke = rate >= 80 ? "#c0ff6b" : rate >= 60 ? "#f59e0b" : "#ff3b30";
+  const circumference = 2 * Math.PI * 28;
+  const offset = circumference - (Math.min(100, Math.max(0, rate)) / 100) * circumference;
+
+  return (
+    <button type="button" onClick={onClick} className="text-left">
+      <Card className="h-full p-4 transition hover:border-smart/50 hover:bg-white/[0.12]">
+        <div className="flex items-start justify-between gap-3">
+          <div>
+            <p className="text-sm text-slate-300">Collection Rate</p>
+            <p className={`mt-1 text-2xl font-semibold ${tone}`}>{rate.toFixed(1)}%</p>
+          </div>
+          <svg width="72" height="72" viewBox="0 0 72 72" aria-hidden="true">
+            <circle cx="36" cy="36" r="28" fill="none" stroke="rgba(255,255,255,0.12)" strokeWidth="8" />
+            <circle
+              cx="36"
+              cy="36"
+              r="28"
+              fill="none"
+              stroke={stroke}
+              strokeWidth="8"
+              strokeLinecap="round"
+              strokeDasharray={circumference}
+              strokeDashoffset={offset}
+              transform="rotate(-90 36 36)"
+            />
+            <text x="36" y="40" textAnchor="middle" className="fill-white text-[13px] font-semibold">{Math.round(rate)}%</text>
+          </svg>
+        </div>
+        <p className="mt-4 text-xs text-slate-400">{rate.toFixed(1)}% of expected revenue collected</p>
+      </Card>
+    </button>
+  );
+}
+
+function ClickableReportCard({ children, onClick }: { children: ReactNode; onClick: () => void }) {
+  return (
+    <div
+      role="button"
+      tabIndex={0}
+      className="cursor-pointer rounded-lg transition hover:scale-[1.01] focus:outline-none focus:ring-2 focus:ring-smart/60"
+      onClick={onClick}
+      onKeyDown={(event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          onClick();
+        }
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+function useProgressiveReportSections(refreshing: boolean) {
+  const [ready, setReady] = useState({
+    propertyGroups: false,
+    rateBreakdown: false,
+    monthlyTrend: false,
+    debtorsAging: false
+  });
+
+  useEffect(() => {
+    if (!refreshing) {
+      setReady({
+        propertyGroups: true,
+        rateBreakdown: true,
+        monthlyTrend: true,
+        debtorsAging: true
+      });
+      return undefined;
+    }
+
+    setReady({
+      propertyGroups: false,
+      rateBreakdown: false,
+      monthlyTrend: false,
+      debtorsAging: false
+    });
+    const timers = [
+      window.setTimeout(() => setReady((current) => ({ ...current, propertyGroups: true })), 120),
+      window.setTimeout(() => setReady((current) => ({ ...current, rateBreakdown: true })), 240),
+      window.setTimeout(() => setReady((current) => ({ ...current, monthlyTrend: true })), 360),
+      window.setTimeout(() => setReady((current) => ({ ...current, debtorsAging: true })), 480)
+    ];
+
+    return () => timers.forEach((timer) => window.clearTimeout(timer));
+  }, [refreshing]);
+
+  return {
+    propertyGroups: refreshing && !ready.propertyGroups,
+    rateBreakdown: refreshing && !ready.rateBreakdown,
+    monthlyTrend: refreshing && !ready.monthlyTrend,
+    debtorsAging: refreshing && !ready.debtorsAging
+  };
+}
+
+function lastUpdatedLabel(value: number | null) {
+  if (!value) {
+    return "not yet";
+  }
+
+  const minutes = Math.max(0, Math.floor((Date.now() - value) / 60_000));
+  if (minutes < 1) return "just now";
+  return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
 }
 
 export function SettingsPage() {
