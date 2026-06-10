@@ -368,10 +368,6 @@ async function ensureAppwriteDefaultUser(input: AppwriteManagedUserInput) {
     method: "PATCH",
     body: { name: fullName.slice(0, 128) }
   });
-  await appwriteRequest<AppwriteUser>(`/users/${encodeURIComponent(user.$id)}/phone`, {
-    method: "PATCH",
-    body: { number: appwritePhone(phone) }
-  });
   await appwriteRequest<AppwriteUser>(`/users/${encodeURIComponent(user.$id)}/status`, {
     method: "PATCH",
     body: { status: true }
@@ -385,6 +381,10 @@ async function ensureAppwriteDefaultUser(input: AppwriteManagedUserInput) {
     houseNumber,
     loginIdentifier: rawEmail
   });
+  await appwriteRequest<AppwriteUser>(`/users/${encodeURIComponent(user.$id)}/phone`, {
+    method: "PATCH",
+    body: { number: appwritePhone(phone) }
+  }).catch(() => null);
 
   await appwriteUpsertRow("profiles", profileIdFor(user.$id), {
     estateId,
