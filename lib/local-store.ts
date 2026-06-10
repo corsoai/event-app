@@ -8,21 +8,11 @@ import {
   units
 } from "@/lib/demo-data";
 import {
-  approveSupabaseAccessRequest,
-  loadSupabaseEstateState,
-  mapSupabaseEmergencyAlert,
-  rejectSupabaseAccessRequest,
-  saveSupabaseEstate,
-  saveSupabaseEmergencyAlert,
-  saveSupabaseBill,
-  saveSupabaseComplaint,
-  saveSupabasePayment,
-  saveSupabaseVisitor,
-  updateSupabaseEmergencyAlertStatus,
-  updateSupabaseResident,
-  updateSupabaseVisitorStatus
-} from "@/lib/supabase/data";
-import { getSupabaseBrowserClient } from "@/lib/supabase/client";
+  readAppwriteAdminAccessRequests,
+  reviewAppwriteAccessRequest,
+  updateAppwriteResident,
+  updateAppwriteVisitorStatus
+} from "@/lib/appwrite/browser-data";
 import type {
   AuditLog,
   Bill,
@@ -325,10 +315,10 @@ function mergeEmergencyAlerts(localAlerts: EmergencyAlert[], remoteAlerts: Emerg
   );
 }
 
-function mergeSupabaseEstateState(localState: LocalEstateState, supabaseState: LocalEstateState): LocalEstateState {
+function mergeRemoteEstateState(localState: LocalEstateState, remoteState: LocalEstateState): LocalEstateState {
   return {
-    ...supabaseState,
-    emergencyAlerts: mergeEmergencyAlerts(localState.emergencyAlerts, supabaseState.emergencyAlerts)
+    ...remoteState,
+    emergencyAlerts: mergeEmergencyAlerts(localState.emergencyAlerts, remoteState.emergencyAlerts)
   };
 }
 
@@ -342,20 +332,6 @@ function paymentTotalForBill(paymentsList: Payment[], billId: string) {
   return paymentsList
     .filter((payment) => payment.billId === billId && payment.status === "confirmed")
     .reduce((sum, payment) => sum + payment.amount, 0);
-}
-
-async function updateDemoVisitorStatus(visitor: Visitor, status: Visitor["status"]) {
-  await fetch("/api/local/visitors", {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      visitorId: visitor.id,
-      code: visitor.code,
-      status
-    })
-  }).catch(() => null);
 }
 
 function billStatusForPaymentTotal(bill: Bill, paidAmount: number): Bill["status"] {
@@ -451,14 +427,6 @@ export function normalizeOnboardingUnitCode(value: string, propertyCode = "") {
   return raw;
 }
 
-function realtimeEmergencyAlertFromPayload(payload: { new?: Record<string, unknown> | null }) {
-  if (!payload.new?.id) {
-    return null;
-  }
-
-  return mapSupabaseEmergencyAlert(payload.new);
-}
-
 export function useLocalEstateStore() {
   const [state, setState] = useState<LocalEstateState>(() => defaultState());
   const [loaded, setLoaded] = useState(false);
@@ -475,79 +443,28 @@ export function useLocalEstateStore() {
     window.addEventListener("storage", syncLocalState);
 
     let active = true;
-    const supabase = getSupabaseBrowserClient();
-    let emergencyAlertsChannel: ReturnType<NonNullable<ReturnType<typeof getSupabaseBrowserClient>>["channel"]> | null = null;
 
-    loadSupabaseEstateState()
-      .then((supabaseState) => {
-        if (!active || !supabaseState) {
+    readAppwriteAdminAccessRequests()
+      .then((accessRequests) => {
+        if (!active) {
           return;
         }
 
         setState((current) => {
-          const next = mergeSupabaseEstateState(current, supabaseState);
+          const next = {
+            ...current,
+            accessRequests
+          };
           saveLocalEstateState(next);
           return next;
         });
       })
       .catch(() => {
-        // Local demo data remains available when Supabase is not ready.
+        // Non-admin roles do not need the admin access request queue.
       });
-
-    if (supabase) {
-      supabase.auth.getSession()
-        .then(({ data: { session } }) => {
-          if (!active || !session) {
-            return;
-          }
-
-          emergencyAlertsChannel = supabase
-            .channel("corso-emergency-alerts")
-            .on(
-              "postgres_changes",
-              { event: "*", schema: "public", table: "emergency_alerts" },
-              (payload) => {
-                const realtimeAlert = realtimeEmergencyAlertFromPayload(payload);
-                if (realtimeAlert) {
-                  setState((current) => {
-                    const next = {
-                      ...current,
-                      emergencyAlerts: upsertEmergencyAlert(current.emergencyAlerts, realtimeAlert)
-                    };
-                    saveLocalEstateState(next);
-                    return next;
-                  });
-                }
-
-                void loadSupabaseEstateState()
-                  .then((supabaseState) => {
-                    if (!active || !supabaseState) {
-                      return;
-                    }
-
-                    setState((current) => {
-                      const next = mergeSupabaseEstateState(current, supabaseState);
-                      saveLocalEstateState(next);
-                      return next;
-                    });
-                  })
-                  .catch(() => {
-                    // The last loaded state remains available if realtime refresh fails.
-                  });
-              }
-            )
-            .subscribe();
-        })
-        .catch(() => {
-          // Local storage events still keep same-device demo sessions in sync.
-        });
-    }
 
     return () => {
       active = false;
-      if (emergencyAlertsChannel) {
-        void supabase?.removeChannel(emergencyAlertsChannel);
-      }
       window.removeEventListener(STATE_UPDATED_EVENT, syncLocalState);
       window.removeEventListener("storage", syncLocalState);
     };
@@ -575,51 +492,16 @@ export function useLocalEstateStore() {
   }
 
   async function approveAccessRequest(requestId: string) {
-    if (!getSupabaseBrowserClient()) {
-      commit((current) => approveLocalAccessRequest(current, requestId));
-      return;
-    }
-
-    const result = await approveSupabaseAccessRequest(requestId);
+    const result = await reviewAppwriteAccessRequest(requestId, "approve");
     if (result.requests) {
       commit((current) => ({ ...current, accessRequests: result.requests }));
-    }
-
-    const supabaseState = await loadSupabaseEstateState();
-    if (supabaseState) {
-      setState((current) => {
-        const next = mergeSupabaseEstateState(current, supabaseState);
-        saveLocalEstateState(next);
-        return next;
-      });
     }
   }
 
   async function rejectAccessRequest(requestId: string) {
-    if (!getSupabaseBrowserClient()) {
-      commit((current) => ({
-        ...current,
-        accessRequests: current.accessRequests.map((request) =>
-          request.id === requestId
-            ? { ...request, status: "rejected" as const, reviewedAt: today() }
-            : request
-          )
-      }));
-      return;
-    }
-
-    const result = await rejectSupabaseAccessRequest(requestId);
+    const result = await reviewAppwriteAccessRequest(requestId, "reject");
     if (result.requests) {
       commit((current) => ({ ...current, accessRequests: result.requests }));
-    }
-
-    const supabaseState = await loadSupabaseEstateState();
-    if (supabaseState) {
-      setState((current) => {
-        const next = mergeSupabaseEstateState(current, supabaseState);
-        saveLocalEstateState(next);
-        return next;
-      });
     }
   }
 
@@ -646,10 +528,6 @@ export function useLocalEstateStore() {
       ...current,
       visitors: [visitor, ...current.visitors]
     }));
-    void saveSupabaseVisitor(visitor).catch(() => {
-      // Local demo invites remain available on this device when Supabase rejects the insert.
-    });
-
     return visitor;
   }
 
@@ -698,13 +576,7 @@ export function useLocalEstateStore() {
     });
     const visitor = state.visitors.find((item) => item.id === visitorId);
     if (visitor) {
-      if (getSupabaseBrowserClient()) {
-        void updateSupabaseVisitorStatus(visitor, status).catch(() => {
-          // Local status changes remain available on this device when online sync rejects the update.
-        });
-      } else {
-        void updateDemoVisitorStatus(visitor, status);
-      }
+      void updateAppwriteVisitorStatus(visitor, status).catch(() => null);
     }
   }
 
@@ -714,15 +586,15 @@ export function useLocalEstateStore() {
       throw new Error("Resident record was not found.");
     }
 
-    if (getSupabaseBrowserClient()) {
-      const updatedResident = await updateSupabaseResident(residentId, input);
+    const savedResident = await updateAppwriteResident(residentId, input).catch(() => null);
+    if (savedResident) {
       commit((current) => ({
         ...current,
         residents: current.residents.map((resident) =>
-          resident.id === residentId ? updatedResident : resident
+          resident.id === residentId ? savedResident : resident
         )
       }));
-      return updatedResident;
+      return savedResident;
     }
 
     const updatedResident: Resident = {
@@ -794,7 +666,6 @@ export function useLocalEstateStore() {
       ...current,
       complaints: [complaint, ...current.complaints]
     }));
-    void saveSupabaseComplaint(complaint);
 
     return complaint;
   }
@@ -822,9 +693,6 @@ export function useLocalEstateStore() {
       ...current,
       emergencyAlerts: [alert, ...current.emergencyAlerts]
     }));
-    void saveSupabaseEmergencyAlert(alert).catch(() => {
-      // Local SOS alerts remain visible when online sync is not ready.
-    });
 
     return alert;
   }
@@ -851,12 +719,6 @@ export function useLocalEstateStore() {
         return updatedAlert;
       })
     }));
-
-    if (updatedAlert) {
-      void updateSupabaseEmergencyAlertStatus(updatedAlert, status).catch(() => {
-        // Local incident response state remains available when online sync is not ready.
-      });
-    }
 
     return updatedAlert;
   }
@@ -932,8 +794,6 @@ export function useLocalEstateStore() {
         })
       };
     });
-    void saveSupabasePayment(payment);
-
     return payment;
   }
 
@@ -1069,8 +929,6 @@ export function useLocalEstateStore() {
         }
       })
     }));
-    void saveSupabaseBill(bill);
-
     return bill;
   }
 
@@ -1424,20 +1282,6 @@ export function useLocalEstateStore() {
       ...current,
       estates: sortEstatesWithDefaultFirst([estate, ...current.estates])
     }));
-    void saveSupabaseEstate(estate)
-      .then(loadSupabaseEstateState)
-      .then((supabaseState) => {
-        if (supabaseState) {
-          setState((current) => {
-            const next = mergeSupabaseEstateState(current, supabaseState);
-            saveLocalEstateState(next);
-            return next;
-          });
-        }
-      })
-      .catch(() => {
-        // Local estate creation still works when Supabase is not configured.
-      });
 
     return estate;
   }
@@ -1454,17 +1298,18 @@ export function useLocalEstateStore() {
 
   async function refreshEstateState() {
     try {
-      const supabaseState = await loadSupabaseEstateState();
-      if (supabaseState) {
-        setState((current) => {
-          const next = mergeSupabaseEstateState(current, supabaseState);
-          saveLocalEstateState(next);
-          return next;
-        });
-        return;
-      }
+      const accessRequests = await readAppwriteAdminAccessRequests();
+      setState((current) => {
+        const next = {
+          ...current,
+          accessRequests
+        };
+        saveLocalEstateState(next);
+        return next;
+      });
+      return;
     } catch {
-      // Keep the local state available when Supabase is not reachable.
+      // Non-admin roles keep their current local state.
     }
 
     setState(readLocalEstateState());

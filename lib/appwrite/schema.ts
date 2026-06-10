@@ -68,6 +68,29 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
+    tableId: "access_requests",
+    name: "Access Requests",
+    columns: [
+      ...baseColumns,
+      { key: "authUserId", type: "string", size: 64, required: false },
+      { key: "fullName", type: "string", size: 160, required: true },
+      { key: "email", type: "string", size: 160, required: true },
+      { key: "phone", type: "string", size: 64, required: false },
+      { key: "requestedRole", type: "string", size: 32, required: true },
+      { key: "status", type: "string", size: 32, required: true },
+      { key: "requestedAt", type: "datetime", required: true },
+      { key: "reviewedAt", type: "datetime", required: false },
+      { key: "reviewedBy", type: "string", size: 64, required: false },
+      { key: "estateName", type: "string", size: 128, required: false }
+    ],
+    indexes: [
+      { key: "access_request_status_idx", type: "key", attributes: ["status"] },
+      { key: "access_request_estate_idx", type: "key", attributes: ["estateId"] },
+      { key: "access_request_phone_idx", type: "key", attributes: ["phone"] },
+      { key: "access_request_email_idx", type: "key", attributes: ["email"] }
+    ]
+  },
+  {
     tableId: "properties",
     name: "Properties",
     columns: [

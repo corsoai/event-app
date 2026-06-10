@@ -8,7 +8,7 @@ A modern Next.js + TypeScript Progressive Web App for gated estate and community
 - TypeScript
 - Tailwind CSS
 - Appwrite Sites deployment
-- Optional legacy Supabase Auth and Postgres schema
+- Appwrite Auth and Appwrite TablesDB
 - Manual PWA manifest and service worker
 - Mobile-first resident navigation and desktop admin sidebar
 
@@ -37,7 +37,7 @@ APPWRITE_DATABASE_ID=lbsview_estate
 # CORSO_APPWRITE_API_KEY=server-api-key-with-users-and-tablesdb-access
 ```
 
-The current Appwrite Sites deployment runs with local demo mode enabled while the backend is migrated to Appwrite. Do not set placeholder Supabase values in Appwrite environment variables. If Supabase variables are not set, the login page supports local demo routing so the MVP can be reviewed without a backend. When Supabase is configured, local demo login is disabled unless `NEXT_PUBLIC_ENABLE_LOCAL_DEMO=true`.
+The current Appwrite Sites deployment uses Appwrite Auth and Appwrite TablesDB. Local demo mode is only for localhost development when `NEXT_PUBLIC_ENABLE_LOCAL_DEMO=true`.
 
 ## Appwrite Sites Deployment
 
@@ -181,38 +181,29 @@ Other:
 
 - `/marketplace`
 
-## Supabase Setup
+## Appwrite TablesDB Setup
 
-1. Create a Supabase project.
-2. Open the SQL editor.
-3. Run `supabase/schema.sql`.
-4. Run `supabase/seed.sql`.
-5. Create auth users matching the demo emails or invite real users.
-6. Run `supabase/link-demo-auth-users.sql` to connect matching auth users to `profiles.auth_user_id`.
-
-The schema includes these MVP tables:
+The Appwrite schema includes these MVP tables:
 
 - `estates`
 - `profiles`
 - `access_requests`
 - `residents`
-- `household_members`
-- `domestic_staff`
-- `vehicles`
 - `visitors`
 - `visitor_logs`
-- `digital_ids`
 - `bills`
 - `payments`
-- `complaints`
-- `emergency_alerts`
-- `announcements`
-- `knowledge_base`
-- `activity_logs`
+- `resident_virtual_accounts`
+- `resident_subscriptions`
+- `payment_intents`
+- `payment_webhook_events`
+- `guard_checkpoints`
+- `guard_patrol_events`
+- `security_incidents`
+- `cso_reviews`
+- `audit_logs`
 
-Row-level security policies enforce estate scoping and role-based access at the database layer.
-
-For production demo accounts, create matching Supabase Auth users, then update `profiles.auth_user_id` to match each auth user ID. Local demo passwords do not work online unless local demo mode is explicitly enabled.
+Use `/admin/system` to verify Appwrite environment variables and initialize/repair the TablesDB schema.
 
 ## Panic / SOS Setup
 
@@ -222,17 +213,8 @@ The SOS feature adds:
 - Security response console at `/security/sos-alerts`
 - Estate admin oversight at `/admin/sos-alerts`
 - Device speaker siren after security/admin taps `Enable alert sound`
-- Supabase Realtime refresh for `emergency_alerts` while the app is open
 
-For a fresh Supabase setup, run the current `supabase/schema.sql` and `supabase/seed.sql`.
-
-If your database already has the older SOS test schema, run this before deploying the hardened version:
-
-```sql
-alter type public.emergency_alert_status add value if not exists 'cancelled';
-```
-
-Then confirm Realtime is enabled for `public.emergency_alerts` in Supabase so security/admin dashboards receive new SOS alerts immediately while open. Browser audio still requires each guard/admin device to tap `Enable alert sound` once.
+Browser audio still requires each guard/admin device to tap `Enable alert sound` once.
 
 ## PWA Notes
 

@@ -18,15 +18,14 @@ import {
   isLegacyEstateValue,
   removeLegacyLekkiAccounts
 } from "@/lib/local-store";
-import { getSupabaseBrowserClient, isLocalDemoEnabled } from "@/lib/supabase/client";
 import {
-  createSupabaseAccessRequest,
-  readPublicSupabaseEstates,
-  readSupabaseAccessRequestForCurrentUser,
-  readSupabaseSessionProfile
-} from "@/lib/supabase/data";
+  createAppwriteAccessRequest,
+  readAppwriteAccessRequestForCurrentUser,
+  readPublicAppwriteEstates
+} from "@/lib/appwrite/browser-data";
+import { isLocalDemoEnabled } from "@/lib/local-demo";
 import type { UserRole } from "@/lib/types";
-import { DEFAULT_ESTATE_NAME, loginIdentifierToEmail, normalizePhoneNumber, sortEstatesWithDefaultFirst } from "@/lib/utils";
+import { DEFAULT_ESTATE_NAME, normalizePhoneNumber, sortEstatesWithDefaultFirst } from "@/lib/utils";
 
 type Mode = "login" | "signup" | "forgot";
 
@@ -112,7 +111,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
 
     let active = true;
 
-    readPublicSupabaseEstates()
+    readPublicAppwriteEstates()
       .then((estates) => {
         if (!active || !estates.length) {
           return;
@@ -149,17 +148,10 @@ export function AuthCard({ mode }: { mode: Mode }) {
       return;
     }
 
-    const supabase = getSupabaseBrowserClient();
-
     try {
       if (mode === "forgot") {
-        if (supabase) {
-          await supabase.auth.resetPasswordForEmail(email, {
-            redirectTo: `${window.location.origin}/login`
-          });
-        }
         setMessageTone("success");
-        setMessage("Password reset instructions are ready to send through Supabase Auth.");
+        setMessage("Ask an estate admin to reset your Appwrite password from Users & Roles.");
         return;
       }
 
@@ -173,8 +165,8 @@ export function AuthCard({ mode }: { mode: Mode }) {
           return;
         }
 
-        if (supabase && !localDemoEnabled) {
-          const result = await createSupabaseAccessRequest({
+        if (!localDemoEnabled) {
+          const result = await createAppwriteAccessRequest({
             fullName: name,
             phone: normalizedPhone,
             email,
@@ -239,7 +231,6 @@ export function AuthCard({ mode }: { mode: Mode }) {
         return;
       }
 
-      const loginEmail = loginIdentifierToEmail(email);
       const demoUser = demoUsers.find((user) => user.email.toLowerCase() === email.toLowerCase());
       if (appwriteLoginPreferred) {
         const appwriteResult = await signInWithAppwrite(email, password);
@@ -263,52 +254,6 @@ export function AuthCard({ mode }: { mode: Mode }) {
           setMessage(appwriteResult.error ?? "Invalid login details.");
           setLoading(false);
           return;
-        }
-      }
-
-      if (!appwriteLoginPreferred && supabase) {
-        const result = await supabase.auth.signInWithPassword({ email: loginEmail, password });
-        if (result.error) {
-          if (!localDemoEnabled) {
-            setMessageTone("error");
-            setMessage(result.error.message);
-            setLoading(false);
-            return;
-          }
-        } else {
-          const profile = await readSupabaseSessionProfile();
-          if (profile) {
-            persistSession(profile);
-            const destination = params.get("next") ?? roleHome[profile.role];
-            router.prefetch(destination);
-            window.location.assign(destination);
-            return;
-          }
-
-          const accessRequest = await readSupabaseAccessRequestForCurrentUser(email);
-          if (accessRequest?.status === "pending") {
-            await supabase.auth.signOut();
-            setMessageTone("info");
-            setMessage("This account is waiting for estate admin approval.");
-            setLoading(false);
-            return;
-          }
-
-          if (accessRequest?.status === "rejected") {
-            await supabase.auth.signOut();
-            setMessageTone("error");
-            setMessage("This access request was rejected. Contact the estate admin.");
-            setLoading(false);
-            return;
-          }
-
-          if (!localDemoEnabled) {
-            await supabase.auth.signOut();
-            setMessageTone("error");
-            setMessage("No approved profile found for this account. Ask admin to approve it.");
-            setLoading(false);
-            return;
-          }
         }
       }
 
@@ -353,7 +298,9 @@ export function AuthCard({ mode }: { mode: Mode }) {
           return;
         }
 
-        const accessRequest = findLocalAccessRequest(email);
+        const accessRequest = localDemoEnabled
+          ? findLocalAccessRequest(email)
+          : await readAppwriteAccessRequestForCurrentUser(email);
         if (accessRequest?.status === "pending") {
           setMessageTone("info");
           setMessage("This account is waiting for estate admin approval.");

@@ -76,8 +76,7 @@ import {
   type LocalEstateState,
   useLocalEstateStore
 } from "@/lib/local-store";
-import { getSupabaseBrowserClient } from "@/lib/supabase/client";
-import { createSupabaseResidentVisitor, findSupabaseVisitorByCode } from "@/lib/supabase/data";
+import { createAppwriteResidentVisitor, findAppwriteVisitorByCode } from "@/lib/appwrite/browser-data";
 import {
   installGuardTourSync,
   isGuardCheckpointQr,
@@ -3066,23 +3065,6 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
     setSelectedUserIds((current) => current.filter((id) => users.some((user) => user.id === id)));
   }, [users]);
 
-  async function getAccessToken() {
-    const supabase = getSupabaseBrowserClient();
-    if (!supabase) {
-      throw new Error("Supabase is not configured.");
-    }
-
-    const {
-      data: { session }
-    } = await supabase.auth.getSession();
-
-    if (!session?.access_token) {
-      throw new Error("Your login session has expired. Sign in again.");
-    }
-
-    return session.access_token;
-  }
-
   function toggleUserSelection(userId: string) {
     setSelectedUserIds((current) =>
       current.includes(userId) ? current.filter((id) => id !== userId) : [...current, userId]
@@ -3093,74 +3075,32 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
     setSelectedUserIds(allUsersSelected ? [] : users.map((user) => user.id));
   }
 
-  async function patchUserWithToken(token: string, payload: Record<string, unknown>) {
-    const response = await fetch("/api/admin/users", {
+  async function patchManagedUser(payload: Record<string, unknown>) {
+    const response = await fetch("/api/appwrite/admin/users", {
       method: "PATCH",
       headers: {
-        Authorization: `Bearer ${token}`,
         "Content-Type": "application/json"
       },
       body: JSON.stringify(payload)
     });
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.error ?? "Unable to update user.");
-    }
-
-    return data;
-  }
-
-  async function patchManagedUser(payload: Record<string, unknown>) {
-    if (!getSupabaseBrowserClient()) {
-      const response = await fetch("/api/appwrite/admin/users", {
-        method: "PATCH",
-        headers: {
-          "Content-Type": "application/json"
-        },
-        body: JSON.stringify(payload)
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error ?? "Unable to update Appwrite user.");
-      }
-
-      return data;
-    }
-
-    const token = await getAccessToken();
-    return patchUserWithToken(token, payload);
-  }
-
-  async function deleteUserWithToken(token: string, profileId: string) {
-    const response = await fetch(`/api/admin/users?profileId=${encodeURIComponent(profileId)}`, {
-      method: "DELETE",
-      headers: {
-        Authorization: `Bearer ${token}`
-      }
-    });
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error ?? "Unable to delete user.");
+      throw new Error(data.error ?? "Unable to update Appwrite user.");
     }
 
     return data;
   }
 
   async function deleteManagedUser(profileId: string) {
-    if (!getSupabaseBrowserClient()) {
-      const response = await fetch(`/api/appwrite/admin/users?profileId=${encodeURIComponent(profileId)}`, {
-        method: "DELETE"
-      });
-      const data = await response.json();
-      if (!response.ok) {
-        throw new Error(data.error ?? "Unable to delete Appwrite user.");
-      }
-
-      return data;
+    const response = await fetch(`/api/appwrite/admin/users?profileId=${encodeURIComponent(profileId)}`, {
+      method: "DELETE"
+    });
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error ?? "Unable to delete Appwrite user.");
     }
 
-    const token = await getAccessToken();
-    return deleteUserWithToken(token, profileId);
+    return data;
   }
 
   async function loadUsers() {
@@ -3168,26 +3108,10 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
     setMessage("");
 
     try {
-      if (!getSupabaseBrowserClient()) {
-        const response = await fetch("/api/appwrite/admin/users", { cache: "no-store" });
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error ?? "Unable to load Appwrite users.");
-        }
-
-        setUsers(data.users ?? []);
-        return;
-      }
-
-      const token = await getAccessToken();
-      const response = await fetch("/api/admin/users", {
-        headers: {
-          Authorization: `Bearer ${token}`
-        }
-      });
+      const response = await fetch("/api/appwrite/admin/users", { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error ?? "Unable to load users.");
+        throw new Error(data.error ?? "Unable to load Appwrite users.");
       }
 
       setUsers(data.users ?? []);
@@ -3210,46 +3134,9 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
     const form = new FormData(formElement);
 
     try {
-      if (!getSupabaseBrowserClient()) {
-        const response = await fetch("/api/appwrite/admin/users", {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json"
-          },
-          body: JSON.stringify({
-            fullName: String(form.get("fullName") ?? ""),
-            email: String(form.get("email") ?? ""),
-            phone: String(form.get("phone") ?? ""),
-            role,
-            estateId: String(form.get("estateId") ?? state.estates[0]?.id ?? ""),
-            houseNumber: String(form.get("houseNumber") ?? ""),
-            password: String(form.get("password") ?? "")
-          })
-        });
-        const data = await response.json();
-        if (!response.ok) {
-          throw new Error(data.error ?? "Unable to create Appwrite user.");
-        }
-
-        setMessage(data.message);
-        setCreatedPassword(data.temporaryPassword);
-        setTemporaryCredential({
-          fullName: data.user.fullName,
-          role,
-          loginIdentifier: data.loginIdentifier,
-          password: data.temporaryPassword
-        });
-        formElement.reset();
-        setEmailInvite(false);
-        await loadUsers();
-        return;
-      }
-
-      const token = await getAccessToken();
-      const response = await fetch("/api/admin/users", {
+      const response = await fetch("/api/appwrite/admin/users", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json"
         },
         body: JSON.stringify({
@@ -3257,27 +3144,26 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
           email: String(form.get("email") ?? ""),
           phone: String(form.get("phone") ?? ""),
           role,
-          estateId: String(form.get("estateId") ?? ""),
+          estateId: String(form.get("estateId") ?? state.estates[0]?.id ?? ""),
           houseNumber: String(form.get("houseNumber") ?? ""),
-          password: String(form.get("password") ?? ""),
-          emailInvite
+          password: String(form.get("password") ?? "")
         })
       });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error ?? "Unable to create user.");
+        throw new Error(data.error ?? "Unable to create Appwrite user.");
       }
 
-      setMessage(data.message ?? "User created.");
-      setCreatedPassword(data.temporaryPassword ?? "");
-      setTemporaryCredential(data.temporaryPassword ? {
-        fullName: data.user?.fullName ?? String(form.get("fullName") ?? ""),
+      setMessage(data.message);
+      setCreatedPassword(data.temporaryPassword);
+      setTemporaryCredential({
+        fullName: data.user.fullName,
         role,
-        loginIdentifier: data.loginIdentifier ?? String(form.get("phone") ?? ""),
+        loginIdentifier: data.loginIdentifier,
         password: data.temporaryPassword
-      } : null);
-      setSetupLink(data.setupLink ?? "");
+      });
       formElement.reset();
+      setEmailInvite(false);
       await loadUsers();
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to create user.");
@@ -4010,7 +3896,7 @@ function ResidentSosFlow() {
 }
 
 export function InviteVisitorPage() {
-  const { state, addVisitor, addVisitorRecord } = useLocalEstateStore();
+  const { state, addVisitorRecord } = useLocalEstateStore();
   const resident = useCurrentResidentProfile(state);
   const estate = state.estates.find((item) => item.id === resident.estateId) ?? state.estates[0];
   const today = dateInputValue();
@@ -4043,28 +3929,14 @@ export function InviteVisitorPage() {
     setStatus("Saving visitor invitation online...");
 
     try {
-      const supabase = getSupabaseBrowserClient();
-      const savedVisitor = supabase
-        ? addVisitorRecord(await createSupabaseResidentVisitor(input))
-        : addVisitor(input);
-      let demoRegistrySaved = false;
-
-      if (!supabase) {
-        demoRegistrySaved = await saveDemoVisitorInvitation(savedVisitor, resident);
-      }
+      const savedVisitor = addVisitorRecord(await createAppwriteResidentVisitor(input));
 
       setCode(savedVisitor.code);
       setVisitorQrValue(visitorQrValueFor(savedVisitor));
       setSharePhone(phone);
       setShareDate(visitDate);
       setShareTime(arrivalTime);
-      setStatus(
-        supabase
-          ? "Visitor invitation saved online. Security can now verify this code."
-          : demoRegistrySaved
-            ? "Visitor invitation saved for demo security verification. Security can scan the QR or enter this code."
-            : "Visitor invitation saved in this browser. Security can scan the QR, or use the same device to search the code."
-      );
+      setStatus("Visitor invitation saved online. Security can now verify this code.");
     } catch (error) {
       setStatus(error instanceof Error ? error.message : "Visitor invitation could not be saved online.");
     } finally {
@@ -4131,17 +4003,7 @@ export function MyVisitorsPage() {
   const visitorSyncKey = myVisitors.map((visitor) => `${visitor.code}:${visitor.status}`).join(",");
 
   useEffect(() => {
-    if (getSupabaseBrowserClient() || !myVisitors.length) {
-      return;
-    }
-
-    const syncStatuses = () => {
-      void syncDemoVisitorStatuses(myVisitors, addVisitorRecord);
-    };
-    syncStatuses();
-    const interval = window.setInterval(syncStatuses, 5000);
-
-    return () => window.clearInterval(interval);
+    return undefined;
   }, [addVisitorRecord, myVisitors, visitorSyncKey]);
 
   return (
@@ -5535,18 +5397,7 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
     setMessage("Searching visitor records...");
 
     try {
-      if (!getSupabaseBrowserClient()) {
-        const demoResult = await findDemoVisitorByCode(targetCode);
-        if (demoResult?.visitor) {
-          loadVisitorLookup(demoResult.visitor, demoResult.resident);
-          return;
-        }
-
-        setMessage("No valid visitor invitation found for this code. In demo mode, scan the visitor QR or search on the same device that generated the invitation.");
-        return;
-      }
-
-      const result = await findSupabaseVisitorByCode(targetCode);
+      const result = await findAppwriteVisitorByCode(targetCode);
       loadVisitorLookup(result.visitor, result.resident);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "No valid visitor invitation found for this code.");
@@ -5612,10 +5463,6 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
       }
     } else {
       setMessage(gateLookupMessage(visitor));
-    }
-
-    if (nextVisitor.status !== visitor.status && !getSupabaseBrowserClient()) {
-      void updateDemoVisitorRecordStatus(nextVisitor, nextVisitor.status);
     }
 
     addVisitorRecord(nextVisitor);
@@ -5889,64 +5736,6 @@ function readQrValueFromCanvas(video: HTMLVideoElement, canvasRef: { current: HT
   context.drawImage(video, 0, 0, width, height);
   const image = context.getImageData(0, 0, width, height);
   return jsQR(image.data, width, height, { inversionAttempts: "attemptBoth" })?.data.trim() ?? "";
-}
-
-async function saveDemoVisitorInvitation(visitor: Visitor, resident: Resident) {
-  try {
-    const response = await fetch("/api/local/visitors", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json"
-      },
-      body: JSON.stringify({ visitor, resident })
-    });
-
-    return response.ok;
-  } catch {
-    return false;
-  }
-}
-
-async function findDemoVisitorByCode(code: string) {
-  const response = await fetch(`/api/local/visitors?code=${encodeURIComponent(code)}`, {
-    cache: "no-store"
-  }).catch(() => null);
-
-  if (!response || response.status === 404) {
-    return null;
-  }
-
-  const payload = await response.json().catch(() => null);
-  if (!response.ok || !payload?.visitor) {
-    return null;
-  }
-
-  return payload as { visitor: Visitor; resident: Resident | null };
-}
-
-async function updateDemoVisitorRecordStatus(visitor: Visitor, status: Visitor["status"]) {
-  await fetch("/api/local/visitors", {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json"
-    },
-    body: JSON.stringify({
-      visitorId: visitor.id,
-      code: visitor.code,
-      status
-    })
-  }).catch(() => null);
-}
-
-async function syncDemoVisitorStatuses(visitorsList: Visitor[], onUpdate: (visitor: Visitor) => Visitor) {
-  await Promise.all(
-    visitorsList.map(async (visitor) => {
-      const result = await findDemoVisitorByCode(visitor.code);
-      if (result?.visitor && result.visitor.status !== visitor.status) {
-        onUpdate(result.visitor);
-      }
-    })
-  );
 }
 
 function visitorQrValueFor(visitor: Visitor) {

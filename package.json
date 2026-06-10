@@ -12,7 +12,6 @@
     "verify": "next build && tsc -p tsconfig.typecheck.json --noEmit"
   },
   "dependencies": {
-    "@supabase/supabase-js": "2.45.4",
     "clsx": "^2.1.1",
     "jsqr": "^1.4.0",
     "lucide-react": "^0.468.0",
