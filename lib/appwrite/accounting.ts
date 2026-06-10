@@ -1,6 +1,7 @@
 import type { AuditLog, Bill, Payment, PaymentChannel, Resident } from "@/lib/types";
 import { APPWRITE_LBSVIEW_ESTATE_ID, appwriteRequest, appwriteUpsertRow, getAppwriteServerConfig, safeAppwriteId, setupAppwriteOnboardingSchema } from "@/lib/appwrite/server";
 import { listAppwriteResidentDirectory, listAppwriteTableRows, type AppwriteResidentDirectory } from "@/lib/appwrite/residents";
+import { normalizePhoneNumber } from "@/lib/utils";
 
 type AppwriteBillRow = {
   $id?: string;
@@ -94,6 +95,12 @@ export type AppwriteBillInput = {
   category?: string;
 };
 
+export type AppwriteResidentAccountingIdentity = {
+  email?: string;
+  phone?: string;
+  fullName?: string;
+};
+
 const ACCOUNTING_CACHE_MS = 30_000;
 let accountingCache: { data: AppwriteAccountingData; expiresAt: number } | null = null;
 let summaryCache: { data: AppwriteAccountingSummary; expiresAt: number } | null = null;
@@ -135,6 +142,58 @@ export async function listAppwriteAccounting(options: { bypassCache?: boolean; e
 
   accountingCache = { data, expiresAt: Date.now() + ACCOUNTING_CACHE_MS };
   return data;
+}
+
+export async function listAppwriteResidentAccounting(
+  identity: AppwriteResidentAccountingIdentity,
+  options: { bypassCache?: boolean; ensureSchema?: boolean } = {}
+): Promise<AppwriteAccountingData & { matchedResidentId: string | null }> {
+  const accounting = await listAppwriteAccounting(options);
+  const resident = findAccountingResident(accounting.residents, identity);
+
+  if (!resident) {
+    return {
+      properties: [],
+      units: [],
+      residents: [],
+      bills: [],
+      payments: [],
+      auditLogs: [],
+      total: {
+        properties: 0,
+        units: 0,
+        residents: 0,
+        bills: 0,
+        payments: 0
+      },
+      matchedResidentId: null
+    };
+  }
+
+  const bills = accounting.bills.filter((bill) => bill.residentId === resident.id);
+  const billIds = new Set(bills.map((bill) => bill.id));
+  const payments = accounting.payments.filter((payment) => payment.residentId === resident.id || billIds.has(payment.billId));
+  const propertyIds = new Set([resident.propertyId, ...bills.map((bill) => bill.propertyId)].filter(Boolean));
+  const unitIds = new Set([resident.unitId, ...bills.map((bill) => bill.unitId)].filter(Boolean));
+  const properties = accounting.properties.filter((property) => propertyIds.has(property.id));
+  const units = accounting.units.filter((unit) => unitIds.has(unit.id) || unit.currentResidentId === resident.id);
+
+  return {
+    properties,
+    units,
+    residents: [resident],
+    bills,
+    payments,
+    auditLogs: [],
+    total: {
+      properties: properties.length,
+      units: units.length,
+      residents: 1,
+      bills: bills.length,
+      payments: payments.length
+    },
+    matchedResidentId: resident.id
+  };
 }
 
 export async function getAppwriteAccountingSummary(options: { bypassCache?: boolean; ensureSchema?: boolean } = {}): Promise<AppwriteAccountingSummary> {
@@ -377,6 +436,29 @@ function residentBalanceMap(bills: Bill[]) {
   }
 
   return balances;
+}
+
+function findAccountingResident(residents: Resident[], identity: AppwriteResidentAccountingIdentity) {
+  const email = identity.email?.trim().toLowerCase() ?? "";
+  const phone = normalizePhoneNumber(identity.phone ?? "");
+  const fullName = identity.fullName?.trim().toLowerCase() ?? "";
+
+  if (phone) {
+    const byPhone = residents.find((resident) => normalizePhoneNumber(resident.phone ?? "") === phone);
+    if (byPhone) return byPhone;
+  }
+
+  if (email) {
+    const byEmail = residents.find((resident) => resident.email.trim().toLowerCase() === email);
+    if (byEmail) return byEmail;
+  }
+
+  if (fullName) {
+    const byName = residents.find((resident) => resident.name.trim().toLowerCase() === fullName);
+    if (byName) return byName;
+  }
+
+  return undefined;
 }
 
 function mapBillRow(row: AppwriteBillRow, resident?: Resident): Bill {

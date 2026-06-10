@@ -325,7 +325,14 @@ function mergeRecordsById<T extends { id: string }>(localRecords: T[], liveRecor
 }
 
 function mergeAccountingState(state: LocalEstateState, accounting: AppwriteAccountingDirectory | null): LocalEstateState {
-  if (!accounting?.bills.length && !accounting?.payments.length) {
+  if (
+    !accounting?.properties.length &&
+    !accounting?.units.length &&
+    !accounting?.residents.length &&
+    !accounting?.bills.length &&
+    !accounting?.payments.length &&
+    !accounting?.auditLogs.length
+  ) {
     return state;
   }
 
@@ -337,6 +344,51 @@ function mergeAccountingState(state: LocalEstateState, accounting: AppwriteAccou
     bills: accounting?.bills.length ? accounting.bills : state.bills,
     payments: accounting?.payments.length ? accounting.payments : state.payments,
     auditLogs: accounting?.auditLogs.length ? accounting.auditLogs : state.auditLogs
+  };
+}
+
+function useResidentAccountingState(state: LocalEstateState) {
+  const [accounting, setAccounting] = useState<AppwriteAccountingDirectory | null>(null);
+  const [loadingAccounting, setLoadingAccounting] = useState(false);
+  const [accountingStatus, setAccountingStatus] = useState("Loading your account...");
+
+  async function refreshAccounting(options: { bypassCache?: boolean } = {}) {
+    setLoadingAccounting(true);
+    setAccountingStatus("Loading your account...");
+    const refreshQuery = options.bypassCache ? "?refresh=1" : "";
+
+    try {
+      const response = await fetch(`/api/appwrite/resident/accounting${refreshQuery}`, { cache: "no-store" });
+      const payload = await response.json().catch(() => null) as (AppwriteAccountingDirectory & {
+        error?: string;
+        matchedResidentId?: string | null;
+      }) | null;
+      if (!response.ok || !payload) {
+        throw new Error(payload?.error ?? "Unable to load your account.");
+      }
+
+      setAccounting(payload);
+      setAccountingStatus(payload.residents.length
+        ? `Loaded ${payload.bills.length} bills and ${payload.payments.length} payments from your account.`
+        : "No resident accounting record matched this login yet.");
+    } catch (error) {
+      setAccounting(null);
+      setAccountingStatus(error instanceof Error ? error.message : "Unable to load your account.");
+    } finally {
+      setLoadingAccounting(false);
+    }
+  }
+
+  useEffect(() => {
+    void refreshAccounting();
+  }, []);
+
+  return {
+    residentState: mergeAccountingState(state, accounting),
+    accounting,
+    accountingStatus,
+    loadingAccounting,
+    refreshAccounting
   };
 }
 
@@ -3633,22 +3685,28 @@ function TemporaryCredentialBox({ credential }: { credential: TemporaryCredentia
 
 export function ResidentDashboard() {
   const { state } = useLocalEstateStore();
-  const resident = useCurrentResidentProfile(state);
-  const balance = residentBillingBalance(state, resident.id);
+  const { residentState, accountingStatus, loadingAccounting, refreshAccounting } = useResidentAccountingState(state);
+  const resident = useCurrentResidentProfile(residentState);
+  const balance = residentBillingBalance(residentState, resident.id);
   return (
     <>
       <PageHeader title={`Welcome, ${resident.name}`} description="Invite visitors, check bills, submit complaints, read announcements, and keep your digital ID ready." >
         <div className="flex flex-wrap gap-2">
+          <Button type="button" variant="secondary" onClick={() => void refreshAccounting({ bypassCache: true })}>
+            <RefreshCw className="h-4 w-4" />
+            {loadingAccounting ? "Refreshing" : "Refresh account"}
+          </Button>
           <Link href="/resident/invite-visitor">
             <Button><QrCode className="h-4 w-4" />Invite visitor</Button>
           </Link>
         </div>
       </PageHeader>
+      <p className="mb-4 rounded-lg border border-line bg-white/70 px-3 py-2 text-sm text-slate-600">{accountingStatus}</p>
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard label="Subscription balance" value={money(balance.netReceivable)} helper="Outstanding after credit" icon={<ReceiptText className="h-5 w-5" />} />
         <StatCard label="Credit available" value={money(balance.availableCredit)} helper="Advance payment balance" icon={<BadgeCheck className="h-5 w-5" />} />
-        <StatCard label="Expected visitors" value={String(state.visitors.filter((visitor) => visitor.residentId === resident.id).length)} helper="Pending access codes" icon={<DoorOpen className="h-5 w-5" />} />
-        <StatCard label="My complaints" value={String(state.complaints.filter((complaint) => complaint.residentId === resident.id).length)} helper="Open and resolved tickets" icon={<ClipboardList className="h-5 w-5" />} />
+        <StatCard label="Expected visitors" value={String(residentState.visitors.filter((visitor) => visitor.residentId === resident.id).length)} helper="Pending access codes" icon={<DoorOpen className="h-5 w-5" />} />
+        <StatCard label="My complaints" value={String(residentState.complaints.filter((complaint) => complaint.residentId === resident.id).length)} helper="Open and resolved tickets" icon={<ClipboardList className="h-5 w-5" />} />
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         <Card>
@@ -4025,30 +4083,38 @@ export function MyVisitorsPage() {
 
 export function MyBillsPage() {
   const { state } = useLocalEstateStore();
-  const resident = useCurrentResidentProfile(state);
-  const myBills = state.bills.filter((bill) => bill.residentId === resident.id);
-  const balance = residentBillingBalance(state, resident.id);
+  const { residentState, accountingStatus, loadingAccounting, refreshAccounting } = useResidentAccountingState(state);
+  const resident = useCurrentResidentProfile(residentState);
+  const myBills = residentState.bills.filter((bill) => bill.residentId === resident.id);
+  const balance = residentBillingBalance(residentState, resident.id);
 
   return (
     <>
-      <PageHeader title="My bills" description="View outstanding estate bills, due dates, and payment status." />
+      <PageHeader title="My bills" description="View outstanding estate bills, due dates, and payment status.">
+        <Button type="button" variant="secondary" onClick={() => void refreshAccounting({ bypassCache: true })}>
+          <RefreshCw className="h-4 w-4" />
+          {loadingAccounting ? "Refreshing" : "Refresh account"}
+        </Button>
+      </PageHeader>
+      <p className="mb-4 rounded-lg border border-line bg-white/70 px-3 py-2 text-sm text-slate-600">{accountingStatus}</p>
       <div className="mb-6 grid gap-4 md:grid-cols-3">
         <StatCard label="Net amount due" value={money(balance.netReceivable)} helper="Outstanding after credit" icon={<ReceiptText className="h-5 w-5" />} />
         <StatCard label="Credit available" value={money(balance.availableCredit)} helper="Advance payment balance" icon={<BadgeCheck className="h-5 w-5" />} />
         <StatCard label="Confirmed paid" value={money(balance.paidAmount)} helper="Recorded payments" icon={<WalletCards className="h-5 w-5" />} />
       </div>
-      <BillsTable title="Resident billing" rows={myBills} state={state} residentsDirectory={state.residents} />
+      <BillsTable title="Resident billing" rows={myBills} state={residentState} residentsDirectory={residentState.residents} />
     </>
   );
 }
 
 export function PaymentHistoryPage() {
   const { state, addPayment } = useLocalEstateStore();
-  const resident = useCurrentResidentProfile(state);
-  const myBills = state.bills.filter((bill) => bill.residentId === resident.id);
-  const payableBills = myBills.filter((bill) => billOutstandingAmount(state, bill) > 0);
-  const myPayments = state.payments.filter((payment) => payment.residentId === resident.id);
-  const balance = residentBillingBalance(state, resident.id);
+  const { residentState, accountingStatus, loadingAccounting, refreshAccounting } = useResidentAccountingState(state);
+  const resident = useCurrentResidentProfile(residentState);
+  const myBills = residentState.bills.filter((bill) => bill.residentId === resident.id);
+  const payableBills = myBills.filter((bill) => billOutstandingAmount(residentState, bill) > 0);
+  const myPayments = residentState.payments.filter((payment) => payment.residentId === resident.id);
+  const balance = residentBillingBalance(residentState, resident.id);
   const [paymentMessage, setPaymentMessage] = useState("");
 
   function submitOnlinePayment(event: FormEvent<HTMLFormElement>) {
@@ -4063,7 +4129,7 @@ export function PaymentHistoryPage() {
 
     const payment = addPayment({
       billId: bill.id,
-      amount: billOutstandingAmount(state, bill),
+      amount: billOutstandingAmount(residentState, bill),
       reference: `${processor?.toUpperCase() ?? "ONLINE"}-${Date.now()}`,
       channel: "online",
       processor,
@@ -4090,7 +4156,13 @@ export function PaymentHistoryPage() {
 
   return (
     <>
-      <PageHeader title="Payment history" description="Pay bills online first. Manual bank transfer, POS, cash, or WhatsApp receipts remain available when online payment is not possible." />
+      <PageHeader title="Payment history" description="Pay bills online first. Manual bank transfer, POS, cash, or WhatsApp receipts remain available when online payment is not possible.">
+        <Button type="button" variant="secondary" onClick={() => void refreshAccounting({ bypassCache: true })}>
+          <RefreshCw className="h-4 w-4" />
+          {loadingAccounting ? "Refreshing" : "Refresh account"}
+        </Button>
+      </PageHeader>
+      <p className="mb-4 rounded-lg border border-line bg-white/70 px-3 py-2 text-sm text-slate-600">{accountingStatus}</p>
       <div className="mb-6 grid gap-4 md:grid-cols-3">
         <StatCard label="Net amount due" value={money(balance.netReceivable)} helper="Outstanding after credit" icon={<ReceiptText className="h-5 w-5" />} />
         <StatCard label="Credit available" value={money(balance.availableCredit)} helper="Applied to future subscription" icon={<BadgeCheck className="h-5 w-5" />} />
@@ -4105,7 +4177,7 @@ export function PaymentHistoryPage() {
                 <Select name="billId" defaultValue={myBills[0]?.id}>
                   {payableBills.map((bill) => (
                     <option key={bill.id} value={bill.id}>
-                      {bill.title} - {money(billOutstandingAmount(state, bill))}
+                      {bill.title} - {money(billOutstandingAmount(residentState, bill))}
                     </option>
                   ))}
                 </Select>
@@ -4118,7 +4190,7 @@ export function PaymentHistoryPage() {
                   <option value="gtbank_squad">GTBank Squad</option>
                 </Select>
               </Field>
-              <Field label="Unit"><Input value={residentUnitLabel(state, resident)} readOnly /></Field>
+              <Field label="Unit"><Input value={residentUnitLabel(residentState, resident)} readOnly /></Field>
               <div className="flex items-end">
                 <Button className="w-full"><WalletCards className="h-4 w-4" />Pay online</Button>
               </div>
@@ -4171,7 +4243,7 @@ export function PaymentHistoryPage() {
         headers={["Reference", "Bill", "Amount", "Channel", "Date", "Status"]}
         rows={myPayments.map((payment) => [
           <span key={payment.reference} className="font-mono text-smart">{payment.reference}</span>,
-          state.bills.find((bill) => bill.id === payment.billId)?.title ?? "Unknown bill",
+          residentState.bills.find((bill) => bill.id === payment.billId)?.title ?? "Unknown bill",
           money(payment.amount),
           paymentChannelLabel(payment),
           payment.date,
