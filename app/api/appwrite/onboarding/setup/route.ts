@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AppwriteRestError, setupAppwriteOnboardingSchema } from "@/lib/appwrite/server";
+import { seedLbsviewSubscriptionRates } from "@/lib/appwrite/subscription-rates";
 
 const adminRoles = new Set(["estate_admin", "super_admin"]);
 
@@ -18,7 +19,16 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    return NextResponse.json({ result });
+    const subscriptionRates = await seedLbsviewSubscriptionRates();
+
+    return NextResponse.json({
+      result: {
+        ...result,
+        seeded: {
+          subscriptionRates: subscriptionRates.length
+        }
+      }
+    });
   } catch (error) {
     return NextResponse.json(
       { error: appwriteErrorMessage(error) },

@@ -164,6 +164,128 @@ export type KnowledgeArticle = {
   updatedAt: string;
 };
 
+export type AppwriteAnnouncement = {
+  id: string;
+  estateId: string;
+  title: string;
+  message: string;
+  priority: "low" | "normal" | "high" | "urgent";
+  targetRole: "all" | "resident" | "security" | "cso";
+  createdBy: string;
+  createdByName: string;
+  publishedAt?: string;
+  expiresAt?: string;
+  status: "draft" | "published" | "archived";
+  isPinned: boolean;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AppwriteComplaint = {
+  id: string;
+  estateId: string;
+  residentId: string;
+  residentName: string;
+  unitCode: string;
+  propertyCode: string;
+  category: "security" | "power" | "water" | "waste" | "noise" | "road" | "facility" | "other";
+  priority: "low" | "medium" | "high";
+  subject: string;
+  description: string;
+  status: "open" | "in_progress" | "resolved" | "closed";
+  assignedTo?: string;
+  assignedToName?: string;
+  adminResponse?: string;
+  resolvedAt?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AppwriteKnowledgeBaseArticle = {
+  id: string;
+  estateId: string;
+  title: string;
+  content: string;
+  category: "billing" | "access" | "security" | "facilities" | "rules" | "emergency" | "general";
+  targetRole: "all" | "resident" | "security" | "cso";
+  createdBy: string;
+  createdByName: string;
+  isPublished: boolean;
+  viewCount: number;
+  sortOrder: number;
+  tags?: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type HouseholdMember = {
+  id: string;
+  estateId: string;
+  residentId: string;
+  unitCode: string;
+  propertyCode: string;
+  fullName: string;
+  relationship:
+    | "spouse"
+    | "child"
+    | "parent"
+    | "sibling"
+    | "relative"
+    | "domestic_staff"
+    | "driver"
+    | "guard"
+    | "vendor"
+    | "other";
+  phone?: string;
+  idType?: "nin" | "bvn" | "passport" | "drivers_license" | "other" | "none";
+  idNumber?: string;
+  photoFileId?: string;
+  hasEstateAccess: boolean;
+  accessNote?: string;
+  addedBy: string;
+  status: "active" | "inactive";
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type SubscriptionRate = {
+  id: string;
+  estateId: string;
+  apartmentType:
+    | "SELF_CONTAINED"
+    | "ONE_BEDROOM"
+    | "TWO_BEDROOM"
+    | "THREE_BEDROOM"
+    | "DUPLEX"
+    | "LANDLORD_OCCUPIER"
+    | "CUSTOM";
+  monthlyRate: number;
+  effectiveFrom: string;
+  effectiveTo?: string;
+  createdBy: string;
+  reason: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type MonthlyBillingRun = {
+  id: string;
+  estateId: string;
+  billingMonth: string;
+  runDate: string;
+  runBy: string;
+  runByName: string;
+  totalResidents: number;
+  billsCreated: number;
+  autoPaidFromCredit: number;
+  requiresPayment: number;
+  skipped: number;
+  errors: number;
+  errorDetails?: string;
+  status: "completed" | "partial" | "failed";
+  createdAt: string;
+};
+
 export type EmergencyAlertType =
   | "medical"
   | "security"

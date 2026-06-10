@@ -1,4 +1,59 @@
 export const APPWRITE_ONBOARDING_DATABASE_ID = "lbsview_estate";
+export const APPWRITE_TABLE_ESTATES = "estates";
+export const APPWRITE_TABLE_PROFILES = "profiles";
+export const APPWRITE_TABLE_ACCESS_REQUESTS = "access_requests";
+export const APPWRITE_TABLE_PROPERTIES = "properties";
+export const APPWRITE_TABLE_UNITS = "units";
+export const APPWRITE_TABLE_RESIDENTS = "residents";
+export const APPWRITE_TABLE_RESIDENT_UNIT_HISTORY = "resident_unit_history";
+export const APPWRITE_TABLE_BILLS = "bills";
+export const APPWRITE_TABLE_PAYMENTS = "payments";
+export const APPWRITE_TABLE_RESIDENT_VIRTUAL_ACCOUNTS = "resident_virtual_accounts";
+export const APPWRITE_TABLE_RESIDENT_SUBSCRIPTIONS = "resident_subscriptions";
+export const APPWRITE_TABLE_PAYMENT_INTENTS = "payment_intents";
+export const APPWRITE_TABLE_PAYMENT_WEBHOOK_EVENTS = "payment_webhook_events";
+export const APPWRITE_TABLE_VISITORS = "visitors";
+export const APPWRITE_TABLE_VISITOR_LOGS = "visitor_logs";
+export const APPWRITE_TABLE_GUARD_CHECKPOINTS = "guard_checkpoints";
+export const APPWRITE_TABLE_GUARD_PATROL_EVENTS = "guard_patrol_events";
+export const APPWRITE_TABLE_SECURITY_INCIDENTS = "security_incidents";
+export const APPWRITE_TABLE_CSO_REVIEWS = "cso_reviews";
+export const APPWRITE_TABLE_AUDIT_LOGS = "audit_logs";
+export const APPWRITE_TABLE_ANNOUNCEMENTS = "announcements";
+export const APPWRITE_TABLE_COMPLAINTS = "complaints";
+export const APPWRITE_TABLE_KNOWLEDGE_BASE = "knowledge_base";
+export const APPWRITE_TABLE_HOUSEHOLD_MEMBERS = "household_members";
+export const APPWRITE_TABLE_SUBSCRIPTION_RATES = "subscription_rates";
+export const APPWRITE_TABLE_MONTHLY_BILLING_RUNS = "monthly_billing_runs";
+
+export const APPWRITE_TABLE_IDS = {
+  estates: APPWRITE_TABLE_ESTATES,
+  profiles: APPWRITE_TABLE_PROFILES,
+  accessRequests: APPWRITE_TABLE_ACCESS_REQUESTS,
+  properties: APPWRITE_TABLE_PROPERTIES,
+  units: APPWRITE_TABLE_UNITS,
+  residents: APPWRITE_TABLE_RESIDENTS,
+  residentUnitHistory: APPWRITE_TABLE_RESIDENT_UNIT_HISTORY,
+  bills: APPWRITE_TABLE_BILLS,
+  payments: APPWRITE_TABLE_PAYMENTS,
+  residentVirtualAccounts: APPWRITE_TABLE_RESIDENT_VIRTUAL_ACCOUNTS,
+  residentSubscriptions: APPWRITE_TABLE_RESIDENT_SUBSCRIPTIONS,
+  paymentIntents: APPWRITE_TABLE_PAYMENT_INTENTS,
+  paymentWebhookEvents: APPWRITE_TABLE_PAYMENT_WEBHOOK_EVENTS,
+  visitors: APPWRITE_TABLE_VISITORS,
+  visitorLogs: APPWRITE_TABLE_VISITOR_LOGS,
+  guardCheckpoints: APPWRITE_TABLE_GUARD_CHECKPOINTS,
+  guardPatrolEvents: APPWRITE_TABLE_GUARD_PATROL_EVENTS,
+  securityIncidents: APPWRITE_TABLE_SECURITY_INCIDENTS,
+  csoReviews: APPWRITE_TABLE_CSO_REVIEWS,
+  auditLogs: APPWRITE_TABLE_AUDIT_LOGS,
+  announcements: APPWRITE_TABLE_ANNOUNCEMENTS,
+  complaints: APPWRITE_TABLE_COMPLAINTS,
+  knowledgeBase: APPWRITE_TABLE_KNOWLEDGE_BASE,
+  householdMembers: APPWRITE_TABLE_HOUSEHOLD_MEMBERS,
+  subscriptionRates: APPWRITE_TABLE_SUBSCRIPTION_RATES,
+  monthlyBillingRuns: APPWRITE_TABLE_MONTHLY_BILLING_RUNS
+} as const;
 
 export type AppwriteColumnDefinition = {
   key: string;
@@ -32,7 +87,7 @@ const baseColumns: AppwriteColumnDefinition[] = [
 
 export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
   {
-    tableId: "estates",
+    tableId: APPWRITE_TABLE_ESTATES,
     name: "Estates",
     columns: [
       { key: "name", type: "string", size: 128, required: true },
@@ -48,7 +103,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
-    tableId: "profiles",
+    tableId: APPWRITE_TABLE_PROFILES,
     name: "Profiles",
     columns: [
       ...baseColumns,
@@ -68,7 +123,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
-    tableId: "access_requests",
+    tableId: APPWRITE_TABLE_ACCESS_REQUESTS,
     name: "Access Requests",
     columns: [
       ...baseColumns,
@@ -91,7 +146,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
-    tableId: "properties",
+    tableId: APPWRITE_TABLE_PROPERTIES,
     name: "Properties",
     columns: [
       ...baseColumns,
@@ -108,7 +163,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
-    tableId: "units",
+    tableId: APPWRITE_TABLE_UNITS,
     name: "Units",
     columns: [
       ...baseColumns,
@@ -128,7 +183,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
-    tableId: "residents",
+    tableId: APPWRITE_TABLE_RESIDENTS,
     name: "Residents",
     columns: [
       ...baseColumns,
@@ -155,7 +210,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
-    tableId: "resident_unit_history",
+    tableId: APPWRITE_TABLE_RESIDENT_UNIT_HISTORY,
     name: "Resident Unit History",
     columns: [
       ...baseColumns,
@@ -175,7 +230,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
-    tableId: "bills",
+    tableId: APPWRITE_TABLE_BILLS,
     name: "Bills",
     columns: [
       ...baseColumns,
@@ -195,7 +250,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
-    tableId: "payments",
+    tableId: APPWRITE_TABLE_PAYMENTS,
     name: "Payments",
     columns: [
       ...baseColumns,
@@ -221,7 +276,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
-    tableId: "resident_virtual_accounts",
+    tableId: APPWRITE_TABLE_RESIDENT_VIRTUAL_ACCOUNTS,
     name: "Resident Virtual Accounts",
     columns: [
       ...baseColumns,
@@ -245,7 +300,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
-    tableId: "resident_subscriptions",
+    tableId: APPWRITE_TABLE_RESIDENT_SUBSCRIPTIONS,
     name: "Resident Subscriptions",
     columns: [
       ...baseColumns,
@@ -267,7 +322,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
-    tableId: "payment_intents",
+    tableId: APPWRITE_TABLE_PAYMENT_INTENTS,
     name: "Payment Intents",
     columns: [
       ...baseColumns,
@@ -291,7 +346,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
-    tableId: "payment_webhook_events",
+    tableId: APPWRITE_TABLE_PAYMENT_WEBHOOK_EVENTS,
     name: "Payment Webhook Events",
     columns: [
       ...baseColumns,
@@ -312,7 +367,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
-    tableId: "visitors",
+    tableId: APPWRITE_TABLE_VISITORS,
     name: "Visitors",
     columns: [
       ...baseColumns,
@@ -334,7 +389,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
-    tableId: "visitor_logs",
+    tableId: APPWRITE_TABLE_VISITOR_LOGS,
     name: "Visitor Logs",
     columns: [
       ...baseColumns,
@@ -353,7 +408,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
-    tableId: "guard_checkpoints",
+    tableId: APPWRITE_TABLE_GUARD_CHECKPOINTS,
     name: "Guard Checkpoints",
     columns: [
       ...baseColumns,
@@ -377,7 +432,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
-    tableId: "guard_patrol_events",
+    tableId: APPWRITE_TABLE_GUARD_PATROL_EVENTS,
     name: "Guard Patrol Events",
     columns: [
       ...baseColumns,
@@ -409,7 +464,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
-    tableId: "security_incidents",
+    tableId: APPWRITE_TABLE_SECURITY_INCIDENTS,
     name: "Security Incidents",
     columns: [
       ...baseColumns,
@@ -432,7 +487,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
-    tableId: "cso_reviews",
+    tableId: APPWRITE_TABLE_CSO_REVIEWS,
     name: "CSO Reviews",
     columns: [
       ...baseColumns,
@@ -451,7 +506,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ]
   },
   {
-    tableId: "audit_logs",
+    tableId: APPWRITE_TABLE_AUDIT_LOGS,
     name: "Audit Logs",
     columns: [
       ...baseColumns,
@@ -463,6 +518,155 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     ],
     indexes: [
       { key: "audit_entity_idx", type: "key", attributes: ["entityType", "entityId"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_ANNOUNCEMENTS,
+    name: "Announcements",
+    columns: [
+      { key: "estateId", type: "string", size: 64, required: true },
+      { key: "title", type: "string", size: 160, required: true },
+      { key: "message", type: "string", size: 4096, required: true },
+      { key: "priority", type: "string", size: 32, required: true },
+      { key: "targetRole", type: "string", size: 32, required: true },
+      { key: "createdBy", type: "string", size: 64, required: true },
+      { key: "createdByName", type: "string", size: 160, required: true },
+      { key: "publishedAt", type: "datetime", required: false },
+      { key: "expiresAt", type: "datetime", required: false },
+      { key: "status", type: "string", size: 32, required: true },
+      { key: "isPinned", type: "boolean", required: false, default: false },
+      { key: "createdAt", type: "datetime", required: true },
+      { key: "updatedAt", type: "datetime", required: true }
+    ],
+    indexes: [
+      { key: "announcement_estate_status_idx", type: "key", attributes: ["estateId", "status"] },
+      { key: "announcement_target_idx", type: "key", attributes: ["targetRole"] },
+      { key: "announcement_published_idx", type: "key", attributes: ["publishedAt"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_COMPLAINTS,
+    name: "Complaints",
+    columns: [
+      { key: "estateId", type: "string", size: 64, required: true },
+      { key: "residentId", type: "string", size: 64, required: true },
+      { key: "residentName", type: "string", size: 160, required: true },
+      { key: "unitCode", type: "string", size: 64, required: true },
+      { key: "propertyCode", type: "string", size: 64, required: true },
+      { key: "category", type: "string", size: 32, required: true },
+      { key: "priority", type: "string", size: 32, required: true },
+      { key: "subject", type: "string", size: 160, required: true },
+      { key: "description", type: "string", size: 4096, required: true },
+      { key: "status", type: "string", size: 32, required: true },
+      { key: "assignedTo", type: "string", size: 64, required: false },
+      { key: "assignedToName", type: "string", size: 160, required: false },
+      { key: "adminResponse", type: "string", size: 4096, required: false },
+      { key: "resolvedAt", type: "datetime", required: false },
+      { key: "createdAt", type: "datetime", required: true },
+      { key: "updatedAt", type: "datetime", required: true }
+    ],
+    indexes: [
+      { key: "complaint_resident_idx", type: "key", attributes: ["residentId"] },
+      { key: "complaint_status_idx", type: "key", attributes: ["status"] },
+      { key: "complaint_priority_idx", type: "key", attributes: ["priority"] },
+      { key: "complaint_created_idx", type: "key", attributes: ["createdAt"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_KNOWLEDGE_BASE,
+    name: "Knowledge Base",
+    columns: [
+      { key: "estateId", type: "string", size: 64, required: true },
+      { key: "title", type: "string", size: 160, required: true },
+      { key: "content", type: "string", size: 8192, required: true },
+      { key: "category", type: "string", size: 32, required: true },
+      { key: "targetRole", type: "string", size: 32, required: true },
+      { key: "createdBy", type: "string", size: 64, required: true },
+      { key: "createdByName", type: "string", size: 160, required: true },
+      { key: "isPublished", type: "boolean", required: false, default: false },
+      { key: "viewCount", type: "integer", required: false, default: 0 },
+      { key: "sortOrder", type: "integer", required: false, default: 0 },
+      { key: "tags", type: "string", size: 1024, required: false },
+      { key: "createdAt", type: "datetime", required: true },
+      { key: "updatedAt", type: "datetime", required: true }
+    ],
+    indexes: [
+      { key: "knowledge_category_idx", type: "key", attributes: ["category"] },
+      { key: "knowledge_target_idx", type: "key", attributes: ["targetRole"] },
+      { key: "knowledge_published_idx", type: "key", attributes: ["isPublished"] },
+      { key: "knowledge_sort_idx", type: "key", attributes: ["sortOrder"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_HOUSEHOLD_MEMBERS,
+    name: "Household Members",
+    columns: [
+      { key: "estateId", type: "string", size: 64, required: true },
+      { key: "residentId", type: "string", size: 64, required: true },
+      { key: "unitCode", type: "string", size: 64, required: true },
+      { key: "propertyCode", type: "string", size: 64, required: true },
+      { key: "fullName", type: "string", size: 160, required: true },
+      { key: "relationship", type: "string", size: 32, required: true },
+      { key: "phone", type: "string", size: 64, required: false },
+      { key: "idType", type: "string", size: 32, required: false },
+      { key: "idNumber", type: "string", size: 128, required: false },
+      { key: "photoFileId", type: "string", size: 128, required: false },
+      { key: "hasEstateAccess", type: "boolean", required: false, default: false },
+      { key: "accessNote", type: "string", size: 1024, required: false },
+      { key: "addedBy", type: "string", size: 64, required: true },
+      { key: "status", type: "string", size: 32, required: true },
+      { key: "createdAt", type: "datetime", required: true },
+      { key: "updatedAt", type: "datetime", required: true }
+    ],
+    indexes: [
+      { key: "household_resident_idx", type: "key", attributes: ["residentId"] },
+      { key: "household_unit_idx", type: "key", attributes: ["unitCode"] },
+      { key: "household_status_idx", type: "key", attributes: ["status"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_SUBSCRIPTION_RATES,
+    name: "Subscription Rates",
+    columns: [
+      { key: "estateId", type: "string", size: 64, required: true },
+      { key: "apartmentType", type: "string", size: 64, required: true },
+      { key: "monthlyRate", type: "integer", required: true },
+      { key: "effectiveFrom", type: "datetime", required: true },
+      { key: "effectiveTo", type: "datetime", required: false },
+      { key: "createdBy", type: "string", size: 64, required: true },
+      { key: "reason", type: "string", size: 512, required: true },
+      { key: "createdAt", type: "datetime", required: true },
+      { key: "updatedAt", type: "datetime", required: true }
+    ],
+    indexes: [
+      { key: "subscription_rate_unique", type: "unique", attributes: ["estateId", "apartmentType", "effectiveFrom"] },
+      { key: "subscription_rate_type_idx", type: "key", attributes: ["apartmentType"] },
+      { key: "subscription_rate_effective_idx", type: "key", attributes: ["effectiveFrom"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_MONTHLY_BILLING_RUNS,
+    name: "Monthly Billing Runs",
+    columns: [
+      { key: "estateId", type: "string", size: 64, required: true },
+      { key: "billingMonth", type: "string", size: 16, required: true },
+      { key: "runDate", type: "datetime", required: true },
+      { key: "runBy", type: "string", size: 64, required: true },
+      { key: "runByName", type: "string", size: 160, required: true },
+      { key: "totalResidents", type: "integer", required: true },
+      { key: "billsCreated", type: "integer", required: true },
+      { key: "autoPaidFromCredit", type: "integer", required: true },
+      { key: "requiresPayment", type: "integer", required: true },
+      { key: "skipped", type: "integer", required: true },
+      { key: "errors", type: "integer", required: true },
+      { key: "errorDetails", type: "string", size: 4096, required: false },
+      { key: "status", type: "string", size: 32, required: true },
+      { key: "createdAt", type: "datetime", required: true }
+    ],
+    indexes: [
+      { key: "billing_run_unique", type: "unique", attributes: ["estateId", "billingMonth"] },
+      { key: "billing_run_status_idx", type: "key", attributes: ["status"] },
+      { key: "billing_run_date_idx", type: "key", attributes: ["runDate"] }
     ]
   }
 ];
