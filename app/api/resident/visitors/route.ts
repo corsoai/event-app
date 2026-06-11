@@ -1,5 +1,18 @@
 import { NextRequest, NextResponse } from "next/server";
-import { createAppwriteResidentVisitor } from "@/lib/appwrite/visitors";
+import { createAppwriteResidentVisitor, listAppwriteResidentVisitors } from "@/lib/appwrite/visitors";
+
+export async function GET(request: NextRequest) {
+  const appwriteUserId = request.cookies.get("corso_appwrite_user")?.value ?? "";
+
+  try {
+    const visitors = await listAppwriteResidentVisitors(appwriteUserId);
+    return NextResponse.json({ visitors });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Visitor invitations could not be loaded.";
+    const status = message.includes("expired") || message.includes("logged in") || message.includes("profile") ? 401 : 400;
+    return NextResponse.json({ error: message }, { status });
+  }
+}
 
 export async function POST(request: NextRequest) {
   const appwriteUserId = request.cookies.get("corso_appwrite_user")?.value ?? "";
@@ -15,7 +28,8 @@ export async function POST(request: NextRequest) {
       visitDate: String(body.visitDate ?? ""),
       arrivalTime: String(body.arrivalTime ?? ""),
       purpose: String(body.purpose ?? ""),
-      count: Number(body.count ?? 1)
+      count: Number(body.count ?? 1),
+      code: String(body.code ?? "")
     });
 
     return NextResponse.json({ visitor });

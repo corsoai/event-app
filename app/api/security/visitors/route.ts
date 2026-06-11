@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { Visitor } from "@/lib/types";
-import { findAppwriteVisitorByCode, updateAppwriteVisitorStatus } from "@/lib/appwrite/visitors";
+import { findAppwriteVisitorByCode, listAppwriteExpectedVisitors, updateAppwriteVisitorStatus } from "@/lib/appwrite/visitors";
 
 export async function GET(request: NextRequest) {
   const appwriteUserId = request.cookies.get("corso_appwrite_user")?.value ?? "";
   const code = request.nextUrl.searchParams.get("code") ?? "";
 
   try {
+    if (!code.trim()) {
+      const visitors = await listAppwriteExpectedVisitors(appwriteUserId);
+      return NextResponse.json({ visitors });
+    }
+
     const result = await findAppwriteVisitorByCode(appwriteUserId, code);
     return NextResponse.json(result);
   } catch (error) {

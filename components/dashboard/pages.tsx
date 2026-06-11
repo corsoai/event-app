@@ -87,7 +87,15 @@ import {
   type LocalEstateState,
   useLocalEstateStore
 } from "@/lib/local-store";
-import { createAppwriteResidentVisitor, findAppwriteVisitorByCode } from "@/lib/appwrite/browser-data";
+import {
+  createAppwriteResidentVisitor,
+  findAppwriteVisitorByCode,
+  readAppwriteAdminVisitors,
+  readAppwriteExpectedVisitors,
+  readAppwriteResidentVisitors,
+  updateAppwriteVisitorStatus as saveAppwriteVisitorStatus,
+  type AppwriteVisitorView
+} from "@/lib/appwrite/browser-data";
 import {
   installGuardTourSync,
   isGuardCheckpointQr,
@@ -511,6 +519,32 @@ function mergeAccountingState(state: LocalEstateState, accounting: AppwriteAccou
     payments: accounting?.payments.length ? accounting.payments : state.payments,
     auditLogs: accounting?.auditLogs.length ? accounting.auditLogs : state.auditLogs
   };
+}
+
+function useLiveVisitorViews(loader: () => Promise<AppwriteVisitorView[]>) {
+  const [visitorViews, setVisitorViews] = useState<AppwriteVisitorView[]>([]);
+  const [loadingVisitors, setLoadingVisitors] = useState(true);
+  const [visitorError, setVisitorError] = useState("");
+
+  const refreshVisitors = async () => {
+    setLoadingVisitors(true);
+    setVisitorError("");
+
+    try {
+      setVisitorViews(await loader());
+    } catch (error) {
+      setVisitorError(error instanceof Error ? error.message : "Visitor records could not be loaded.");
+      setVisitorViews([]);
+    } finally {
+      setLoadingVisitors(false);
+    }
+  };
+
+  useEffect(() => {
+    void refreshVisitors();
+  }, [loader]);
+
+  return { visitorViews, setVisitorViews, loadingVisitors, visitorError, refreshVisitors };
 }
 
 function residentAccountingCacheKey() {
@@ -1095,6 +1129,7 @@ function relationshipLabel(value: HouseholdMember["relationship"]) {
 
 export function AdminDashboard() {
   const { state } = useLocalEstateStore();
+  const { visitorViews, loadingVisitors } = useLiveVisitorViews(readAppwriteAdminVisitors);
   const { accountingState, summary } = useAdminAccountingState(state);
   const confirmedPayments = accountingState.payments.filter((payment) => payment.status === "confirmed");
   const paid = summary?.paidAmount ?? confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
@@ -1121,7 +1156,7 @@ export function AdminDashboard() {
       </PageHeader>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
         <StatCard label="Total residents" value={String(state.residents.length)} helper="Across active demo estates" icon={<Users className="h-5 w-5" />} />
-        <StatCard label="Visitors today" value={String(state.visitors.length)} helper="Expected and checked in" icon={<QrCode className="h-5 w-5" />} />
+        <StatCard label="Visitors today" value={loadingVisitors ? "..." : String(visitorViews.length)} helper="Expected and checked in" icon={<QrCode className="h-5 w-5" />} />
         <StatCard label="Open complaints" value={String(openComplaints)} helper="Needs admin action" icon={<ClipboardList className="h-5 w-5" />} />
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
@@ -1129,9 +1164,9 @@ export function AdminDashboard() {
           title="Visitor access log"
           description="Live visitor access visibility for estate administrators."
           headers={["Visitor", "Resident", "Date", "Code", "Status"]}
-          rows={state.visitors.map((visitor) => [
+          rows={visitorViews.map(({ visitor, residentName }) => [
             visitor.visitorName,
-            state.residents.find((resident) => resident.id === visitor.residentId)?.name ?? "Unknown",
+            residentName,
             `${visitor.visitDate} ${formatClockTime(visitor.arrivalTime)}`,
             <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
             <StatusBadge key={visitor.status} status={visitor.status} />
@@ -2927,20 +2962,26 @@ function AccessRequestsPanel({
 }
 
 export function VisitorLogsPage() {
-  const { state } = useLocalEstateStore();
+  const { visitorViews, loadingVisitors, visitorError, refreshVisitors } = useLiveVisitorViews(readAppwriteAdminVisitors);
 
   return (
     <>
-      <PageHeader title="Visitor logs" description="Review access codes, entry status, guard notes, entry times, and exit times." />
+      <PageHeader title="Visitor logs" description="Review access codes, entry status, guard notes, entry times, and exit times.">
+        <Button type="button" variant="secondary" onClick={() => void refreshVisitors()} disabled={loadingVisitors}>
+          <RefreshCw className="h-4 w-4" />
+          {loadingVisitors ? "Loading" : "Refresh"}
+        </Button>
+      </PageHeader>
+      {visitorError ? <p className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{visitorError}</p> : null}
       <DataTable
-        title="Access control logs"
+        title={loadingVisitors ? "Loading access control logs" : "Access control logs"}
         headers={["Code", "Visitor", "Resident", "Purpose", "Gate", "Status"]}
-        rows={state.visitors.map((visitor) => [
+        rows={visitorViews.map(({ visitor, residentName }) => [
           <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
           visitor.visitorName,
-          state.residents.find((resident) => resident.id === visitor.residentId)?.name ?? "Unknown",
+          residentName,
           visitor.purpose,
-          state.estates.find((estate) => estate.id === visitor.estateId)?.gateName ?? "Main Gate",
+          "Main Gate",
           <StatusBadge key={visitor.status} status={visitor.status} />
         ])}
       />
@@ -5626,10 +5667,12 @@ export function InviteVisitorPage() {
       visitDate,
       arrivalTime,
       purpose: String(form.get("purpose") ?? ""),
-      count: Math.min(20, Math.max(1, Number(form.get("count") ?? 1)))
+      count: Math.min(20, Math.max(1, Number(form.get("count") ?? 1))),
+      code: makeClientVisitorCode()
     };
 
     setSaving(true);
+    setCode(input.code);
     setStatus("Saving visitor invitation online...");
 
     try {
@@ -5697,26 +5740,26 @@ export function InviteVisitorPage() {
   );
 }
 
-export function MyVisitorsPage() {
-  const { state, addVisitorRecord } = useLocalEstateStore();
-  const resident = useCurrentResidentProfile(state);
-  const myVisitors = useMemo(
-    () => state.visitors.filter((visitor) => visitor.residentId === resident.id),
-    [resident.id, state.visitors]
-  );
-  const visitorSyncKey = myVisitors.map((visitor) => `${visitor.code}:${visitor.status}`).join(",");
+function makeClientVisitorCode() {
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
 
-  useEffect(() => {
-    return undefined;
-  }, [addVisitorRecord, myVisitors, visitorSyncKey]);
+export function MyVisitorsPage() {
+  const { visitorViews, loadingVisitors, visitorError, refreshVisitors } = useLiveVisitorViews(readAppwriteResidentVisitors);
 
   return (
     <>
-      <PageHeader title="My visitors" description="Track expected visitors, checked-in guests, expired codes, and cancelled invitations." />
+      <PageHeader title="My visitors" description="Track expected visitors, checked-in guests, expired codes, and cancelled invitations.">
+        <Button type="button" variant="secondary" onClick={() => void refreshVisitors()} disabled={loadingVisitors}>
+          <RefreshCw className="h-4 w-4" />
+          {loadingVisitors ? "Loading" : "Refresh"}
+        </Button>
+      </PageHeader>
+      {visitorError ? <p className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{visitorError}</p> : null}
       <DataTable
-        title="Visitor invitations"
+        title={loadingVisitors ? "Loading visitor invitations" : "Visitor invitations"}
         headers={["Visitor", "Date", "Purpose", "Code", "Status"]}
-        rows={myVisitors.map((visitor) => [
+        rows={visitorViews.map(({ visitor }) => [
           visitor.visitorName,
           `${visitor.visitDate} ${formatClockTime(visitor.arrivalTime)}`,
           visitor.purpose,
@@ -6848,10 +6891,11 @@ export function HouseholdPage() {
 }
 
 export function SecurityDashboard() {
-  const { state } = useLocalEstateStore();
-  const checkedInCount = state.visitors.filter((visitor) => visitor.status === "checked-in").length;
-  const verifiedCount = state.visitors.filter((visitor) => visitor.status === "verified").length;
-  const recentVisitors = state.visitors.slice(0, 4);
+  const { visitorViews, loadingVisitors } = useLiveVisitorViews(readAppwriteExpectedVisitors);
+  const visitors = visitorViews.map((view) => view.visitor);
+  const checkedInCount = visitors.filter((visitor) => visitor.status === "checked-in").length;
+  const verifiedCount = visitors.filter((visitor) => visitor.status === "verified").length;
+  const recentVisitors = visitors.slice(0, 4);
 
   return (
     <>
@@ -6895,7 +6939,7 @@ export function SecurityDashboard() {
         <h2 className="text-lg font-semibold text-white">Today at the gate</h2>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
-        <StatCard label="Expected today" value={String(state.visitors.length)} helper="All gates" icon={<CalendarClock className="h-5 w-5" />} />
+        <StatCard label="Expected today" value={loadingVisitors ? "..." : String(visitors.length)} helper="All gates" icon={<CalendarClock className="h-5 w-5" />} />
         <StatCard label="Checked in" value={String(checkedInCount)} helper="Currently inside" icon={<DoorOpen className="h-5 w-5" />} />
         <StatCard label="Verified codes" value={String(verifiedCount)} helper="Awaiting check-in" icon={<BadgeCheck className="h-5 w-5" />} />
       </div>
@@ -7919,7 +7963,7 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
       return;
     }
 
-    autoVerifyPendingVisitor(found);
+    void autoVerifyPendingVisitor(found);
   }, [code, found]);
 
   useEffect(() => installGuardTourSync(), []);
@@ -7936,13 +7980,13 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
     const matchedVisitor = findVisitorForCode(targetCode);
     if (matchedVisitor) {
       if (matchedVisitor.status === "pending") {
-        autoVerifyPendingVisitor(matchedVisitor);
+        void autoVerifyPendingVisitor(matchedVisitor);
         return;
       }
 
       setMessage(gateLookupMessage(matchedVisitor));
       if (shouldExpireVisitor(matchedVisitor)) {
-        updateVisitorStatus(matchedVisitor.id, "expired");
+        void persistVisitorStatus(matchedVisitor, "expired");
       }
       return;
     }
@@ -8026,7 +8070,7 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
     setHasSearched(true);
   }
 
-  function autoVerifyPendingVisitor(visitor: Visitor) {
+  async function autoVerifyPendingVisitor(visitor: Visitor) {
     if (visitor.status !== "pending") {
       return;
     }
@@ -8034,7 +8078,7 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
     const windowState = getVisitorWindowState(visitor);
     if (!windowState.canVerifyOrCheckIn) {
       if (windowState.status === "expired") {
-        updateVisitorStatus(visitor.id, "expired");
+        await persistVisitorStatus(visitor, "expired");
       }
 
       setHasSearched(true);
@@ -8048,25 +8092,36 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
     }
 
     autoVerifiedVisitors.current.add(key);
-    updateVisitorStatus(visitor.id, "verified");
-    setLookupVisitor((current) => current?.id === visitor.id ? { ...current, status: "verified" } : current);
+    const updated = await persistVisitorStatus(visitor, "verified");
+    setLookupVisitor((current) => current?.id === visitor.id ? updated : current);
     setHasSearched(true);
     setMessage(`${visitor.visitorName} found and verified. Use Check in when entry is approved.`);
   }
 
-  function changeStatus(visitor: Visitor, status: Visitor["status"]) {
+  async function changeStatus(visitor: Visitor, status: Visitor["status"]) {
     if ((status === "verified" || status === "checked-in") && !getVisitorWindowState(visitor).canVerifyOrCheckIn) {
       const windowState = getVisitorWindowState(visitor);
       if (windowState.status === "expired") {
-        updateVisitorStatus(visitor.id, "expired");
+        await persistVisitorStatus(visitor, "expired");
       }
       setMessage(`${windowState.message} Visitor codes are valid for ${VISITOR_CODE_VALIDITY_HOURS} hours after generation.`);
       return;
     }
 
-    updateVisitorStatus(visitor.id, status);
-    setLookupVisitor((current) => current?.id === visitor.id ? { ...current, status } : current);
+    const updated = await persistVisitorStatus(visitor, status);
+    setLookupVisitor((current) => current?.id === visitor.id ? updated : current);
     setMessage(`${visitor.visitorName} is now ${status}.`);
+  }
+
+  async function persistVisitorStatus(visitor: Visitor, status: Visitor["status"]) {
+    try {
+      const updated = await saveAppwriteVisitorStatus(visitor, status);
+      addVisitorRecord(updated);
+      return updated;
+    } catch {
+      updateVisitorStatus(visitor.id, status);
+      return { ...visitor, status };
+    }
   }
 
   return (
@@ -8112,9 +8167,9 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
           <VisitorVerificationCard
               visitor={found}
               residentsDirectory={residentsDirectory}
-              onCheckIn={() => changeStatus(found, "checked-in")}
-              onCheckOut={() => changeStatus(found, "checked-out")}
-              onReject={() => changeStatus(found, "cancelled")}
+              onCheckIn={() => void changeStatus(found, "checked-in")}
+              onCheckOut={() => void changeStatus(found, "checked-out")}
+              onReject={() => void changeStatus(found, "cancelled")}
             />
           ) : hasSearched && !message ? (
             <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm text-danger">No valid visitor invitation found for this code.</div>
@@ -8399,18 +8454,33 @@ function shouldExpireVisitor(visitor: Visitor) {
 }
 
 export function ExpectedVisitorsPage() {
-  const { state, updateVisitorStatus } = useLocalEstateStore();
+  const { addVisitorRecord } = useLocalEstateStore();
+  const { visitorViews, setVisitorViews, loadingVisitors, visitorError, refreshVisitors } = useLiveVisitorViews(readAppwriteExpectedVisitors);
+
+  async function checkInVisitor(visitor: Visitor) {
+    const updated = await saveAppwriteVisitorStatus(visitor, "checked-in");
+    addVisitorRecord(updated);
+    setVisitorViews((current) => current.map((view) =>
+      view.visitor.id === visitor.id ? { ...view, visitor: updated } : view
+    ));
+  }
 
   return (
     <>
-      <PageHeader title="Today's expected visitors" description="Visitor list for security guards to prepare gate checks." />
+      <PageHeader title="Today's expected visitors" description="Visitor list for security guards to prepare gate checks.">
+        <Button type="button" variant="secondary" onClick={() => void refreshVisitors()} disabled={loadingVisitors}>
+          <RefreshCw className="h-4 w-4" />
+          {loadingVisitors ? "Loading" : "Refresh"}
+        </Button>
+      </PageHeader>
+      {visitorError ? <p className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{visitorError}</p> : null}
       <DataTable
-        title="Expected visitors"
+        title={loadingVisitors ? "Loading expected visitors" : "Expected visitors"}
         headers={["Code", "Visitor", "Resident", "Arrival", "Guests", "Status", "Action"]}
-        rows={state.visitors.map((visitor) => [
+        rows={visitorViews.map(({ visitor, residentName }) => [
           <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
           visitor.visitorName,
-          state.residents.find((resident) => resident.id === visitor.residentId)?.name ?? "Unknown",
+          residentName,
           formatClockTime(visitor.arrivalTime),
           visitor.count,
           <StatusBadge key={visitor.status} status={visitor.status} />,
@@ -8418,7 +8488,7 @@ export function ExpectedVisitorsPage() {
             key={`${visitor.id}-check-in`}
             className="min-h-11 w-full px-3 py-2 text-xs sm:w-auto"
             disabled={visitor.status === "checked-in" || visitor.status === "checked-out" || visitor.status === "cancelled" || visitor.status === "expired"}
-            onClick={() => updateVisitorStatus(visitor.id, "checked-in")}
+            onClick={() => void checkInVisitor(visitor)}
           >
             Check in
           </Button>

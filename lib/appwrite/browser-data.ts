@@ -22,7 +22,16 @@ type ApiAccessRequest = {
 type VisitorCreateInput = Pick<
   Visitor,
   "visitorName" | "phone" | "visitDate" | "arrivalTime" | "purpose" | "count"
->;
+> & {
+  code?: string;
+};
+
+export type AppwriteVisitorView = {
+  visitor: Visitor;
+  resident: Resident | null;
+  residentName: string;
+  unitCode: string;
+};
 
 export type ResidentUpdateInput = Pick<
   Resident,
@@ -171,6 +180,21 @@ export async function createAppwriteResidentVisitor(input: VisitorCreateInput) {
   return payload.visitor;
 }
 
+export async function readAppwriteResidentVisitors() {
+  const response = await fetch("/api/resident/visitors", { cache: "no-store" });
+  return readVisitorViewsResponse(response, "Visitor invitations could not be loaded online.");
+}
+
+export async function readAppwriteAdminVisitors() {
+  const response = await fetch("/api/appwrite/admin/visitors", { cache: "no-store" });
+  return readVisitorViewsResponse(response, "Visitor logs could not be loaded online.");
+}
+
+export async function readAppwriteExpectedVisitors() {
+  const response = await fetch("/api/security/visitors", { cache: "no-store" });
+  return readVisitorViewsResponse(response, "Expected visitors could not be loaded online.");
+}
+
 export async function findAppwriteVisitorByCode(code: string) {
   const response = await fetch(`/api/security/visitors?code=${encodeURIComponent(code)}`, { cache: "no-store" });
   const payload = await response.json().catch(() => ({})) as {
@@ -204,6 +228,19 @@ export async function updateAppwriteVisitorStatus(visitor: Visitor, status: Visi
   }
 
   return payload.visitor ?? visitor;
+}
+
+async function readVisitorViewsResponse(response: Response, fallbackMessage: string) {
+  const payload = await response.json().catch(() => ({})) as {
+    visitors?: AppwriteVisitorView[];
+    error?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(payload.error ?? fallbackMessage);
+  }
+
+  return payload.visitors ?? [];
 }
 
 export async function updateAppwriteResident(residentId: string, input: ResidentUpdateInput) {

@@ -84,7 +84,16 @@ type AppwriteVisitorLogRow = {
 export type VisitorCreateInput = Pick<
   Visitor,
   "visitorName" | "phone" | "visitDate" | "arrivalTime" | "purpose" | "count"
->;
+> & {
+  code?: string;
+};
+
+export type AppwriteVisitorView = {
+  visitor: Visitor;
+  resident: Resident | null;
+  residentName: string;
+  unitCode: string;
+};
 
 const verifierRoles = new Set<UserRole>(["security_guard", "estate_admin", "super_admin"]);
 
@@ -105,7 +114,7 @@ export async function createAppwriteResidentVisitor(appwriteUserId: string, inpu
 
   const resident = await findOrCreateResidentForProfile(profile);
   const createdAt = new Date().toISOString();
-  const code = await makeUniqueAccessCode(profile.estateId ?? resident.estateId);
+  const code = await makeUniqueAccessCode(profile.estateId ?? resident.estateId, input.code);
   const visitor = await appwriteUpsertRow<AppwriteVisitorRow>("visitors", safeAppwriteId("vis", `${resident.id}:${code}`), {
     estateId: profile.estateId ?? resident.estateId,
     residentId: resident.id,
@@ -123,6 +132,51 @@ export async function createAppwriteResidentVisitor(appwriteUserId: string, inpu
   });
 
   return mapVisitorRow(visitor);
+}
+
+export async function listAppwriteResidentVisitors(appwriteUserId: string) {
+  const profile = await requireProfile(appwriteUserId, "resident");
+  const resident = await findOrCreateResidentForProfile(profile);
+  const rows = await listAppwriteTableRows<AppwriteVisitorRow>("visitors");
+
+  return buildVisitorViews(
+    rows
+      .filter((visitor) => visitor.residentId === resident.id)
+      .sort(sortVisitorRowsDescending)
+  );
+}
+
+export async function listAppwriteAdminVisitors(appwriteUserId: string) {
+  const profile = await requireProfile(appwriteUserId);
+  if (!["estate_admin", "super_admin", "cso"].includes(profile.role ?? "resident")) {
+    throw new Error("This account cannot view estate visitor logs.");
+  }
+
+  const rows = await listAppwriteTableRows<AppwriteVisitorRow>("visitors");
+  return buildVisitorViews(
+    rows
+      .filter((visitor) => profile.role === "super_admin" || visitor.estateId === profile.estateId)
+      .sort(sortVisitorRowsDescending)
+  );
+}
+
+export async function listAppwriteExpectedVisitors(appwriteUserId: string) {
+  const profile = await requireProfile(appwriteUserId);
+  if (!verifierRoles.has(profile.role ?? "resident")) {
+    throw new Error("This account cannot view expected visitors.");
+  }
+
+  const today = new Date().toISOString().slice(0, 10);
+  const rows = await listAppwriteTableRows<AppwriteVisitorRow>("visitors");
+  return buildVisitorViews(
+    rows
+      .filter((visitor) =>
+        (profile.role === "super_admin" || visitor.estateId === profile.estateId) &&
+        visitor.visitDate === today &&
+        (visitor.status === "pending" || visitor.status === "verified" || visitor.status === "checked-in")
+      )
+      .sort(sortVisitorRowsDescending)
+  );
 }
 
 export async function findAppwriteVisitorByCode(appwriteUserId: string, code: string) {
@@ -241,8 +295,16 @@ async function findOrCreateResidentForProfile(profile: AppwriteProfileRow): Prom
   return mapResidentRow(created);
 }
 
-async function makeUniqueAccessCode(estateId: string) {
+async function makeUniqueAccessCode(estateId: string, preferredCode?: string) {
   const visitors = await listAppwriteTableRows<AppwriteVisitorRow>("visitors");
+  const cleanedPreferredCode = String(preferredCode ?? "").replace(/\D/g, "").slice(0, 6);
+  if (
+    cleanedPreferredCode.length === 6 &&
+    !visitors.some((visitor) => visitor.estateId === estateId && visitor.code === cleanedPreferredCode)
+  ) {
+    return cleanedPreferredCode;
+  }
+
   for (let attempt = 0; attempt < 20; attempt += 1) {
     const code = String(randomInt(100000, 1000000));
     if (!visitors.some((visitor) => visitor.estateId === estateId && visitor.code === code)) {
@@ -355,6 +417,35 @@ async function writeVisitorLog(profile: AppwriteProfileRow, visitor: Visitor, st
 async function findResidentView(residentId: string) {
   const row = (await listAppwriteTableRows<AppwriteResidentRow>("residents")).find((resident) => resident.$id === residentId);
   return row ? mapResidentRow(row) : null;
+}
+
+async function buildVisitorViews(rows: AppwriteVisitorRow[]): Promise<AppwriteVisitorView[]> {
+  const [residentRows, unitRows] = await Promise.all([
+    listAppwriteTableRows<AppwriteResidentRow>("residents"),
+    listAppwriteTableRows<AppwriteUnitRow>("units")
+  ]);
+  const residentsById = new Map(residentRows.map((resident) => [resident.$id ?? "", resident]));
+  const unitsById = new Map(unitRows.map((unit) => [unit.$id ?? "", unit]));
+
+  return rows.map((row) => {
+    const visitor = mapVisitorRow(row);
+    const residentRow = residentsById.get(visitor.residentId);
+    const unitRow = residentRow ? unitsById.get(residentRow.unitId ?? "") : undefined;
+    const resident = residentRow ? mapResidentRow(residentRow) : null;
+
+    return {
+      visitor,
+      resident,
+      residentName: resident?.name ?? "Unknown resident",
+      unitCode: unitRow?.unitCode ?? resident?.houseNumber ?? "Unit pending"
+    };
+  });
+}
+
+function sortVisitorRowsDescending(left: AppwriteVisitorRow, right: AppwriteVisitorRow) {
+  const leftKey = `${left.visitDate ?? ""}T${left.arrivalTime ?? ""}`;
+  const rightKey = `${right.visitDate ?? ""}T${right.arrivalTime ?? ""}`;
+  return rightKey.localeCompare(leftKey);
 }
 
 function mapVisitorRow(row: AppwriteVisitorRow): Visitor {
