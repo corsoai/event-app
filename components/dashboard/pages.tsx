@@ -173,6 +173,12 @@ type AppwriteBillingImportResponse = {
   dryRun: boolean;
   imported: boolean;
   summary: AppwriteBillingImportSummary;
+  progress?: {
+    importedRows: number;
+    totalRows: number;
+    nextOffset: number | null;
+    done: boolean;
+  };
   error?: string;
 };
 
@@ -2444,7 +2450,25 @@ function AppwriteOnboardingPanel() {
     setMessage("");
 
     try {
-      const result = await sendBillingImportRequest(rows, false);
+      let offset = 0;
+      let latest: AppwriteBillingImportResponse | null = null;
+
+      while (true) {
+        latest = await sendBillingImportRequest(rows, false, offset, importChunkSize);
+        const progress = latest.progress;
+        if (!progress) {
+          break;
+        }
+
+        setMessage(`Updating balances ${progress.importedRows} of ${progress.totalRows}...`);
+        if (progress.done || progress.nextOffset === null) {
+          break;
+        }
+
+        offset = progress.nextOffset;
+      }
+
+      const result = latest;
       setMessage(`Updated ${result.summary.updatedResidents} resident balances, ${result.summary.openingBills} opening bills, and ${result.summary.legacyPayments} legacy payments.`);
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Billing import failed.");
@@ -2468,11 +2492,11 @@ function AppwriteOnboardingPanel() {
     return payload;
   }
 
-  async function sendBillingImportRequest(previewRows: LbsviewOnboardingPreviewRow[], dryRun: boolean) {
+  async function sendBillingImportRequest(previewRows: LbsviewOnboardingPreviewRow[], dryRun: boolean, offset?: number, limit?: number) {
     const response = await fetch("/api/appwrite/onboarding/billing-import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dryRun, rows: previewRows })
+      body: JSON.stringify({ dryRun, offset, limit, rows: previewRows })
     });
     const payload = await readJsonResponse<AppwriteBillingImportResponse>(response);
     if (!response.ok) {

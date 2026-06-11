@@ -50,6 +50,12 @@ export type AppwriteBillingImportResult = {
   dryRun: boolean;
   imported: boolean;
   summary: AppwriteBillingImportSummary;
+  progress?: {
+    importedRows: number;
+    totalRows: number;
+    nextOffset: number | null;
+    done: boolean;
+  };
 };
 
 type BillingPlanRow = {
@@ -65,6 +71,11 @@ type BillingPlan = {
   summary: AppwriteBillingImportSummary;
 };
 
+type BillingImportOptions = {
+  offset?: number;
+  limit?: number;
+};
+
 export async function previewBillingImportRows(rows: LbsviewOnboardingPreviewRow[]): Promise<AppwriteBillingImportResult> {
   const plan = await buildBillingPlan(rows);
   return {
@@ -74,12 +85,16 @@ export async function previewBillingImportRows(rows: LbsviewOnboardingPreviewRow
   };
 }
 
-export async function importBillingPreviewRows(rows: LbsviewOnboardingPreviewRow[]): Promise<AppwriteBillingImportResult> {
+export async function importBillingPreviewRows(rows: LbsviewOnboardingPreviewRow[], options: BillingImportOptions = {}): Promise<AppwriteBillingImportResult> {
   const plan = await buildBillingPlan(rows);
+  const offset = Math.max(0, Math.min(Math.floor(options.offset ?? 0), plan.rows.length));
+  const limit = Math.max(1, Math.floor(options.limit ?? (plan.rows.length || 1)));
+  const chunkRows = plan.rows.slice(offset, offset + limit);
+  const nextOffset = offset + chunkRows.length < plan.rows.length ? offset + chunkRows.length : null;
   const now = new Date().toISOString();
   const today = now.slice(0, 10);
 
-  for (const row of plan.rows) {
+  for (const row of chunkRows) {
     const source = row.source;
     const resident = row.resident;
     const expectedPayment = numberOrZero(source.expectedPayment);
@@ -150,21 +165,29 @@ export async function importBillingPreviewRows(rows: LbsviewOnboardingPreviewRow
     }
   }
 
-  await appwriteUpsertRow("audit_logs", safeAppwriteId("audit", `legacy-billing-import-${now}`), {
-    estateId: APPWRITE_LBSVIEW_ESTATE_ID,
-    actor: "Estate admin",
-    action: "imported legacy billing fields",
-    entityType: "system",
-    entityId: APPWRITE_LBSVIEW_ESTATE_ID,
-    metadata: JSON.stringify(plan.summary),
-    createdAt: now,
-    updatedAt: now
-  });
+  if (nextOffset === null) {
+    await appwriteUpsertRow("audit_logs", safeAppwriteId("audit", `legacy-billing-import-${now}`), {
+      estateId: APPWRITE_LBSVIEW_ESTATE_ID,
+      actor: "Estate admin",
+      action: "imported legacy billing fields",
+      entityType: "system",
+      entityId: APPWRITE_LBSVIEW_ESTATE_ID,
+      metadata: JSON.stringify(plan.summary),
+      createdAt: now,
+      updatedAt: now
+    });
+  }
 
   return {
     dryRun: false,
     imported: true,
-    summary: plan.summary
+    summary: plan.summary,
+    progress: {
+      importedRows: offset + chunkRows.length,
+      totalRows: plan.rows.length,
+      nextOffset,
+      done: nextOffset === null
+    }
   };
 }
 
