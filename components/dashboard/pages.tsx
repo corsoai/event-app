@@ -547,6 +547,64 @@ function useLiveVisitorViews(loader: () => Promise<AppwriteVisitorView[]>) {
   return { visitorViews, setVisitorViews, loadingVisitors, visitorError, refreshVisitors };
 }
 
+function LiveVisitorCards({
+  title,
+  visitorViews,
+  loading,
+  error,
+  showResident = false,
+  actionFor
+}: {
+  title: string;
+  visitorViews: AppwriteVisitorView[];
+  loading: boolean;
+  error: string;
+  showResident?: boolean;
+  actionFor?: (visitor: Visitor) => ReactNode;
+}) {
+  return (
+    <Card className="mb-6">
+      <CardHeader
+        title={title}
+        description={loading ? "Loading live Appwrite visitor records..." : `${visitorViews.length} live visitor record${visitorViews.length === 1 ? "" : "s"} found.`}
+      />
+      {error ? (
+        <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm font-semibold text-danger">
+          {error}
+        </div>
+      ) : null}
+      {!error && !loading && !visitorViews.length ? (
+        <div className="rounded-lg border border-line bg-white/80 p-4 text-sm text-slate-500">
+          No live visitor records returned for this account.
+        </div>
+      ) : null}
+      <div className="grid gap-3">
+        {visitorViews.map(({ visitor, residentName, unitCode }) => (
+          <div key={visitor.id} className="rounded-lg border border-line bg-white/85 p-4 shadow-sm">
+            <div className="flex flex-wrap items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-base font-semibold text-white">{visitor.visitorName}</p>
+                <p className="mt-1 font-mono text-sm font-semibold text-smart">{visitor.code}</p>
+              </div>
+              <StatusBadge status={visitor.status} />
+            </div>
+            <div className="mt-4 grid gap-2 text-sm text-slate-300 sm:grid-cols-2">
+              {showResident ? <p><span className="text-slate-500">Resident:</span> {residentName}</p> : null}
+              {showResident ? <p><span className="text-slate-500">Unit:</span> {unitCode}</p> : null}
+              <p><span className="text-slate-500">Date:</span> {visitor.visitDate}</p>
+              <p><span className="text-slate-500">Arrival:</span> {formatClockTime(visitor.arrivalTime)}</p>
+              <p><span className="text-slate-500">Phone:</span> {visitor.phone || "Not recorded"}</p>
+              <p><span className="text-slate-500">Guests:</span> {visitor.count}</p>
+              <p className="sm:col-span-2"><span className="text-slate-500">Purpose:</span> {visitor.purpose || "Not recorded"}</p>
+            </div>
+            {actionFor ? <div className="mt-4">{actionFor(visitor)}</div> : null}
+          </div>
+        ))}
+      </div>
+    </Card>
+  );
+}
+
 function residentAccountingCacheKey() {
   if (typeof window === "undefined") {
     return "";
@@ -2973,17 +3031,12 @@ export function VisitorLogsPage() {
         </Button>
       </PageHeader>
       {visitorError ? <p className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{visitorError}</p> : null}
-      <DataTable
+      <LiveVisitorCards
         title={loadingVisitors ? "Loading access control logs" : "Access control logs"}
-        headers={["Code", "Visitor", "Resident", "Purpose", "Gate", "Status"]}
-        rows={visitorViews.map(({ visitor, residentName }) => [
-          <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
-          visitor.visitorName,
-          residentName,
-          visitor.purpose,
-          "Main Gate",
-          <StatusBadge key={visitor.status} status={visitor.status} />
-        ])}
+        visitorViews={visitorViews}
+        loading={loadingVisitors}
+        error={visitorError}
+        showResident
       />
     </>
   );
@@ -5756,16 +5809,11 @@ export function MyVisitorsPage() {
         </Button>
       </PageHeader>
       {visitorError ? <p className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{visitorError}</p> : null}
-      <DataTable
+      <LiveVisitorCards
         title={loadingVisitors ? "Loading visitor invitations" : "Visitor invitations"}
-        headers={["Visitor", "Date", "Purpose", "Code", "Status"]}
-        rows={visitorViews.map(({ visitor }) => [
-          visitor.visitorName,
-          `${visitor.visitDate} ${formatClockTime(visitor.arrivalTime)}`,
-          visitor.purpose,
-          <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
-          <StatusBadge key={visitor.status} status={visitor.status} />
-        ])}
+        visitorViews={visitorViews}
+        loading={loadingVisitors}
+        error={visitorError}
       />
     </>
   );
@@ -8474,25 +8522,21 @@ export function ExpectedVisitorsPage() {
         </Button>
       </PageHeader>
       {visitorError ? <p className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{visitorError}</p> : null}
-      <DataTable
+      <LiveVisitorCards
         title={loadingVisitors ? "Loading expected visitors" : "Expected visitors"}
-        headers={["Code", "Visitor", "Resident", "Arrival", "Guests", "Status", "Action"]}
-        rows={visitorViews.map(({ visitor, residentName }) => [
-          <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
-          visitor.visitorName,
-          residentName,
-          formatClockTime(visitor.arrivalTime),
-          visitor.count,
-          <StatusBadge key={visitor.status} status={visitor.status} />,
+        visitorViews={visitorViews}
+        loading={loadingVisitors}
+        error={visitorError}
+        showResident
+        actionFor={(visitor) => (
           <Button
-            key={`${visitor.id}-check-in`}
             className="min-h-11 w-full px-3 py-2 text-xs sm:w-auto"
             disabled={visitor.status === "checked-in" || visitor.status === "checked-out" || visitor.status === "cancelled" || visitor.status === "expired"}
             onClick={() => void checkInVisitor(visitor)}
           >
             Check in
           </Button>
-        ])}
+        )}
       />
     </>
   );
