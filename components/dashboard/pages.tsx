@@ -606,6 +606,30 @@ function LiveVisitorCards({
   );
 }
 
+function isExpectedResidentVisitor(visitor: Visitor) {
+  return visitor.status === "pending" || visitor.status === "verified";
+}
+
+function isTodayVisitor(visitor: Visitor) {
+  return visitor.visitDate === dateInputValue();
+}
+
+function visitorSortTime(visitor: Visitor) {
+  const parsed = Date.parse(`${visitor.visitDate}T${visitor.arrivalTime || "00:00"}`);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function visitorLoadingRows(columns: number) {
+  return Array.from({ length: 3 }, (_, rowIndex) =>
+    Array.from({ length: columns }, (_, columnIndex) => (
+      <span
+        key={`${rowIndex}-${columnIndex}`}
+        className="block h-4 w-full max-w-32 animate-pulse rounded bg-slate-200/70"
+      />
+    ))
+  );
+}
+
 function residentAccountingCacheKey() {
   if (typeof window === "undefined") {
     return "";
@@ -1189,6 +1213,21 @@ function relationshipLabel(value: HouseholdMember["relationship"]) {
 export function AdminDashboard() {
   const { state } = useLocalEstateStore();
   const { visitorViews, loadingVisitors, visitorError } = useLiveVisitorViews(readAppwriteAdminVisitors);
+  const todaysVisitorViews = visitorViews.filter(({ visitor }) => isTodayVisitor(visitor));
+  const recentTodayVisitorViews = [...todaysVisitorViews]
+    .sort((left, right) => visitorSortTime(right.visitor) - visitorSortTime(left.visitor))
+    .slice(0, 5);
+  const visitorAccessRows = loadingVisitors
+    ? visitorLoadingRows(5)
+    : recentTodayVisitorViews.length
+      ? recentTodayVisitorViews.map(({ visitor, residentName }) => [
+        visitor.visitorName,
+        residentName,
+        `${visitor.visitDate} ${formatClockTime(visitor.arrivalTime)}`,
+        <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
+        <StatusBadge key={visitor.status} status={visitor.status} />
+      ])
+      : [["No visitors today", "—", "—", "—", "—"]];
   const { accountingState, summary } = useAdminAccountingState(state);
   const confirmedPayments = accountingState.payments.filter((payment) => payment.status === "confirmed");
   const paid = summary?.paidAmount ?? confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
@@ -1215,16 +1254,15 @@ export function AdminDashboard() {
       </PageHeader>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
         <StatCard label="Total residents" value={String(state.residents.length)} helper="Across active demo estates" icon={<Users className="h-5 w-5" />} />
-        <StatCard label="Visitors today" value={loadingVisitors ? "..." : String(visitorViews.length)} helper="Expected and checked in" icon={<QrCode className="h-5 w-5" />} />
+        <StatCard label="Visitors today" value={loadingVisitors ? "..." : String(todaysVisitorViews.length)} helper="Live Appwrite records for today" icon={<QrCode className="h-5 w-5" />} />
         <StatCard label="Open complaints" value={String(openComplaints)} helper="Needs admin action" icon={<ClipboardList className="h-5 w-5" />} />
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
-        <LiveVisitorCards
+        <DataTable
           title="Visitor access log"
-          visitorViews={visitorViews}
-          loading={loadingVisitors}
-          error={visitorError}
-          showResident
+          description={visitorError || "Five most recent live Appwrite visitor records for today."}
+          headers={["Visitor", "Resident", "Date", "Code", "Status"]}
+          rows={visitorAccessRows}
         />
         <Card>
           <CardHeader title="Revenue snapshot" description="Expected revenue, confirmed payments, outstanding balances, credits, and pending reviews." />
@@ -5380,6 +5418,7 @@ export function ResidentDashboard() {
   const summary = accounting?.summary ?? null;
   const liveBills = accounting?.bills ?? [];
   const livePayments = accounting?.payments ?? [];
+  const expectedVisitorCount = visitorViews.filter(({ visitor }) => isExpectedResidentVisitor(visitor)).length;
   const showSkeleton = loadingAccounting && !summary && !accountingError;
   const firstName = resident.name.split(" ")[0] || "Resident";
   const mobileStatusText = summary?.outstandingBalance
@@ -5441,7 +5480,7 @@ export function ResidentDashboard() {
         </>
       ) : null}
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-4">
-        <StatCard label="Expected visitors" value={loadingVisitors ? "..." : String(visitorViews.length)} helper="Live Appwrite access codes" icon={<DoorOpen className="h-5 w-5" />} />
+        <StatCard label="Expected visitors" value={loadingVisitors ? "..." : String(expectedVisitorCount)} helper="Pending or verified access codes" icon={<DoorOpen className="h-5 w-5" />} />
         <StatCard label="My complaints" value={String(residentState.complaints.filter((complaint) => complaint.residentId === resident.id).length)} helper="Open and resolved tickets" icon={<ClipboardList className="h-5 w-5" />} />
       </div>
       <div className="mt-6">
@@ -6992,8 +7031,8 @@ export function SecurityDashboard() {
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
         <StatCard label="Expected today" value={loadingVisitors ? "..." : String(visitors.length)} helper="All gates" icon={<CalendarClock className="h-5 w-5" />} />
-        <StatCard label="Checked in" value={String(checkedInCount)} helper="Currently inside" icon={<DoorOpen className="h-5 w-5" />} />
-        <StatCard label="Verified codes" value={String(verifiedCount)} helper="Awaiting check-in" icon={<BadgeCheck className="h-5 w-5" />} />
+        <StatCard label="Checked in" value={loadingVisitors ? "..." : String(checkedInCount)} helper="Currently inside" icon={<DoorOpen className="h-5 w-5" />} />
+        <StatCard label="Verified codes" value={loadingVisitors ? "..." : String(verifiedCount)} helper="Awaiting check-in" icon={<BadgeCheck className="h-5 w-5" />} />
       </div>
       <div className="mt-6">
         <LiveVisitorCards
@@ -8557,6 +8596,18 @@ export function ExpectedVisitorsPage() {
 export function EntryLogsPage() {
   const { visitorViews, loadingVisitors, visitorError } = useLiveVisitorViews(readAppwriteSecurityVisitorHistory);
   const movementVisitors = visitorViews.filter(({ visitor }) => visitor.status === "verified" || visitor.status === "checked-in" || visitor.status === "checked-out");
+  const movementRows = loadingVisitors
+    ? visitorLoadingRows(6)
+    : movementVisitors.length
+      ? movementVisitors.map(({ visitor, residentName, unitCode }) => [
+        visitor.visitorName,
+        <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
+        `${visitor.visitDate} ${formatClockTime(visitor.arrivalTime)}`,
+        residentName,
+        unitCode,
+        <StatusBadge key={visitor.status} status={visitor.status} />
+      ])
+      : [["No visitor movement logs yet", "—", "—", "—", "—", "—"]];
 
   return (
     <>
@@ -8566,14 +8617,7 @@ export function EntryLogsPage() {
         title={loadingVisitors ? "Loading gate movement logs" : "Gate movement logs"}
         description="Live visitor movement from Appwrite visitor records."
         headers={["Visitor", "Code", "Visit time", "Resident", "Unit", "Status"]}
-        rows={movementVisitors.map(({ visitor, residentName, unitCode }) => [
-          visitor.visitorName,
-          <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
-          `${visitor.visitDate} ${formatClockTime(visitor.arrivalTime)}`,
-          residentName,
-          unitCode,
-          <StatusBadge key={visitor.status} status={visitor.status} />
-        ])}
+        rows={movementRows}
       />
     </>
   );
