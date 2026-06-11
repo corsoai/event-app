@@ -61,6 +61,8 @@ export class AppwriteRestError extends Error {
   }
 }
 
+let appwriteSetupPromise: Promise<AppwriteSetupResult> | null = null;
+
 export function getAppwriteServerConfig(): AppwriteServerConfig {
   const endpoint = normalizeEndpoint(
     process.env.APPWRITE_ENDPOINT ??
@@ -87,6 +89,17 @@ export function getAppwriteServerConfig(): AppwriteServerConfig {
 }
 
 export async function setupAppwriteOnboardingSchema(): Promise<AppwriteSetupResult> {
+  if (!appwriteSetupPromise) {
+    appwriteSetupPromise = setupAppwriteOnboardingSchemaUncached().catch((error) => {
+      appwriteSetupPromise = null;
+      throw error;
+    });
+  }
+
+  return appwriteSetupPromise;
+}
+
+async function setupAppwriteOnboardingSchemaUncached(): Promise<AppwriteSetupResult> {
   const config = getAppwriteServerConfig();
   const result: AppwriteSetupResult = {
     ok: config.configured,

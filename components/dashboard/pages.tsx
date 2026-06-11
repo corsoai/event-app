@@ -307,6 +307,11 @@ type KnowledgeApiResponse = {
   error?: string;
 };
 
+const STATIC_DATA_CACHE_MS = 10 * 60 * 1000;
+const announcementSessionCache = new Map<string, { savedAt: number; announcements: AppwriteAnnouncement[] }>();
+const knowledgeSessionCache = new Map<string, { savedAt: number; articles: AppwriteKnowledgeBaseArticle[] }>();
+const qrDataUrlCache = new Map<string, string>();
+
 type HouseholdApiResponse = {
   members?: HouseholdMember[];
   member?: HouseholdMember;
@@ -865,7 +870,15 @@ function useLiveAnnouncements(scope: "admin" | "resident") {
     ? "/api/appwrite/admin/announcements"
     : "/api/appwrite/resident/announcements";
 
-  async function refreshAnnouncements() {
+  async function refreshAnnouncements(options: { force?: boolean } = {}) {
+    const cached = announcementSessionCache.get(endpoint);
+    if (!options.force && cached && Date.now() - cached.savedAt < STATIC_DATA_CACHE_MS) {
+      setAnnouncements(cached.announcements);
+      setLoadingAnnouncements(false);
+      setAnnouncementError("");
+      return;
+    }
+
     setLoadingAnnouncements(true);
     setAnnouncementError("");
 
@@ -876,7 +889,9 @@ function useLiveAnnouncements(scope: "admin" | "resident") {
         throw new Error(payload?.error ?? "Unable to load announcements.");
       }
 
-      setAnnouncements(payload.announcements ?? []);
+      const nextAnnouncements = payload.announcements ?? [];
+      announcementSessionCache.set(endpoint, { savedAt: Date.now(), announcements: nextAnnouncements });
+      setAnnouncements(nextAnnouncements);
     } catch (error) {
       setAnnouncements([]);
       setAnnouncementError(error instanceof Error ? error.message : "Unable to load announcements.");
@@ -1110,7 +1125,15 @@ function useKnowledgeArticles(manager: boolean) {
   const [articleError, setArticleError] = useState("");
   const endpoint = manager ? "/api/appwrite/admin/knowledge-base" : "/api/appwrite/resident/knowledge-base";
 
-  async function refreshArticles() {
+  async function refreshArticles(options: { force?: boolean } = {}) {
+    const cached = knowledgeSessionCache.get(endpoint);
+    if (!options.force && cached && Date.now() - cached.savedAt < STATIC_DATA_CACHE_MS) {
+      setArticles(cached.articles);
+      setLoadingArticles(false);
+      setArticleError("");
+      return;
+    }
+
     setLoadingArticles(true);
     setArticleError("");
 
@@ -1121,7 +1144,9 @@ function useKnowledgeArticles(manager: boolean) {
         throw new Error(payload?.error ?? "Unable to load knowledge base articles.");
       }
 
-      setArticles(payload.articles ?? []);
+      const nextArticles = payload.articles ?? [];
+      knowledgeSessionCache.set(endpoint, { savedAt: Date.now(), articles: nextArticles });
+      setArticles(nextArticles);
     } catch (error) {
       setArticles([]);
       setArticleError(error instanceof Error ? error.message : "Unable to load knowledge base articles.");
@@ -3698,7 +3723,7 @@ export function AnnouncementsAdminPage() {
         : "Announcement published to Appwrite.");
       setEditingAnnouncement(null);
       setAnnouncementForm(emptyAnnouncementForm());
-      await refreshAnnouncements();
+      await refreshAnnouncements({ force: true });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to save announcement.");
     }
@@ -3731,7 +3756,7 @@ export function AnnouncementsAdminPage() {
       }
 
       setMessage("Announcement archived.");
-      await refreshAnnouncements();
+      await refreshAnnouncements({ force: true });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to archive announcement.");
     }
@@ -3917,7 +3942,7 @@ function KnowledgeBasePage({ manager = false }: { manager?: boolean }) {
       setMessage(editingArticle ? "Knowledge base article updated." : "Knowledge base article saved.");
       setEditingArticle(null);
       setArticleForm(emptyKnowledgeForm());
-      await refreshArticles();
+      await refreshArticles({ force: true });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to save article.");
     }
@@ -3954,7 +3979,7 @@ function KnowledgeBasePage({ manager = false }: { manager?: boolean }) {
       }
 
       setMessage("Knowledge base article unpublished.");
-      await refreshArticles();
+      await refreshArticles({ force: true });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to delete article.");
     }
@@ -3975,7 +4000,7 @@ function KnowledgeBasePage({ manager = false }: { manager?: boolean }) {
       }
 
       setMessage("Knowledge base article updated.");
-      await refreshArticles();
+      await refreshArticles({ force: true });
     } catch (error) {
       setMessage(error instanceof Error ? error.message : "Unable to update article.");
     }
@@ -6648,7 +6673,7 @@ export function SubmitComplaintPage() {
   async function submitComplaint(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     setSubmittingComplaint(true);
-    setComplaintMessage("");
+    setComplaintMessage("Complaint captured. Syncing with admin dashboard...");
     const form = new FormData(event.currentTarget);
     const requestBody = {
       category: String(form.get("category") ?? "other"),
@@ -6670,7 +6695,7 @@ export function SubmitComplaintPage() {
 
       setComplaintMessage("Your complaint has been submitted successfully.");
       event.currentTarget.reset();
-      window.setTimeout(() => router.push("/resident/complaints"), 2000);
+      window.setTimeout(() => router.push("/resident/complaints"), 700);
     } catch {
       setComplaintMessage("Failed to submit complaint. Please try again.");
     } finally {
@@ -8042,6 +8067,7 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
   const [hasSearched, setHasSearched] = useState(false);
   const [scannerOpen, setScannerOpen] = useState(false);
   const autoVerifiedVisitors = useRef(new Set<string>());
+  const lastAutoSearchCode = useRef("");
   const found = code.length === 6 ? findVisitorForCode(code) : undefined;
   const residentsDirectory = lookupResident
     ? [lookupResident, ...state.residents.filter((resident) => resident.id !== lookupResident.id)]
@@ -8052,10 +8078,12 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
   }
 
   useEffect(() => {
-    setLookupResident(null);
-    setLookupVisitor(null);
-    setMessage("");
-    setHasSearched(false);
+    if (code.length < 6) {
+      setLookupResident(null);
+      setLookupVisitor(null);
+      setMessage("");
+      setHasSearched(false);
+    }
   }, [code]);
 
   useEffect(() => {
@@ -8067,6 +8095,26 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
   }, [code, found]);
 
   useEffect(() => installGuardTourSync(), []);
+
+  function handleCodeChange(value: string) {
+    const nextCode = value.replace(/\D/g, "").slice(0, 6);
+    setCode(nextCode);
+
+    if (nextCode.length < 6) {
+      lastAutoSearchCode.current = "";
+      return;
+    }
+
+    if (nextCode === lastAutoSearchCode.current) {
+      return;
+    }
+
+    lastAutoSearchCode.current = nextCode;
+    setSearching(true);
+    setHasSearched(true);
+    setMessage("Searching visitor records...");
+    window.setTimeout(() => void verifyCode(nextCode), 0);
+  }
 
   async function verifyCode(nextCode = code) {
     const targetCode = nextCode.replace(/\D/g, "").slice(0, 6);
@@ -8158,6 +8206,10 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
       } else {
         nextVisitor = { ...visitor, status: "verified" };
         setMessage(`${visitor.visitorName} found and verified. Use Check in when entry is approved.`);
+        void persistVisitorStatus(visitor, "verified").catch(() => {
+          setLookupVisitor((current) => current?.id === visitor.id ? visitor : current);
+          setMessage("Visitor was found, but verification could not be saved online. Try again.");
+        });
       }
     } else {
       setMessage(gateLookupMessage(visitor));
@@ -8191,12 +8243,16 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
     }
 
     autoVerifiedVisitors.current.add(key);
+    const optimistic = { ...visitor, status: "verified" as const };
+    setLookupVisitor((current) => current?.id === visitor.id ? optimistic : current);
+    setHasSearched(true);
+    setMessage(`${visitor.visitorName} found and verified. Use Check in when entry is approved.`);
+
     try {
       const updated = await persistVisitorStatus(visitor, "verified");
       setLookupVisitor((current) => current?.id === visitor.id ? updated : current);
-      setHasSearched(true);
-      setMessage(`${visitor.visitorName} found and verified. Use Check in when entry is approved.`);
     } catch (error) {
+      setLookupVisitor((current) => current?.id === visitor.id ? visitor : current);
       setHasSearched(true);
       setMessage(error instanceof Error ? error.message : "Visitor status could not be updated online.");
     }
@@ -8212,11 +8268,21 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
       return;
     }
 
+    const previousVisitor = visitor;
+    const optimisticVisitor = {
+      ...visitor,
+      status,
+      updatedAt: new Date().toISOString()
+    };
+    setLookupVisitor((current) => current?.id === visitor.id ? optimisticVisitor : current);
+    setMessage(`${visitor.visitorName} is now ${status}.`);
+
     try {
       const updated = await persistVisitorStatus(visitor, status);
       setLookupVisitor((current) => current?.id === visitor.id ? updated : current);
       setMessage(`${visitor.visitorName} is now ${status}.`);
     } catch (error) {
+      setLookupVisitor((current) => current?.id === visitor.id ? previousVisitor : current);
       setMessage(error instanceof Error ? error.message : "Visitor status could not be updated online.");
     }
   }
@@ -8235,7 +8301,7 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
             <Field label="Access code">
               <Input
                 value={code}
-                onChange={(event) => setCode(event.target.value.replace(/\D/g, "").slice(0, 6))}
+                onChange={(event) => handleCodeChange(event.target.value)}
                 className="font-mono"
                 inputMode="numeric"
                 maxLength={6}
@@ -8556,12 +8622,27 @@ function shouldExpireVisitor(visitor: Visitor) {
 
 export function ExpectedVisitorsPage() {
   const { visitorViews, setVisitorViews, loadingVisitors, visitorError, refreshVisitors } = useLiveVisitorViews(readAppwriteExpectedVisitors);
+  const [actionMessage, setActionMessage] = useState("");
 
   async function checkInVisitor(visitor: Visitor) {
-    const updated = await saveAppwriteVisitorStatus(visitor, "checked-in");
+    setActionMessage(`${visitor.visitorName} checked in. Syncing...`);
+    const optimistic = { ...visitor, status: "checked-in" as const, updatedAt: new Date().toISOString() };
     setVisitorViews((current) => current.map((view) =>
-      view.visitor.id === visitor.id ? { ...view, visitor: updated } : view
+      view.visitor.id === visitor.id ? { ...view, visitor: optimistic } : view
     ));
+
+    try {
+      const updated = await saveAppwriteVisitorStatus(visitor, "checked-in");
+      setVisitorViews((current) => current.map((view) =>
+        view.visitor.id === visitor.id ? { ...view, visitor: updated } : view
+      ));
+      setActionMessage(`${visitor.visitorName} checked in.`);
+    } catch (error) {
+      setVisitorViews((current) => current.map((view) =>
+        view.visitor.id === visitor.id ? { ...view, visitor } : view
+      ));
+      setActionMessage(error instanceof Error ? error.message : "Check-in could not be saved online.");
+    }
   }
 
   return (
@@ -8573,6 +8654,7 @@ export function ExpectedVisitorsPage() {
         </Button>
       </PageHeader>
       {visitorError ? <p className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{visitorError}</p> : null}
+      {actionMessage ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{actionMessage}</p> : null}
       <LiveVisitorCards
         title={loadingVisitors ? "Loading expected visitors" : "Expected visitors"}
         visitorViews={visitorViews}
@@ -9535,25 +9617,48 @@ function DigitalIdCard({
 }
 
 function QRCodeImage({ value }: { value: string }) {
-  const [src, setSrc] = useState("");
+  const qrValue = useMemo(() => value || "Pending QR code", [value]);
+  const [src, setSrc] = useState(() => qrDataUrlCache.get(qrValue) ?? "");
 
   useEffect(() => {
-    QRCode.toDataURL(value, {
+    const cached = qrDataUrlCache.get(qrValue);
+    if (cached) {
+      setSrc(cached);
+      return;
+    }
+
+    let active = true;
+    setSrc("");
+
+    QRCode.toDataURL(qrValue, {
       errorCorrectionLevel: "M",
       margin: 1,
-      width: 260,
+      width: 200,
       color: {
         dark: "#000000",
         light: "#FFFFFF"
       }
-    }).then(setSrc);
-  }, [value]);
+    }).then((nextSrc) => {
+      qrDataUrlCache.set(qrValue, nextSrc);
+      if (active) {
+        setSrc(nextSrc);
+      }
+    }).catch(() => {
+      if (active) {
+        setSrc("");
+      }
+    });
+
+    return () => {
+      active = false;
+    };
+  }, [qrValue]);
 
   if (!src) {
-    return <div className="mx-auto h-44 w-44 rounded-lg bg-white/80" />;
+    return <div className="mx-auto h-[200px] w-[200px] rounded-lg bg-white/80" />;
   }
 
-  return <img src={src} alt={`QR code for ${value}`} className="mx-auto h-44 w-44 rounded-lg" loading="lazy" decoding="async" />;
+  return <img src={src} alt={`QR code for ${qrValue}`} className="mx-auto h-[200px] w-[200px] rounded-lg" loading="lazy" decoding="async" />;
 }
 
 function HomeIcon() {

@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { FormEvent, useEffect, useState } from "react";
-import { ArrowRight, Eye, EyeOff } from "lucide-react";
+import { ArrowRight, Eye, EyeOff, Loader2 } from "lucide-react";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -49,6 +49,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
   const [messageTone, setMessageTone] = useState<"success" | "error" | "info">("info");
   const [submittedEmail, setSubmittedEmail] = useState("");
   const [loading, setLoading] = useState(false);
+  const [loginProgress, setLoginProgress] = useState("");
   const selectedEstate = estateOptions.find((item) => item.id === estateId) ?? estateOptions[0];
   const estateName = selectedEstate?.name ?? DEFAULT_ESTATE_NAME;
 
@@ -134,7 +135,9 @@ export function AuthCard({ mode }: { mode: Mode }) {
 
   async function submit(event: FormEvent) {
     event.preventDefault();
+    let redirecting = false;
     setLoading(true);
+    setLoginProgress(mode === "login" ? "Signing in..." : "");
     setMessage("");
     setSubmittedEmail("");
     setMessageTone("info");
@@ -233,11 +236,15 @@ export function AuthCard({ mode }: { mode: Mode }) {
 
       const demoUser = demoUsers.find((user) => user.email.toLowerCase() === email.toLowerCase());
       if (appwriteLoginPreferred) {
+        setLoginProgress("Signing in...");
         const appwriteResult = await signInWithAppwrite(email, password);
         if (appwriteResult.ok && appwriteResult.user) {
+          setLoginProgress("Loading your profile...");
           persistSession(appwriteResult.user);
           const destination = params.get("next") ?? roleHome[appwriteResult.user.role];
           router.prefetch(destination);
+          setLoginProgress("Almost ready...");
+          redirecting = true;
           window.location.assign(destination);
           return;
         }
@@ -258,11 +265,15 @@ export function AuthCard({ mode }: { mode: Mode }) {
       }
 
       if (!appwriteLoginPreferred) {
+        setLoginProgress("Signing in...");
         const appwriteResult = await signInWithAppwrite(email, password);
         if (appwriteResult.ok && appwriteResult.user) {
+          setLoginProgress("Loading your profile...");
           persistSession(appwriteResult.user);
           const destination = params.get("next") ?? roleHome[appwriteResult.user.role];
           router.prefetch(destination);
+          setLoginProgress("Almost ready...");
+          redirecting = true;
           window.location.assign(destination);
           return;
         }
@@ -285,6 +296,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
       if (!demoUser) {
         const approvedUser = findApprovedLocalUser(email, password);
         if (approvedUser) {
+          setLoginProgress("Loading your profile...");
           persistSession({
             email: approvedUser.email,
             phone: approvedUser.phone,
@@ -294,6 +306,8 @@ export function AuthCard({ mode }: { mode: Mode }) {
           });
           const destination = params.get("next") ?? roleHome[approvedUser.role];
           router.prefetch(destination);
+          setLoginProgress("Almost ready...");
+          redirecting = true;
           window.location.assign(destination);
           return;
         }
@@ -328,6 +342,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
         return;
       }
 
+      setLoginProgress("Loading your profile...");
       persistSession({
         email,
         phone: "",
@@ -337,12 +352,17 @@ export function AuthCard({ mode }: { mode: Mode }) {
       });
       const destination = params.get("next") ?? roleHome[demoUser.role];
       router.prefetch(destination);
+      setLoginProgress("Almost ready...");
+      redirecting = true;
       window.location.assign(destination);
     } catch (error) {
       setMessageTone("error");
       setMessage(error instanceof Error ? error.message : "The access request could not be submitted. Please try again.");
     } finally {
-      setLoading(false);
+      if (!redirecting) {
+        setLoading(false);
+        setLoginProgress("");
+      }
     }
   }
 
@@ -452,9 +472,14 @@ export function AuthCard({ mode }: { mode: Mode }) {
           </div>
         ) : null}
         <Button type="submit" disabled={loading} className="w-full">
-          {loading ? "Please wait" : mode === "login" ? "Sign in" : mode === "signup" ? "Submit access request" : "Send reset link"}
-          <ArrowRight className="h-4 w-4" />
+          {loading && mode === "login" ? loginProgress || "Signing in..." : loading ? "Please wait" : mode === "login" ? "Sign in" : mode === "signup" ? "Submit access request" : "Send reset link"}
+          {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <ArrowRight className="h-4 w-4" />}
         </Button>
+        {loading && mode === "login" ? (
+          <div className="rounded-lg border border-smart/25 bg-smart/10 px-3 py-2 text-sm font-medium text-smart">
+            {loginProgress || "Signing in..."}
+          </div>
+        ) : null}
         {message ? (
           <div className={messageClassName(messageTone)}>{message}</div>
         ) : null}

@@ -51,6 +51,8 @@ export type AccessRequestView = {
   reviewedAt?: string;
 };
 
+let publicEstatesSessionCache: Array<{ id: string; name: string }> | null = null;
+
 export async function createAppwriteAccessRequest(input: {
   fullName: string;
   email: string;
@@ -77,6 +79,10 @@ export async function createAppwriteAccessRequest(input: {
 }
 
 export async function readPublicAppwriteEstates() {
+  if (publicEstatesSessionCache) {
+    return publicEstatesSessionCache;
+  }
+
   const response = await fetch("/api/public/estates", { cache: "no-store" });
   const payload = await response.json().catch(() => ({})) as {
     estates?: Array<{ id: string; name: string }>;
@@ -87,7 +93,8 @@ export async function readPublicAppwriteEstates() {
     throw new Error(payload.error ?? "Estate list could not be loaded.");
   }
 
-  return payload.estates ?? [];
+  publicEstatesSessionCache = payload.estates ?? [];
+  return publicEstatesSessionCache;
 }
 
 export async function readAppwriteAccessRequestForCurrentUser(identifier: string) {

@@ -1,4 +1,4 @@
-const CACHE_NAME = "corso-estate-v14-dashboard-visitor-fix";
+const CACHE_NAME = "corso-estate-v15-performance";
 const OFFLINE_URL = "/offline.html";
 const APP_SHELL = [
   OFFLINE_URL,

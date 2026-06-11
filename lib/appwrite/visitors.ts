@@ -6,6 +6,7 @@ import {
   APPWRITE_LBSVIEW_ESTATE_ID,
   appwriteRequest,
   appwriteUpsertRow,
+  getAppwriteServerConfig,
   safeAppwriteId,
   setupAppwriteOnboardingSchema
 } from "@/lib/appwrite/server";
@@ -79,6 +80,12 @@ type AppwriteVisitorLogRow = {
   decision?: string;
   createdAt?: string;
   updatedAt?: string;
+};
+
+type AppwriteRowList<T> = {
+  rows?: T[];
+  documents?: T[];
+  total?: number;
 };
 
 export type VisitorCreateInput = Pick<
@@ -204,7 +211,7 @@ export async function findAppwriteVisitorByCode(appwriteUserId: string, code: st
     throw new Error("Enter a valid 6-digit visitor code.");
   }
 
-  const rows = await listAppwriteTableRows<AppwriteVisitorRow>("visitors");
+  const rows = await listVisitorRowsByCode(targetCode);
   const row = rows.find((visitor) =>
     visitor.code === targetCode &&
     (profile.role === "super_admin" || visitor.estateId === profile.estateId)
@@ -228,6 +235,38 @@ export async function findAppwriteVisitorByCode(appwriteUserId: string, code: st
   };
 }
 
+async function listVisitorRowsByCode(code: string) {
+  const config = getAppwriteServerConfig();
+  const query = new URLSearchParams();
+  query.append("queries[0]", JSON.stringify({ method: "equal", attribute: "code", values: [code] }));
+  query.append("queries[1]", JSON.stringify({ method: "limit", values: [5] }));
+
+  try {
+    const payload = await appwriteRequest<AppwriteRowList<AppwriteVisitorRow>>(
+      `/tablesdb/${config.databaseId}/tables/visitors/rows?${query.toString()}`
+    );
+    return payload.rows ?? payload.documents ?? [];
+  } catch (error) {
+    if (error instanceof Error && error.message.toLowerCase().includes("invalid query")) {
+      const rows = await listAppwriteTableRows<AppwriteVisitorRow>("visitors");
+      return rows.filter((visitor) => visitor.code === code);
+    }
+
+    throw error;
+  }
+}
+
+async function getVisitorRowById(visitorId: string) {
+  const config = getAppwriteServerConfig();
+  return appwriteRequest<AppwriteVisitorRow>(
+    `/tablesdb/${config.databaseId}/tables/visitors/rows/${encodeURIComponent(visitorId)}`,
+    {
+      method: "GET",
+      allowNotFound: true
+    }
+  );
+}
+
 export async function updateAppwriteVisitorStatus(appwriteUserId: string, visitorId: string, status: Visitor["status"]) {
   const profile = await requireProfile(appwriteUserId);
   if (!verifierRoles.has(profile.role ?? "resident")) {
@@ -239,12 +278,9 @@ export async function updateAppwriteVisitorStatus(appwriteUserId: string, visito
     throw new Error("Choose a valid visitor status.");
   }
 
-  const row = (await listAppwriteTableRows<AppwriteVisitorRow>("visitors")).find((visitor) =>
-    visitor.$id === visitorId &&
-    (profile.role === "super_admin" || visitor.estateId === profile.estateId)
-  );
+  const row = await getVisitorRowById(visitorId);
 
-  if (!row) {
+  if (!row || (profile.role !== "super_admin" && row.estateId !== profile.estateId)) {
     throw new Error("Visitor invitation was not found.");
   }
 
@@ -262,7 +298,7 @@ async function requireProfile(appwriteUserId: string, expectedRole?: UserRole) {
   }
 
   await setupAppwriteOnboardingSchema();
-  const profile = (await listAppwriteTableRows<AppwriteProfileRow>("profiles")).find((row) => row.userId === appwriteUserId);
+  const profile = await findProfileByUserId(appwriteUserId);
   if (!profile) {
     throw new Error("No active profile was found for this account.");
   }
@@ -274,6 +310,26 @@ async function requireProfile(appwriteUserId: string, expectedRole?: UserRole) {
   }
 
   return profile;
+}
+
+async function findProfileByUserId(appwriteUserId: string) {
+  const config = getAppwriteServerConfig();
+  const query = new URLSearchParams();
+  query.append("queries[0]", JSON.stringify({ method: "equal", attribute: "userId", values: [appwriteUserId] }));
+  query.append("queries[1]", JSON.stringify({ method: "limit", values: [1] }));
+
+  try {
+    const payload = await appwriteRequest<AppwriteRowList<AppwriteProfileRow>>(
+      `/tablesdb/${config.databaseId}/tables/profiles/rows?${query.toString()}`
+    );
+    return (payload.rows ?? payload.documents ?? [])[0] ?? null;
+  } catch (error) {
+    if (error instanceof Error && error.message.toLowerCase().includes("invalid query")) {
+      return (await listAppwriteTableRows<AppwriteProfileRow>("profiles")).find((row) => row.userId === appwriteUserId) ?? null;
+    }
+
+    throw error;
+  }
 }
 
 async function findOrCreateResidentForProfile(profile: AppwriteProfileRow): Promise<Resident> {
@@ -396,9 +452,9 @@ async function updateVisitorStatusRow(visitor: Visitor, status: Visitor["status"
 async function writeVisitorLog(profile: AppwriteProfileRow, visitor: Visitor, status: Visitor["status"]) {
   const now = new Date().toISOString();
   const decision = status === "cancelled" ? "rejected" : status;
-  const logs = await listAppwriteTableRows<AppwriteVisitorLogRow>("visitor_logs");
 
   if (status === "checked-out") {
+    const logs = await listVisitorLogsForVisitor(visitor.id);
     const latest = logs
       .filter((log) => log.visitorId === visitor.id)
       .sort((left, right) => String(right.createdAt ?? "").localeCompare(String(left.createdAt ?? "")))[0];
@@ -426,6 +482,27 @@ async function writeVisitorLog(profile: AppwriteProfileRow, visitor: Visitor, st
     createdAt: now,
     updatedAt: now
   });
+}
+
+async function listVisitorLogsForVisitor(visitorId: string) {
+  const config = getAppwriteServerConfig();
+  const query = new URLSearchParams();
+  query.append("queries[0]", JSON.stringify({ method: "equal", attribute: "visitorId", values: [visitorId] }));
+  query.append("queries[1]", JSON.stringify({ method: "limit", values: [10] }));
+
+  try {
+    const payload = await appwriteRequest<AppwriteRowList<AppwriteVisitorLogRow>>(
+      `/tablesdb/${config.databaseId}/tables/visitor_logs/rows?${query.toString()}`
+    );
+    return payload.rows ?? payload.documents ?? [];
+  } catch (error) {
+    if (error instanceof Error && error.message.toLowerCase().includes("invalid query")) {
+      const rows = await listAppwriteTableRows<AppwriteVisitorLogRow>("visitor_logs");
+      return rows.filter((log) => log.visitorId === visitorId);
+    }
+
+    throw error;
+  }
 }
 
 async function findResidentView(residentId: string) {
