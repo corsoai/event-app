@@ -179,6 +179,20 @@ export async function listAppwriteExpectedVisitors(appwriteUserId: string) {
   );
 }
 
+export async function listAppwriteSecurityVisitorHistory(appwriteUserId: string) {
+  const profile = await requireProfile(appwriteUserId);
+  if (!verifierRoles.has(profile.role ?? "resident")) {
+    throw new Error("This account cannot view visitor movement history.");
+  }
+
+  const rows = await listAppwriteTableRows<AppwriteVisitorRow>("visitors");
+  return buildVisitorViews(
+    rows
+      .filter((visitor) => profile.role === "super_admin" || visitor.estateId === profile.estateId)
+      .sort(sortVisitorRowsDescending)
+  );
+}
+
 export async function findAppwriteVisitorByCode(appwriteUserId: string, code: string) {
   const profile = await requireProfile(appwriteUserId);
   if (!verifierRoles.has(profile.role ?? "resident")) {

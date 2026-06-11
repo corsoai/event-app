@@ -195,6 +195,11 @@ export async function readAppwriteExpectedVisitors() {
   return readVisitorViewsResponse(response, "Expected visitors could not be loaded online.");
 }
 
+export async function readAppwriteSecurityVisitorHistory() {
+  const response = await fetch("/api/security/visitor-history", { cache: "no-store" });
+  return readVisitorViewsResponse(response, "Visitor movement history could not be loaded online.");
+}
+
 export async function findAppwriteVisitorByCode(code: string) {
   const response = await fetch(`/api/security/visitors?code=${encodeURIComponent(code)}`, { cache: "no-store" });
   const payload = await response.json().catch(() => ({})) as {

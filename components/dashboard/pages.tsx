@@ -93,6 +93,7 @@ import {
   readAppwriteAdminVisitors,
   readAppwriteExpectedVisitors,
   readAppwriteResidentVisitors,
+  readAppwriteSecurityVisitorHistory,
   updateAppwriteVisitorStatus as saveAppwriteVisitorStatus,
   type AppwriteVisitorView
 } from "@/lib/appwrite/browser-data";
@@ -580,15 +581,15 @@ function LiveVisitorCards({
       ) : null}
       <div className="grid gap-3">
         {visitorViews.map(({ visitor, residentName, unitCode }) => (
-          <div key={visitor.id} className="rounded-lg border border-line bg-white/85 p-4 shadow-sm">
+          <div key={visitor.id} className="rounded-lg border border-line bg-white/90 p-4 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
-                <p className="text-base font-semibold text-white">{visitor.visitorName}</p>
+                <p className="text-base font-semibold text-slate-950">{visitor.visitorName}</p>
                 <p className="mt-1 font-mono text-sm font-semibold text-smart">{visitor.code}</p>
               </div>
               <StatusBadge status={visitor.status} />
             </div>
-            <div className="mt-4 grid gap-2 text-sm text-slate-300 sm:grid-cols-2">
+            <div className="mt-4 grid gap-2 text-sm text-slate-700 sm:grid-cols-2">
               {showResident ? <p><span className="text-slate-500">Resident:</span> {residentName}</p> : null}
               {showResident ? <p><span className="text-slate-500">Unit:</span> {unitCode}</p> : null}
               <p><span className="text-slate-500">Date:</span> {visitor.visitDate}</p>
@@ -1187,7 +1188,7 @@ function relationshipLabel(value: HouseholdMember["relationship"]) {
 
 export function AdminDashboard() {
   const { state } = useLocalEstateStore();
-  const { visitorViews, loadingVisitors } = useLiveVisitorViews(readAppwriteAdminVisitors);
+  const { visitorViews, loadingVisitors, visitorError } = useLiveVisitorViews(readAppwriteAdminVisitors);
   const { accountingState, summary } = useAdminAccountingState(state);
   const confirmedPayments = accountingState.payments.filter((payment) => payment.status === "confirmed");
   const paid = summary?.paidAmount ?? confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
@@ -1218,17 +1219,12 @@ export function AdminDashboard() {
         <StatCard label="Open complaints" value={String(openComplaints)} helper="Needs admin action" icon={<ClipboardList className="h-5 w-5" />} />
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
-        <DataTable
+        <LiveVisitorCards
           title="Visitor access log"
-          description="Live visitor access visibility for estate administrators."
-          headers={["Visitor", "Resident", "Date", "Code", "Status"]}
-          rows={visitorViews.map(({ visitor, residentName }) => [
-            visitor.visitorName,
-            residentName,
-            `${visitor.visitDate} ${formatClockTime(visitor.arrivalTime)}`,
-            <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
-            <StatusBadge key={visitor.status} status={visitor.status} />
-          ])}
+          visitorViews={visitorViews}
+          loading={loadingVisitors}
+          error={visitorError}
+          showResident
         />
         <Card>
           <CardHeader title="Revenue snapshot" description="Expected revenue, confirmed payments, outstanding balances, credits, and pending reviews." />
@@ -4542,6 +4538,7 @@ export function SettingsPage() {
 
 export function SuperAdminDashboard() {
   const { state } = useLocalEstateStore();
+  const { visitorViews, loadingVisitors } = useLiveVisitorViews(readAppwriteAdminVisitors);
 
   return (
     <>
@@ -4553,7 +4550,7 @@ export function SuperAdminDashboard() {
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Managed estates" value={String(state.estates.length)} helper="Platform communities" icon={<Building2 className="h-5 w-5" />} />
         <StatCard label="Platform residents" value={String(state.residents.length)} helper="Seed resident records" icon={<Users className="h-5 w-5" />} />
-        <StatCard label="Visitor events" value={String(state.visitors.length)} helper="Across estates today" icon={<DoorOpen className="h-5 w-5" />} />
+        <StatCard label="Visitor events" value={loadingVisitors ? "..." : String(visitorViews.length)} helper="Across estates today" icon={<DoorOpen className="h-5 w-5" />} />
         <StatCard label="Open tickets" value={String(state.complaints.filter((item) => item.status !== "resolved").length)} helper="Needs estate admin action" icon={<ClipboardList className="h-5 w-5" />} />
       </div>
       <div className="mt-6">
@@ -4587,6 +4584,7 @@ export function EstateDirectoryPage({ compact = false }: { compact?: boolean }) 
 
 export function EstateDetailPage({ estateId }: { estateId: string }) {
   const { state, updateResident } = useLocalEstateStore();
+  const { visitorViews, loadingVisitors, visitorError } = useLiveVisitorViews(readAppwriteAdminVisitors);
   const [editingResident, setEditingResident] = useState<Resident | null>(null);
   const [savingResident, setSavingResident] = useState(false);
   const [residentMessage, setResidentMessage] = useState("");
@@ -4624,7 +4622,7 @@ export function EstateDetailPage({ estateId }: { estateId: string }) {
 
   const estateResidents = state.residents.filter((resident) => resident.estateId === estate.id);
   const estateResidentIds = new Set(estateResidents.map((resident) => resident.id));
-  const estateVisitors = state.visitors.filter((visitor) => visitor.estateId === estate.id);
+  const estateVisitors = visitorViews.filter(({ visitor }) => visitor.estateId === estate.id);
   const estateBills = state.bills.filter((bill) => bill.estateId === estate.id);
   const estateComplaints = state.complaints.filter((complaint) => estateResidentIds.has(complaint.residentId));
   const paidBills = estateBills.filter((bill) => bill.status === "paid").length;
@@ -4639,7 +4637,7 @@ export function EstateDetailPage({ estateId }: { estateId: string }) {
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Residents" value={String(estateResidents.length)} helper="Registered records" icon={<Users className="h-5 w-5" />} />
-        <StatCard label="Visitors" value={String(estateVisitors.length)} helper="Invitation records" icon={<DoorOpen className="h-5 w-5" />} />
+        <StatCard label="Visitors" value={loadingVisitors ? "..." : String(estateVisitors.length)} helper="Invitation records" icon={<DoorOpen className="h-5 w-5" />} />
         <StatCard label="Bills paid" value={`${paidBills}/${estateBills.length}`} helper="Estate bill status" icon={<ReceiptText className="h-5 w-5" />} />
         <StatCard label="Open complaints" value={String(estateComplaints.filter((item) => item.status !== "resolved").length)} helper="Needs attention" icon={<ClipboardList className="h-5 w-5" />} />
       </div>
@@ -4712,15 +4710,12 @@ export function EstateDetailPage({ estateId }: { estateId: string }) {
       </div>
 
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
-        <DataTable
+        <LiveVisitorCards
           title="Recent visitors"
-          headers={["Code", "Visitor", "Arrival", "Status"]}
-          rows={estateVisitors.slice(0, 6).map((visitor) => [
-            <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
-            visitor.visitorName,
-            `${visitor.visitDate} ${formatClockTime(visitor.arrivalTime)}`,
-            <StatusBadge key={visitor.status} status={visitor.status} />
-          ])}
+          visitorViews={estateVisitors.slice(0, 6)}
+          loading={loadingVisitors}
+          error={visitorError}
+          showResident
         />
         <DataTable
           title="Billing snapshot"
@@ -5378,6 +5373,7 @@ function TemporaryCredentialBox({ credential }: { credential: TemporaryCredentia
 export function ResidentDashboard() {
   const { state } = useLocalEstateStore();
   const { residentState, accounting, accountingError, loadingAccounting, refreshAccounting } = useResidentAccountingState(state);
+  const { visitorViews, loadingVisitors, visitorError } = useLiveVisitorViews(readAppwriteResidentVisitors);
   const [onlinePaymentLoading, setOnlinePaymentLoading] = useState(false);
   const [onlinePaymentMessage, setOnlinePaymentMessage] = useState("");
   const resident = useCurrentResidentProfile(residentState);
@@ -5445,8 +5441,16 @@ export function ResidentDashboard() {
         </>
       ) : null}
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-4">
-        <StatCard label="Expected visitors" value={String(residentState.visitors.filter((visitor) => visitor.residentId === resident.id).length)} helper="Pending access codes" icon={<DoorOpen className="h-5 w-5" />} />
+        <StatCard label="Expected visitors" value={loadingVisitors ? "..." : String(visitorViews.length)} helper="Live Appwrite access codes" icon={<DoorOpen className="h-5 w-5" />} />
         <StatCard label="My complaints" value={String(residentState.complaints.filter((complaint) => complaint.residentId === resident.id).length)} helper="Open and resolved tickets" icon={<ClipboardList className="h-5 w-5" />} />
+      </div>
+      <div className="mt-6">
+        <LiveVisitorCards
+          title="My visitor invitations"
+          visitorViews={visitorViews}
+          loading={loadingVisitors}
+          error={visitorError}
+        />
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
         {!showSkeleton && !accountingError && summary ? (
@@ -5694,7 +5698,7 @@ function ResidentSosFlow() {
 }
 
 export function InviteVisitorPage() {
-  const { state, addVisitorRecord } = useLocalEstateStore();
+  const { state } = useLocalEstateStore();
   const resident = useCurrentResidentProfile(state);
   const estate = state.estates.find((item) => item.id === resident.estateId) ?? state.estates[0];
   const today = dateInputValue();
@@ -5729,7 +5733,7 @@ export function InviteVisitorPage() {
     setStatus("Saving visitor invitation online...");
 
     try {
-      const savedVisitor = addVisitorRecord(await createAppwriteResidentVisitor(input));
+      const savedVisitor = await createAppwriteResidentVisitor(input);
 
       setCode(savedVisitor.code);
       setVisitorQrValue(visitorQrValueFor(savedVisitor));
@@ -6939,7 +6943,7 @@ export function HouseholdPage() {
 }
 
 export function SecurityDashboard() {
-  const { visitorViews, loadingVisitors } = useLiveVisitorViews(readAppwriteExpectedVisitors);
+  const { visitorViews, loadingVisitors, visitorError } = useLiveVisitorViews(readAppwriteExpectedVisitors);
   const visitors = visitorViews.map((view) => view.visitor);
   const checkedInCount = visitors.filter((visitor) => visitor.status === "checked-in").length;
   const verifiedCount = visitors.filter((visitor) => visitor.status === "verified").length;
@@ -6968,7 +6972,7 @@ export function SecurityDashboard() {
               <div key={visitor.id} className="rounded-lg border border-line/70 bg-white/70 p-3">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-semibold text-white">{visitor.visitorName}</p>
+                    <p className="font-semibold text-slate-950">{visitor.visitorName}</p>
                     <p className="mt-1 text-xs text-slate-500">{visitor.code} - {formatClockTime(visitor.arrivalTime)}</p>
                   </div>
                   <StatusBadge status={visitor.status} />
@@ -6990,6 +6994,15 @@ export function SecurityDashboard() {
         <StatCard label="Expected today" value={loadingVisitors ? "..." : String(visitors.length)} helper="All gates" icon={<CalendarClock className="h-5 w-5" />} />
         <StatCard label="Checked in" value={String(checkedInCount)} helper="Currently inside" icon={<DoorOpen className="h-5 w-5" />} />
         <StatCard label="Verified codes" value={String(verifiedCount)} helper="Awaiting check-in" icon={<BadgeCheck className="h-5 w-5" />} />
+      </div>
+      <div className="mt-6">
+        <LiveVisitorCards
+          title="Live expected visitors"
+          visitorViews={visitorViews}
+          loading={loadingVisitors}
+          error={visitorError}
+          showResident
+        />
       </div>
     </>
   );
@@ -7978,7 +7991,7 @@ function EmergencyAlertsFlow({ audience = "security" }: { audience?: "security" 
 }
 
 export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
-  const { state, addVisitorRecord, updateVisitorStatus } = useLocalEstateStore();
+  const { state } = useLocalEstateStore();
   const [code, setCode] = useState("");
   const [message, setMessage] = useState("");
   const [tourMessage, setTourMessage] = useState("");
@@ -7996,7 +8009,7 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
     : state.residents;
 
   function findVisitorForCode(targetCode: string) {
-    return lookupVisitor?.code === targetCode ? lookupVisitor : state.visitors.find((visitor) => visitor.code === targetCode);
+    return lookupVisitor?.code === targetCode ? lookupVisitor : undefined;
   }
 
   useEffect(() => {
@@ -8111,7 +8124,6 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
       setMessage(gateLookupMessage(visitor));
     }
 
-    addVisitorRecord(nextVisitor);
     setLookupVisitor(nextVisitor);
     setLookupResident(resident);
     setCode(nextVisitor.code);
@@ -8140,10 +8152,15 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
     }
 
     autoVerifiedVisitors.current.add(key);
-    const updated = await persistVisitorStatus(visitor, "verified");
-    setLookupVisitor((current) => current?.id === visitor.id ? updated : current);
-    setHasSearched(true);
-    setMessage(`${visitor.visitorName} found and verified. Use Check in when entry is approved.`);
+    try {
+      const updated = await persistVisitorStatus(visitor, "verified");
+      setLookupVisitor((current) => current?.id === visitor.id ? updated : current);
+      setHasSearched(true);
+      setMessage(`${visitor.visitorName} found and verified. Use Check in when entry is approved.`);
+    } catch (error) {
+      setHasSearched(true);
+      setMessage(error instanceof Error ? error.message : "Visitor status could not be updated online.");
+    }
   }
 
   async function changeStatus(visitor: Visitor, status: Visitor["status"]) {
@@ -8156,20 +8173,17 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
       return;
     }
 
-    const updated = await persistVisitorStatus(visitor, status);
-    setLookupVisitor((current) => current?.id === visitor.id ? updated : current);
-    setMessage(`${visitor.visitorName} is now ${status}.`);
+    try {
+      const updated = await persistVisitorStatus(visitor, status);
+      setLookupVisitor((current) => current?.id === visitor.id ? updated : current);
+      setMessage(`${visitor.visitorName} is now ${status}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Visitor status could not be updated online.");
+    }
   }
 
   async function persistVisitorStatus(visitor: Visitor, status: Visitor["status"]) {
-    try {
-      const updated = await saveAppwriteVisitorStatus(visitor, status);
-      addVisitorRecord(updated);
-      return updated;
-    } catch {
-      updateVisitorStatus(visitor.id, status);
-      return { ...visitor, status };
-    }
+    return saveAppwriteVisitorStatus(visitor, status);
   }
 
   return (
@@ -8502,12 +8516,10 @@ function shouldExpireVisitor(visitor: Visitor) {
 }
 
 export function ExpectedVisitorsPage() {
-  const { addVisitorRecord } = useLocalEstateStore();
   const { visitorViews, setVisitorViews, loadingVisitors, visitorError, refreshVisitors } = useLiveVisitorViews(readAppwriteExpectedVisitors);
 
   async function checkInVisitor(visitor: Visitor) {
     const updated = await saveAppwriteVisitorStatus(visitor, "checked-in");
-    addVisitorRecord(updated);
     setVisitorViews((current) => current.map((view) =>
       view.visitor.id === visitor.id ? { ...view, visitor: updated } : view
     ));
@@ -8543,21 +8555,24 @@ export function ExpectedVisitorsPage() {
 }
 
 export function EntryLogsPage() {
-  const { state } = useLocalEstateStore();
+  const { visitorViews, loadingVisitors, visitorError } = useLiveVisitorViews(readAppwriteSecurityVisitorHistory);
+  const movementVisitors = visitorViews.filter(({ visitor }) => visitor.status === "verified" || visitor.status === "checked-in" || visitor.status === "checked-out");
 
   return (
     <>
       <PageHeader title="Check-in and check-out logs" description="Record entry and exit times, guard names, and visitor movement." />
+      {visitorError ? <p className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{visitorError}</p> : null}
       <DataTable
-        title="Gate movement logs"
-        headers={["Visitor", "Code", "Entry time", "Exit time", "Guard", "Status"]}
-        rows={state.visitorLogs.map((log) => [
-          log.visitorName,
-          <span key={log.code} className="font-mono text-smart">{log.code}</span>,
-          log.entryTime ?? "Pending",
-          log.exitTime ?? (log.decision === "checked-in" ? "Inside" : "Pending"),
-          log.guardName,
-          <StatusBadge key={log.decision} status={log.decision} />
+        title={loadingVisitors ? "Loading gate movement logs" : "Gate movement logs"}
+        description="Live visitor movement from Appwrite visitor records."
+        headers={["Visitor", "Code", "Visit time", "Resident", "Unit", "Status"]}
+        rows={movementVisitors.map(({ visitor, residentName, unitCode }) => [
+          visitor.visitorName,
+          <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
+          `${visitor.visitDate} ${formatClockTime(visitor.arrivalTime)}`,
+          residentName,
+          unitCode,
+          <StatusBadge key={visitor.status} status={visitor.status} />
         ])}
       />
     </>
