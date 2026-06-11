@@ -181,15 +181,9 @@ async function buildBillingPlan(rows: LbsviewOnboardingPreviewRow[]): Promise<Bi
       continue;
     }
 
-    const skipReason = basicSkipReason(row);
-    if (skipReason) {
-      increment(skippedReasonCounts, skipReason);
-      continue;
-    }
-
     const resident = findMatchingResident(row, residentLookup);
     if (!resident?.$id) {
-      increment(skippedReasonCounts, "no matching existing resident");
+      increment(skippedReasonCounts, unmatchedReasonFor(row));
       continue;
     }
 
@@ -214,6 +208,8 @@ function buildResidentLookup(residents: AppwriteResidentRow[]) {
   const bySourceRow = new Map<number, AppwriteResidentRow>();
   const byId = new Map<string, AppwriteResidentRow>();
   const byUnitAndName = new Map<string, AppwriteResidentRow>();
+  const byPhone = uniqueLookup(residents, (resident) => normalizedPhone(resident.phone ?? ""));
+  const byEmail = uniqueLookup(residents, (resident) => normalizedEmail(resident.email ?? ""));
 
   for (const resident of residents) {
     if (typeof resident.sourceRow === "number") {
@@ -227,7 +223,7 @@ function buildResidentLookup(residents: AppwriteResidentRow[]) {
     }
   }
 
-  return { bySourceRow, byId, byUnitAndName };
+  return { bySourceRow, byId, byUnitAndName, byPhone, byEmail };
 }
 
 function findMatchingResident(
@@ -236,6 +232,8 @@ function findMatchingResident(
 ) {
   return lookup.bySourceRow.get(row.sourceRow)
     ?? lookup.byId.get(residentIdFor(row))
+    ?? lookup.byPhone.get(normalizedPhone(row.phone))
+    ?? lookup.byEmail.get(normalizedEmail(row.email))
     ?? lookup.byUnitAndName.get(`${unitIdFor(row.unitCode)}:${normalizedName(row.fullName)}`);
 }
 
@@ -279,11 +277,15 @@ function legacyBillAmount(expectedPayment: number, amountPaid: number, openingOu
   return Math.max(openingOutstanding, amountPaid);
 }
 
-function basicSkipReason(row: LbsviewOnboardingPreviewRow) {
+function unmatchedReasonFor(row: LbsviewOnboardingPreviewRow) {
   const role = row.role.trim().toLowerCase();
-  if (!["resident", "ex resident", "ex-resident"].includes(role)) return "not a resident role";
-  if (!normalizedCode(row.unitCode)) return "missing unit ID";
-  return "";
+  const isResidentRole = ["resident", "ex resident", "ex-resident"].includes(role);
+  const hasUnit = Boolean(normalizedCode(row.unitCode));
+
+  if (!isResidentRole && !hasUnit) return "no matching existing resident for review/admin row";
+  if (!isResidentRole) return "no matching existing resident for non-resident role";
+  if (!hasUnit) return "no matching existing resident with missing unit ID";
+  return "no matching existing resident";
 }
 
 function moneyTotal(row: LbsviewOnboardingPreviewRow) {
@@ -317,6 +319,16 @@ function normalizedName(value: string) {
   return String(value ?? "").trim().toLowerCase().replace(/\s+/g, " ");
 }
 
+function normalizedEmail(value: string) {
+  return String(value ?? "").trim().toLowerCase();
+}
+
+function normalizedPhone(value: string) {
+  const digits = String(value ?? "").replace(/\D/g, "");
+  if (digits.startsWith("234") && digits.length === 13) return `0${digits.slice(3)}`;
+  return digits;
+}
+
 function numberOrZero(value: number) {
   const numeric = Number(value);
   return Number.isFinite(numeric) ? Math.max(0, numeric) : 0;
@@ -330,4 +342,23 @@ function billStatus(amount: number, paidAmount: number, openingOutstanding: numb
 
 function increment(map: Map<string, number>, key: string) {
   map.set(key, (map.get(key) ?? 0) + 1);
+}
+
+function uniqueLookup<T>(rows: T[], keyFor: (row: T) => string) {
+  const counts = new Map<string, number>();
+  const values = new Map<string, T>();
+
+  for (const row of rows) {
+    const key = keyFor(row);
+    if (!key) continue;
+
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+    values.set(key, row);
+  }
+
+  for (const [key, count] of counts) {
+    if (count > 1) values.delete(key);
+  }
+
+  return values;
 }
