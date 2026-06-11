@@ -107,6 +107,34 @@ NEXT_PUBLIC_APP_URL=https://lbsview-estate.appwrite.network
 
 Use `MONNIFY_BASE_URL=https://sandbox.monnify.com` for testing and `MONNIFY_BASE_URL=https://api.monnify.com` for production. Manual payment recording remains available in the admin payment screen for bank transfer, POS, cash, and WhatsApp receipt updates.
 
+### Monnify Reserved Accounts And Webhooks
+
+Webhook URL to register in the Monnify dashboard:
+
+```text
+https://lbsview-estate.appwrite.network/api/webhooks/monnify
+```
+
+Register this URL under Monnify Webhook settings. The webhook signature secret must match the same `MONNIFY_SECRET_KEY` configured in the Appwrite Sites environment. The app verifies the `Monnify-Signature` header with HMAC-SHA512 before processing any event.
+
+To assign a reserved virtual account:
+
+1. Sign in as estate admin or super admin.
+2. Open `/admin/residents`.
+3. Select a resident.
+4. Click `Assign virtual account` in the resident detail panel.
+5. The generated Monnify account number, bank name, and account name are saved to `resident_virtual_accounts`.
+
+Residents see their dedicated payment account on `/resident/payments`. Bank transfers into that account are processed by the Monnify webhook, then allocated through the same Appwrite payment allocation flow used by online payment links and manual admin payments.
+
+To switch from sandbox to production, change:
+
+```bash
+MONNIFY_BASE_URL=https://api.monnify.com
+```
+
+Then update the Monnify dashboard webhook URL and credentials for the production Monnify account.
+
 ## Appwrite Resident Import
 
 Admin import controls are available at `/admin/residents` under `Appwrite import`.

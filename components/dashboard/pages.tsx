@@ -229,6 +229,21 @@ type MonnifyInitiateResponse = {
   error?: string;
 };
 
+type ResidentVirtualAccountDetails = {
+  id: string;
+  residentId: string;
+  propertyCode?: string;
+  unitCode?: string;
+  provider: string;
+  accountNumber: string;
+  accountName: string;
+  bankName: string;
+  bankCode?: string;
+  providerReference?: string;
+  status: string;
+  assignedAt?: string;
+};
+
 type AppwriteAccountingSummary = {
   expectedRevenue: number;
   paidAmount: number;
@@ -1194,6 +1209,8 @@ export function ResidentsAdminPage() {
   const [exportingScope, setExportingScope] = useState<"" | "residents" | "all">("");
   const [selectedResidentId, setSelectedResidentId] = useState("");
   const [creatingResidentLoginId, setCreatingResidentLoginId] = useState("");
+  const [assigningVirtualAccountId, setAssigningVirtualAccountId] = useState("");
+  const [virtualAccountsByResidentId, setVirtualAccountsByResidentId] = useState<Record<string, ResidentVirtualAccountDetails>>({});
   const [residentLoginCredential, setResidentLoginCredential] = useState<TemporaryCredential | null>(null);
   const directoryState: LocalEstateState = {
     ...state,
@@ -1364,6 +1381,39 @@ export function ResidentsAdminPage() {
     }
   }
 
+  async function assignVirtualAccount(resident: Resident) {
+    setAssigningVirtualAccountId(resident.id);
+    setResidentMessage("");
+
+    try {
+      const response = await fetch("/api/monnify/virtual-accounts", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ residentId: resident.id })
+      });
+      const payload = await response.json().catch(() => null) as {
+        account?: ResidentVirtualAccountDetails;
+        error?: string;
+      } | null;
+
+      if (!response.ok || !payload?.account) {
+        throw new Error(payload?.error ?? "Virtual account could not be assigned.");
+      }
+
+      setVirtualAccountsByResidentId((current) => ({
+        ...current,
+        [resident.id]: payload.account as ResidentVirtualAccountDetails
+      }));
+      setResidentMessage(`Virtual account assigned to ${resident.name}: ${payload.account.accountNumber} (${payload.account.bankName}).`);
+    } catch (error) {
+      setResidentMessage(error instanceof Error ? error.message : "Virtual account could not be assigned.");
+    } finally {
+      setAssigningVirtualAccountId("");
+    }
+  }
+
   async function updateAppwriteResidentFromDirectory(residentId: string, input: ResidentEditInput) {
     const response = await fetch("/api/appwrite/admin/residents", {
       method: "PATCH",
@@ -1447,6 +1497,9 @@ export function ResidentsAdminPage() {
         onEdit={(resident) => setEditingResident(resident)}
         onCreateLogin={(resident) => void createResidentLogin(resident)}
         creatingLoginId={creatingResidentLoginId}
+        virtualAccountsByResidentId={virtualAccountsByResidentId}
+        onAssignVirtualAccount={(resident) => void assignVirtualAccount(resident)}
+        assigningVirtualAccountId={assigningVirtualAccountId}
       />
       <div className="mt-6">
         <ResidentOnboardingPanel
@@ -1520,7 +1573,10 @@ function ResidentDirectoryPanel({
   onSelect,
   onEdit,
   onCreateLogin,
-  creatingLoginId
+  creatingLoginId,
+  virtualAccountsByResidentId,
+  onAssignVirtualAccount,
+  assigningVirtualAccountId
 }: {
   residents: Resident[];
   state: LocalEstateState;
@@ -1533,6 +1589,9 @@ function ResidentDirectoryPanel({
   onEdit: (resident: Resident) => void;
   onCreateLogin: (resident: Resident) => void;
   creatingLoginId: string;
+  virtualAccountsByResidentId: Record<string, ResidentVirtualAccountDetails>;
+  onAssignVirtualAccount: (resident: Resident) => void;
+  assigningVirtualAccountId: string;
 }) {
   const [residentSearch, setResidentSearch] = useState("");
   const [propertyFilter, setPropertyFilter] = useState("all");
@@ -1718,6 +1777,9 @@ function ResidentDirectoryPanel({
             onEdit={selectedResident ? () => onEdit(selectedResident) : undefined}
             onCreateLogin={selectedResident ? () => onCreateLogin(selectedResident) : undefined}
             creatingLogin={selectedResident ? creatingLoginId === selectedResident.id : false}
+            virtualAccount={selectedResident ? virtualAccountsByResidentId[selectedResident.id] : undefined}
+            onAssignVirtualAccount={selectedResident ? () => onAssignVirtualAccount(selectedResident) : undefined}
+            assigningVirtualAccount={selectedResident ? assigningVirtualAccountId === selectedResident.id : false}
           />
         </div>
       </div>
@@ -1734,6 +1796,9 @@ function ResidentDirectoryPanel({
           }}
           onCreateLogin={() => onCreateLogin(explicitlySelectedResident)}
           creatingLogin={creatingLoginId === explicitlySelectedResident.id}
+          virtualAccount={virtualAccountsByResidentId[explicitlySelectedResident.id]}
+          onAssignVirtualAccount={() => onAssignVirtualAccount(explicitlySelectedResident)}
+          assigningVirtualAccount={assigningVirtualAccountId === explicitlySelectedResident.id}
         />
       ) : null}
     </Card>
@@ -1747,7 +1812,10 @@ function ResidentMobileDetailsOverlay({
   onClose,
   onEdit,
   onCreateLogin,
-  creatingLogin
+  creatingLogin,
+  virtualAccount,
+  onAssignVirtualAccount,
+  assigningVirtualAccount
 }: {
   resident: Resident;
   state: LocalEstateState;
@@ -1756,6 +1824,9 @@ function ResidentMobileDetailsOverlay({
   onEdit: () => void;
   onCreateLogin: () => void;
   creatingLogin: boolean;
+  virtualAccount?: ResidentVirtualAccountDetails;
+  onAssignVirtualAccount?: () => void;
+  assigningVirtualAccount?: boolean;
 }) {
   const [mounted, setMounted] = useState(false);
 
@@ -1805,6 +1876,9 @@ function ResidentMobileDetailsOverlay({
             onEdit={onEdit}
             onCreateLogin={onCreateLogin}
             creatingLogin={creatingLogin}
+            virtualAccount={virtualAccount}
+            onAssignVirtualAccount={onAssignVirtualAccount}
+            assigningVirtualAccount={assigningVirtualAccount}
           />
         </div>
       </div>
@@ -1894,7 +1968,10 @@ function ResidentDetailsPanel({
   source,
   onEdit,
   onCreateLogin,
-  creatingLogin = false
+  creatingLogin = false,
+  virtualAccount,
+  onAssignVirtualAccount,
+  assigningVirtualAccount = false
 }: {
   resident?: Resident;
   state: LocalEstateState;
@@ -1902,6 +1979,9 @@ function ResidentDetailsPanel({
   onEdit?: () => void;
   onCreateLogin?: () => void;
   creatingLogin?: boolean;
+  virtualAccount?: ResidentVirtualAccountDetails;
+  onAssignVirtualAccount?: () => void;
+  assigningVirtualAccount?: boolean;
 }) {
   if (!resident) {
     return (
@@ -1941,6 +2021,15 @@ function ResidentDetailsPanel({
         <ResidentDetailLine label="Legacy address" value={resident.legacyAddress || "None"} />
       </div>
 
+      {virtualAccount ? (
+        <div className="mt-4 rounded-lg border border-smart/30 bg-smart/10 p-3 text-sm">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-smart">Virtual account</p>
+          <p className="mt-2 font-mono text-lg font-semibold text-white">{virtualAccount.accountNumber}</p>
+          <p className="mt-1 text-slate-300">{virtualAccount.bankName}</p>
+          <p className="mt-1 text-xs text-slate-500">{virtualAccount.accountName}</p>
+        </div>
+      ) : null}
+
       <div className="mt-5 grid gap-2 sm:grid-cols-3">
         {onEdit ? (
           <Button type="button" onClick={onEdit} className="w-full">
@@ -1969,6 +2058,16 @@ function ResidentDetailsPanel({
             Payments
           </Button>
         </Link>
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full sm:col-span-3"
+          disabled={!onAssignVirtualAccount || assigningVirtualAccount}
+          onClick={onAssignVirtualAccount}
+        >
+          <Landmark className="h-4 w-4" />
+          {assigningVirtualAccount ? "Assigning" : virtualAccount ? "Refresh virtual account" : "Assign virtual account"}
+        </Button>
       </div>
     </aside>
   );
@@ -6119,6 +6218,61 @@ function ResidentPaymentReturnBanner({
   );
 }
 
+function ResidentVirtualAccountCard({ account }: { account: ResidentVirtualAccountDetails }) {
+  const [copied, setCopied] = useState(false);
+
+  async function copyAccountNumber() {
+    await navigator.clipboard.writeText(account.accountNumber);
+    setCopied(true);
+    window.setTimeout(() => setCopied(false), 2000);
+  }
+
+  return (
+    <Card className="mb-6">
+      <CardHeader
+        title="Your dedicated payment account"
+        description="Transfer any amount to this account and your subscription will be confirmed automatically within seconds."
+      />
+      <div className="grid gap-3 rounded-lg border border-smart/30 bg-smart/10 p-4 text-sm">
+        <ResidentDetailLine label="Account Number" value={account.accountNumber} />
+        <ResidentDetailLine label="Bank" value={account.bankName || "Monnify bank account"} />
+        <ResidentDetailLine label="Account Name" value={account.accountName || "LBS View Estate"} />
+      </div>
+      <Button type="button" variant="secondary" className="mt-4" onClick={() => void copyAccountNumber()}>
+        <Download className="h-4 w-4" />
+        {copied ? "Copied!" : "Copy account number"}
+      </Button>
+    </Card>
+  );
+}
+
+function useResidentVirtualAccount() {
+  const [account, setAccount] = useState<ResidentVirtualAccountDetails | null>(null);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadVirtualAccount() {
+      const response = await fetch("/api/monnify/virtual-accounts", { cache: "no-store" });
+      const payload = await response.json().catch(() => null) as {
+        account?: ResidentVirtualAccountDetails | null;
+      } | null;
+
+      if (active && response.ok && payload?.account) {
+        setAccount(payload.account);
+      }
+    }
+
+    void loadVirtualAccount().catch(() => null);
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return account;
+}
+
 function subscriptionCoverageLabel(nextDueDate: string, months: number) {
   const start = new Date(`${nextDueDate.slice(0, 10)}T00:00:00`);
   if (Number.isNaN(start.getTime())) {
@@ -6207,6 +6361,7 @@ export function PaymentHistoryPage() {
   const { state } = useLocalEstateStore();
   const { accounting, accountingError, loadingAccounting, refreshAccounting } = useResidentAccountingState(state);
   const [returnBanner, setReturnBanner] = useState<{ tone: "success" | "error"; message: string } | null>(null);
+  const virtualAccount = useResidentVirtualAccount();
   const summary = accounting?.summary ?? null;
   const liveBills = accounting?.bills ?? [];
   const livePayments = accounting?.payments ?? [];
@@ -6249,6 +6404,7 @@ export function PaymentHistoryPage() {
           <div className="mb-6">
             <ResidentSummaryCards summary={summary} />
           </div>
+          {virtualAccount ? <ResidentVirtualAccountCard account={virtualAccount} /> : null}
           {summary.outstandingBalance === 0 ? (
             <Card className="mb-6">
               <CardHeader
@@ -9223,7 +9379,7 @@ function paymentChannelLabel(payment: Payment) {
 }
 
 function isResidentOnlinePaymentChannel(channel?: Payment["channel"]) {
-  return channel === "online" || channel === "monnify_card" || channel === "monnify_transfer";
+  return channel === "online" || channel === "monnify_card" || channel === "monnify_transfer" || channel === "monnify_virtual_account";
 }
 
 function scrollToSection(id: string) {

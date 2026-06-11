@@ -301,6 +301,8 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
       { key: "residentId", type: "string", size: 64, required: true },
       { key: "propertyId", type: "string", size: 64, required: false },
       { key: "unitId", type: "string", size: 64, required: false },
+      { key: "propertyCode", type: "string", size: 64, required: false },
+      { key: "unitCode", type: "string", size: 64, required: false },
       { key: "provider", type: "string", size: 64, required: true },
       { key: "accountNumber", type: "string", size: 32, required: true },
       { key: "accountName", type: "string", size: 160, required: true },

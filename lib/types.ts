@@ -96,6 +96,7 @@ export type PaymentChannel =
   | "online"
   | "monnify_card"
   | "monnify_transfer"
+  | "monnify_virtual_account"
   | "bank_transfer"
   | "cash"
   | "pos"

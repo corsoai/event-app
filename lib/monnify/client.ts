@@ -33,6 +33,28 @@ export type VerifiedTransaction = {
   paidOn?: string;
 };
 
+export type ReservedAccountParams = {
+  accountReference: string;
+  accountName: string;
+  customerEmail: string;
+  customerName: string;
+  bvn?: string;
+  metadata: {
+    residentId: string;
+    unitCode: string;
+    estateId: string;
+  };
+};
+
+export type ReservedAccountResponse = {
+  accountNumber: string;
+  bankName: string;
+  bankCode?: string;
+  accountName: string;
+  accountReference: string;
+  reservationReference: string;
+};
+
 type MonnifyConfig = {
   apiKey: string;
   secretKey: string;
@@ -145,6 +167,46 @@ export async function verifyTransaction(transactionReference: string): Promise<V
   };
 }
 
+export async function createReservedAccount(params: ReservedAccountParams): Promise<ReservedAccountResponse> {
+  const config = getMonnifyConfig();
+  const accessToken = await getMonnifyAccessToken();
+  const response = await fetch(`${config.baseUrl}/api/v2/bank-transfer/reserved-accounts`, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({
+      accountReference: params.accountReference,
+      accountName: params.accountName,
+      currencyCode: "NGN",
+      contractCode: config.contractCode,
+      customerEmail: params.customerEmail,
+      customerName: params.customerName,
+      getAllAvailableBanks: true,
+      ...(params.bvn ? { bvn: params.bvn } : {}),
+      metadata: params.metadata
+    }),
+    cache: "no-store"
+  });
+  const payload = await parseMonnifyJson(response);
+  const body = readResponseBody(payload);
+  const account = readReservedAccount(body);
+
+  if (!account.accountNumber || !account.bankName) {
+    throw new Error("Monnify did not return a reserved account number.");
+  }
+
+  return {
+    accountNumber: account.accountNumber,
+    bankName: account.bankName,
+    bankCode: account.bankCode,
+    accountName: readString(body, "accountName") || account.accountName || params.accountName,
+    accountReference: readString(body, "accountReference") || params.accountReference,
+    reservationReference: readString(body, "reservationReference") || readString(body, "reservedAccountReference") || params.accountReference
+  };
+}
+
 function getMonnifyConfig(): MonnifyConfig {
   const apiKey = (process.env.MONNIFY_API_KEY ?? "").trim();
   const secretKey = (process.env.MONNIFY_SECRET_KEY ?? "").trim();
@@ -208,4 +270,17 @@ function readNumber(record: Record<string, unknown>, key: string) {
   const value = record[key];
   const numeric = typeof value === "number" ? value : Number(value);
   return Number.isFinite(numeric) ? numeric : 0;
+}
+
+function readReservedAccount(record: Record<string, unknown>) {
+  const accounts = Array.isArray(record.accounts) ? record.accounts : [];
+  const firstAccount = accounts.find((item): item is Record<string, unknown> => Boolean(item && typeof item === "object"));
+  const directAccount = firstAccount ?? record;
+
+  return {
+    accountNumber: readString(directAccount, "accountNumber"),
+    bankName: readString(directAccount, "bankName"),
+    bankCode: readString(directAccount, "bankCode"),
+    accountName: readString(directAccount, "accountName")
+  };
 }

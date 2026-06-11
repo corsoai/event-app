@@ -686,6 +686,7 @@ function mapChannel(value?: string): Payment["channel"] {
     value === "online" ||
     value === "monnify_card" ||
     value === "monnify_transfer" ||
+    value === "monnify_virtual_account" ||
     value === "cash" ||
     value === "pos" ||
     value === "whatsapp_receipt" ||
@@ -705,6 +706,8 @@ function channelLabel(value?: Payment["channel"]) {
       return "Monnify card";
     case "monnify_transfer":
       return "Monnify transfer";
+    case "monnify_virtual_account":
+      return "Monnify virtual account";
     case "cash":
       return "Cash";
     case "pos":
@@ -720,7 +723,7 @@ function channelLabel(value?: Payment["channel"]) {
 }
 
 function isOnlinePaymentChannel(value?: Payment["channel"]) {
-  return value === "online" || value === "monnify_card" || value === "monnify_transfer";
+  return value === "online" || value === "monnify_card" || value === "monnify_transfer" || value === "monnify_virtual_account";
 }
 
 function mapPaymentSource(value?: string): Payment["source"] {
