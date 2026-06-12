@@ -20,6 +20,7 @@ export const adminNav: NavItem[] = [
 
 export const residentNav: NavItem[] = [
   { label: "Home", href: "/resident", icon: "Home" },
+  { label: "Emergency SOS", href: "/resident/sos", icon: "Siren" },
   { label: "Invite Visitor", href: "/resident/invite-visitor", icon: "QrCode" },
   { label: "My Bills", href: "/resident/bills", icon: "ReceiptText" },
   { label: "Complaints", href: "/resident/complaints", icon: "ClipboardList" },
@@ -44,9 +45,9 @@ export const securityNav: NavItem[] = [
 
 export const csoNav: NavItem[] = [
   { label: "Command", href: "/cso", icon: "Gauge" },
+  { label: "SOS Alerts", href: "/cso#alerts", icon: "Siren" },
   { label: "Checkpoints", href: "/cso#checkpoints", icon: "ShieldCheck" },
-  { label: "Patrol Feed", href: "/cso#patrol-feed", icon: "FileText" },
-  { label: "Security Alerts", href: "/cso#alerts", icon: "Siren" }
+  { label: "Patrol Feed", href: "/cso#patrol-feed", icon: "FileText" }
 ];
 
 export const superAdminNav: NavItem[] = [

@@ -1335,12 +1335,20 @@ export function AdminDashboard() {
         title="Estate command center"
         description="Manage LBS View Estate operations across residents, access control, billing, complaints, announcements, and reports."
       >
-        <Link href="/admin/bills">
-          <Button>
-            <FilePlus2 className="h-4 w-4" />
-            Create bill
-          </Button>
-        </Link>
+        <div className="flex flex-wrap gap-2">
+          <Link href="/admin/sos-alerts">
+            <Button variant="danger">
+              <Siren className="h-4 w-4" />
+              SOS Alerts
+            </Button>
+          </Link>
+          <Link href="/admin/bills">
+            <Button>
+              <FilePlus2 className="h-4 w-4" />
+              Create bill
+            </Button>
+          </Link>
+        </div>
       </PageHeader>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
         <StatCard label="Total residents" value={String(state.residents.length)} helper="Across active demo estates" icon={<Users className="h-5 w-5" />} />
@@ -7186,7 +7194,14 @@ export function SecurityDashboard() {
 
   return (
     <>
-      <PageHeader title="Security dashboard" description="Verify access and record gate movement." />
+      <PageHeader title="Security dashboard" description="Verify access and record gate movement.">
+        <Link href="/security/sos-alerts">
+          <Button variant="danger">
+            <Siren className="h-4 w-4" />
+            SOS Alerts
+          </Button>
+        </Link>
+      </PageHeader>
       {sosMessage ? <p className="mb-4 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm text-gold">{sosMessage}</p> : null}
       {activeSosAlerts.length ? (
         <Link
@@ -7488,7 +7503,14 @@ export function CsoDashboard() {
       <PageHeader
         title="CSO command"
         description="Monitor patrols, GPS exceptions, checkpoint coverage, and guard activity."
-      />
+      >
+        <Link href="/cso#alerts">
+          <Button variant="danger">
+            <Siren className="h-4 w-4" />
+            SOS Alerts
+          </Button>
+        </Link>
+      </PageHeader>
 
       {message ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{message}</p> : null}
 

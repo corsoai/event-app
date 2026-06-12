@@ -14,7 +14,7 @@ import {
   QrCode,
   ReceiptText,
   Shield,
-  User,
+  Siren,
   Users,
   WalletCards
 } from "lucide-react";
@@ -65,7 +65,7 @@ export function MobileBottomNav({ role }: { role: MobileRole }) {
   }, [role]);
 
   useEffect(() => {
-    if (role !== "cso" && role !== "security_guard") return;
+    if (role !== "cso" && role !== "security_guard" && role !== "admin") return;
 
     let active = true;
     fetch("/api/appwrite/admin/sos", { cache: "no-store" })
@@ -124,10 +124,10 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
   if (role === "resident") {
     return [
       { label: "Home", href: "/resident", icon: Home },
+      { label: "SOS", href: "/resident/sos", icon: Siren },
       { label: "Bills", href: "/resident/bills", icon: ReceiptText, badge: outstandingBalance > 0 ? 1 : 0 },
       { label: "Pay", href: "/resident/payments", icon: CreditCard },
-      { label: "Visitors", href: "/resident/visitors", icon: Users },
-      { label: "Profile", href: "/resident/digital-id", icon: User }
+      { label: "Visitors", href: "/resident/visitors", icon: Users }
     ];
   }
 
@@ -153,7 +153,7 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
   return [
     { label: "Dashboard", href: role === "super_admin" ? "/super-admin" : "/admin", icon: LayoutDashboard },
     { label: "Residents", href: "/admin/residents", icon: Users },
-    { label: "Bills", href: "/admin/bills", icon: ReceiptText },
+    { label: "SOS", href: "/admin/sos-alerts", icon: Siren, badge: openIncidents },
     { label: "Payments", href: "/admin/payments", icon: WalletCards },
     { label: "Reports", href: role === "super_admin" ? "/super-admin/reports" : "/admin/reports", icon: BarChart3 }
   ];
