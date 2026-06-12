@@ -7504,7 +7504,7 @@ export function CsoDashboard() {
         title="CSO command"
         description="Monitor patrols, GPS exceptions, checkpoint coverage, and guard activity."
       >
-        <Link href="/cso#alerts">
+        <Link href="/cso/sos-alerts">
           <Button variant="danger">
             <Siren className="h-4 w-4" />
             SOS Alerts

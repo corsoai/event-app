@@ -144,9 +144,9 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
   if (role === "cso") {
     return [
       { label: "Dashboard", href: "/cso", icon: Shield },
+      { label: "Alerts", href: "/cso/sos-alerts", icon: Bell, badge: openIncidents },
       { label: "Checkpoints", href: "/cso#checkpoints", icon: MapPin },
-      { label: "Patrol", href: "/cso#patrol-feed", icon: Activity },
-      { label: "Alerts", href: "/cso#alerts", icon: Bell, badge: openIncidents }
+      { label: "Patrol", href: "/cso#patrol-feed", icon: Activity }
     ];
   }
 
