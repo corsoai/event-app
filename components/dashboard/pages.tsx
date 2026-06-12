@@ -7519,7 +7519,7 @@ export function CsoDashboard() {
         <StatCard label="Active guards" value={String(activeGuards.size)} helper="Seen in last 24 hours" icon={<Users className="h-5 w-5" />} />
         <StatCard label="GPS violations" value={String(gpsViolations.length)} helper="Needs CSO review" icon={<AlertTriangle className="h-5 w-5" />} />
         <StatCard label="Offline synced" value={String(offlineLogs.length)} helper="Saved during network gaps" icon={<RefreshCw className="h-5 w-5" />} />
-        <StatCard label="Open incidents" value={String(openIncidents.length)} helper="From security_incidents" icon={<Siren className="h-5 w-5" />} />
+        <StatCard label="Open SOS incidents" value={String(openIncidents.length)} helper="From security_incidents" icon={<Siren className="h-5 w-5" />} />
         <StatCard label="CSO reviews" value={String(pendingReviews.length)} helper="Pending sign-off" icon={<BadgeCheck className="h-5 w-5" />} />
       </div>
 
@@ -7581,7 +7581,7 @@ export function CsoDashboard() {
             </div>
           </Card>
           <Card id="alerts">
-            <CardHeader title="Security alerts" description="Realtime GPS and incident warnings." />
+            <CardHeader title="SOS alerts" description="Realtime panic, GPS, and incident warnings." />
             <div className="grid gap-3">
               {securityAlerts.length ? securityAlerts.map((alert) => (
                 <SecurityAlertCapsule key={alert.id} alert={alert} />
