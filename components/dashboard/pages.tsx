@@ -5551,7 +5551,7 @@ export function ResidentDashboard() {
               className="inline-flex min-h-9 items-center justify-center gap-1 rounded-lg bg-danger px-3 py-1 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(255,59,48,0.18)]"
             >
               <Siren className="h-3.5 w-3.5" />
-              SOS
+              SOS Emergency
             </Link>
             {summary ? (
               <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${summary.outstandingBalance > 0 ? "border-danger/30 bg-danger/10 text-danger" : "border-smart/30 bg-smart/10 text-smart"}`}>
@@ -5567,7 +5567,7 @@ export function ResidentDashboard() {
             <Link href="/resident/sos">
               <Button variant="danger">
                 <Siren className="h-4 w-4" />
-                SOS
+                🚨 SOS Emergency
               </Button>
             </Link>
             <Button type="button" variant="secondary" onClick={() => void refreshAccounting({ bypassCache: true })}>

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import {
+  AlertTriangle,
   BarChart3,
   Bell,
   BookOpen,
@@ -36,6 +37,7 @@ import { cn } from "@/lib/utils";
 import type { UserRole } from "@/lib/types";
 
 const icons = {
+  AlertTriangle,
   BarChart3,
   Bell,
   BookOpen,
@@ -66,6 +68,8 @@ export type NavItem = {
   label: string;
   href: string;
   icon: keyof typeof icons;
+  tone?: "danger";
+  badge?: "sos";
 };
 
 export function AppShell({
@@ -84,6 +88,7 @@ export function AppShell({
   const [open, setOpen] = useState(false);
   const [theme, setTheme] = useState<ThemeMode>("light");
   const [themeLoaded, setThemeLoaded] = useState(false);
+  const [activeSosCount, setActiveSosCount] = useState(0);
   const dashboardHref = navItems[0]?.href ?? "/";
 
   useEffect(() => {
@@ -94,6 +99,33 @@ export function AppShell({
     router.prefetch(pathname);
     navItems.slice(0, 5).forEach((item) => router.prefetch(item.href));
   }, [navItems, pathname, router]);
+
+  useEffect(() => {
+    if (!navItems.some((item) => item.badge === "sos")) return;
+
+    let active = true;
+
+    async function loadSosCount() {
+      try {
+        const response = await fetch("/api/appwrite/admin/sos", { cache: "no-store" });
+        const payload = await response.json().catch(() => null) as { incidents?: Array<{ status?: string }> } | null;
+        if (!active || !response.ok) return;
+        setActiveSosCount((payload?.incidents ?? []).filter((incident) => isActiveSosStatus(incident.status)).length);
+      } catch {
+        if (active) {
+          setActiveSosCount(0);
+        }
+      }
+    }
+
+    void loadSosCount();
+    const interval = window.setInterval(loadSosCount, 30000);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, [navItems]);
 
   useEffect(() => {
     function warmVisibleRoute() {
@@ -174,6 +206,7 @@ export function AppShell({
                 item={item}
                 active={pathname === item.href}
                 onNavigate={() => setOpen(false)}
+                badgeCount={item.badge === "sos" ? activeSosCount : 0}
               />
             ))}
             <button
@@ -211,7 +244,7 @@ export function AppShell({
         </div>
         <nav className="mt-6 grid flex-1 gap-1 overflow-y-auto overscroll-contain pr-1">
           {navItems.map((item) => (
-            <NavLink key={item.href} item={item} active={pathname === item.href} collapseLabel />
+            <NavLink key={item.href} item={item} active={pathname === item.href} collapseLabel badgeCount={item.badge === "sos" ? activeSosCount : 0} />
           ))}
         </nav>
       </aside>
@@ -260,14 +293,17 @@ function NavLink({
   item,
   active,
   onNavigate,
-  collapseLabel = false
+  collapseLabel = false,
+  badgeCount = 0
 }: {
   item: NavItem;
   active: boolean;
   onNavigate?: () => void;
   collapseLabel?: boolean;
+  badgeCount?: number;
 }) {
   const Icon = icons[item.icon];
+  const danger = item.tone === "danger";
   return (
     <Link
       href={item.href}
@@ -275,12 +311,22 @@ function NavLink({
       title={item.label}
       className={cn(
         "flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white",
+        danger && "border border-red-500/30 bg-red-500/10 text-red-700 hover:bg-red-500/15 hover:text-red-800 dark:text-red-200 dark:hover:text-white",
         collapseLabel ? "justify-center xl:justify-start" : "justify-start",
-        active && "bg-white/10 text-smart shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]"
+        active && (danger ? "bg-red-500/15 text-red-800 shadow-[0_1px_0_rgba(255,255,255,0.08)_inset] dark:text-red-100" : "bg-white/10 text-smart shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]")
       )}
     >
       <Icon className="h-4 w-4" />
       <span className={collapseLabel ? "hidden xl:inline" : ""}>{item.label}</span>
+      {badgeCount > 0 ? (
+        <span className={cn("ml-auto min-w-5 rounded-full bg-red-600 px-1.5 py-0.5 text-center text-[10px] font-bold leading-none text-white", collapseLabel && "xl:ml-auto")}>
+          {badgeCount > 9 ? "9+" : badgeCount}
+        </span>
+      ) : null}
     </Link>
   );
+}
+
+function isActiveSosStatus(status: unknown) {
+  return status === "open" || status === "acknowledged" || status === "responding";
 }

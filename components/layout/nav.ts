@@ -2,11 +2,11 @@ import type { NavItem } from "@/components/layout/app-shell";
 
 export const adminNav: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: "Gauge" },
+  { label: "SOS Alerts", href: "/admin/sos-alerts", icon: "AlertTriangle", tone: "danger", badge: "sos" },
   { label: "Estate Profile", href: "/admin/estate", icon: "Building2" },
   { label: "Users & Roles", href: "/admin/users", icon: "Users" },
   { label: "Residents", href: "/admin/residents", icon: "Users" },
   { label: "Visitor Logs", href: "/admin/visitors", icon: "QrCode" },
-  { label: "SOS Alerts", href: "/admin/sos-alerts", icon: "Siren" },
   { label: "Bills", href: "/admin/bills", icon: "ReceiptText" },
   { label: "Payments", href: "/admin/payments", icon: "WalletCards" },
   { label: "Complaints", href: "/admin/complaints", icon: "ClipboardList" },
@@ -20,7 +20,6 @@ export const adminNav: NavItem[] = [
 
 export const residentNav: NavItem[] = [
   { label: "Home", href: "/resident", icon: "Home" },
-  { label: "Emergency SOS", href: "/resident/sos", icon: "Siren" },
   { label: "Invite Visitor", href: "/resident/invite-visitor", icon: "QrCode" },
   { label: "My Bills", href: "/resident/bills", icon: "ReceiptText" },
   { label: "Complaints", href: "/resident/complaints", icon: "ClipboardList" },
@@ -30,14 +29,15 @@ export const residentNav: NavItem[] = [
   { label: "Announcements", href: "/resident/announcements", icon: "Bell" },
   { label: "Household", href: "/resident/household", icon: "Users" },
   { label: "Knowledge Base", href: "/resident/knowledge-base", icon: "BookOpen" },
+  { label: "SOS Emergency", href: "/resident/sos", icon: "AlertTriangle", tone: "danger" },
   { label: "Marketplace", href: "/marketplace", icon: "Store" }
 ];
 
 export const securityNav: NavItem[] = [
   { label: "Dashboard", href: "/security", icon: "Gauge" },
+  { label: "SOS Alerts", href: "/security/sos-alerts", icon: "AlertTriangle", tone: "danger", badge: "sos" },
   { label: "Verify Visitor", href: "/security/verify-visitor", icon: "QrCode" },
   { label: "Guard Tour", href: "/security/verify-visitor", icon: "ShieldCheck" },
-  { label: "SOS Alerts", href: "/security/sos-alerts", icon: "Siren" },
   { label: "Expected Visitors", href: "/security/expected-visitors", icon: "DoorOpen" },
   { label: "Entry Logs", href: "/security/logs", icon: "FileText" },
   { label: "Verify Digital ID", href: "/security/verify-id", icon: "IdCard" }
@@ -45,7 +45,7 @@ export const securityNav: NavItem[] = [
 
 export const csoNav: NavItem[] = [
   { label: "Command", href: "/cso", icon: "Gauge" },
-  { label: "SOS Alerts", href: "/cso/sos-alerts", icon: "Siren" },
+  { label: "SOS Alerts", href: "/cso/sos-alerts", icon: "AlertTriangle", tone: "danger", badge: "sos" },
   { label: "Checkpoints", href: "/cso#checkpoints", icon: "ShieldCheck" },
   { label: "Patrol Feed", href: "/cso#patrol-feed", icon: "FileText" }
 ];

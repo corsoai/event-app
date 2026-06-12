@@ -4,8 +4,8 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
   Activity,
+  AlertTriangle,
   BarChart3,
-  Bell,
   ClipboardList,
   CreditCard,
   Home,
@@ -14,7 +14,6 @@ import {
   QrCode,
   ReceiptText,
   Shield,
-  Siren,
   Users,
   WalletCards
 } from "lucide-react";
@@ -29,6 +28,7 @@ type BottomNavItem = {
   href: string;
   icon: typeof Home;
   badge?: number;
+  tone?: "danger";
 };
 
 type ResidentAccountingResponse = {
@@ -93,6 +93,7 @@ export function MobileBottomNav({ role }: { role: MobileRole }) {
         {items.map((item) => {
           const Icon = item.icon;
           const active = isActiveMobileTab(pathname, item.href);
+          const danger = item.tone === "danger";
 
           return (
             <Link
@@ -100,7 +101,8 @@ export function MobileBottomNav({ role }: { role: MobileRole }) {
               href={item.href}
               className={cn(
                 "relative grid min-h-11 place-items-center content-center gap-0.5 rounded-lg px-1 text-[10px] font-semibold text-slate-500 transition",
-                active && `${estateGreen} bg-[#1a7c4a]/10`
+                danger && "text-red-600",
+                active && (danger ? "bg-red-600/10 text-red-700" : `${estateGreen} bg-[#1a7c4a]/10`)
               )}
             >
               <span className="relative">
@@ -124,10 +126,10 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
   if (role === "resident") {
     return [
       { label: "Home", href: "/resident", icon: Home },
-      { label: "SOS", href: "/resident/sos", icon: Siren },
       { label: "Bills", href: "/resident/bills", icon: ReceiptText, badge: outstandingBalance > 0 ? 1 : 0 },
       { label: "Pay", href: "/resident/payments", icon: CreditCard },
-      { label: "Visitors", href: "/resident/visitors", icon: Users }
+      { label: "Visitors", href: "/resident/visitors", icon: Users },
+      { label: "SOS", href: "/resident/sos", icon: AlertTriangle, tone: "danger" }
     ];
   }
 
@@ -136,7 +138,7 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
       { label: "Dashboard", href: "/security", icon: Shield },
       { label: "Verify", href: "/security/verify-visitor", icon: QrCode },
       { label: "Visitors", href: "/security/expected-visitors", icon: Users },
-      { label: "Alerts", href: "/security/sos-alerts", icon: Bell, badge: openIncidents },
+      { label: "SOS", href: "/security/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
       { label: "Logs", href: "/security/logs", icon: ClipboardList }
     ];
   }
@@ -144,7 +146,7 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
   if (role === "cso") {
     return [
       { label: "Dashboard", href: "/cso", icon: Shield },
-      { label: "Alerts", href: "/cso/sos-alerts", icon: Bell, badge: openIncidents },
+      { label: "SOS", href: "/cso/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
       { label: "Checkpoints", href: "/cso#checkpoints", icon: MapPin },
       { label: "Patrol", href: "/cso#patrol-feed", icon: Activity }
     ];
@@ -153,7 +155,7 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
   return [
     { label: "Dashboard", href: role === "super_admin" ? "/super-admin" : "/admin", icon: LayoutDashboard },
     { label: "Residents", href: "/admin/residents", icon: Users },
-    { label: "SOS", href: "/admin/sos-alerts", icon: Siren, badge: openIncidents },
+    { label: "SOS", href: "/admin/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
     { label: "Payments", href: "/admin/payments", icon: WalletCards },
     { label: "Reports", href: role === "super_admin" ? "/super-admin/reports" : "/admin/reports", icon: BarChart3 }
   ];
