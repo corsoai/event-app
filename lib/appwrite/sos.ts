@@ -115,9 +115,8 @@ export async function listResidentSosIncidents(userId: string) {
 }
 
 export async function getResidentSosIncident(userId: string, incidentId: string) {
-  const session = await resolveResidentComplaintSession(userId);
-  const incident = mapSosIncidentRow(await getSosIncidentRow(incidentId));
-  if (incident.reportedByProfileId !== session.profileId) {
+  const incident = (await listResidentSosIncidents(userId)).find((item) => item.id === incidentId.trim());
+  if (!incident) {
     throw new Error("You are not allowed to view this SOS alert.");
   }
 
