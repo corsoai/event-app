@@ -493,15 +493,21 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     columns: [
       ...baseColumns,
       { key: "incidentType", type: "string", size: 64, required: true },
+      { key: "alertType", type: "string", size: 64, required: false },
       { key: "severity", type: "string", size: 32, required: true },
       { key: "status", type: "string", size: 32, required: true },
       { key: "reportedByRole", type: "string", size: 32, required: true },
       { key: "reportedByProfileId", type: "string", size: 64, required: false },
       { key: "assignedToProfileId", type: "string", size: 64, required: false },
+      { key: "residentName", type: "string", size: 160, required: false },
+      { key: "unitCode", type: "string", size: 64, required: false },
       { key: "locationLabel", type: "string", size: 255, required: false },
       { key: "summary", type: "string", size: 160, required: true },
       { key: "details", type: "string", size: 2048, required: false },
       { key: "openedAt", type: "datetime", required: true },
+      { key: "acknowledgedAt", type: "datetime", required: false },
+      { key: "acknowledgedBy", type: "string", size: 160, required: false },
+      { key: "respondingAt", type: "datetime", required: false },
       { key: "resolvedAt", type: "datetime", required: false }
     ],
     indexes: [

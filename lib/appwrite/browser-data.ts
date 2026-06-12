@@ -1,6 +1,6 @@
 "use client";
 
-import type { Resident, UserRole, Visitor } from "@/lib/types";
+import type { Resident, SecurityIncident, UserRole, Visitor } from "@/lib/types";
 
 type AccessRequestResult = {
   status: "created" | "already-pending" | "already-approved";
@@ -31,6 +31,18 @@ export type AppwriteVisitorView = {
   resident: Resident | null;
   residentName: string;
   unitCode: string;
+};
+
+export type SosCreateInput = {
+  alertType: "panic" | "medical" | "fire" | "security" | "other";
+  locationLabel?: string;
+  details?: string;
+};
+
+export type SosUpdateInput = {
+  incidentId: string;
+  status: "acknowledged" | "responding" | "resolved" | "false_alarm";
+  note?: string;
 };
 
 export type ResidentUpdateInput = Pick<
@@ -242,6 +254,73 @@ export async function updateAppwriteVisitorStatus(visitor: Visitor, status: Visi
   return payload.visitor ?? visitor;
 }
 
+export async function createAppwriteResidentSos(input: SosCreateInput) {
+  const response = await fetch("/api/appwrite/resident/sos", {
+    method: "POST",
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+  const payload = await response.json().catch(() => ({})) as {
+    incident?: SecurityIncident;
+    incidentId?: string;
+    error?: string;
+  };
+
+  if (!response.ok || !payload.incident) {
+    throw new Error(payload.error ?? "SOS alert could not be sent.");
+  }
+
+  return payload.incident;
+}
+
+export async function readAppwriteResidentSosHistory() {
+  const response = await fetch("/api/appwrite/resident/sos", { cache: "no-store" });
+  return readSosResponse(response, "SOS history could not be loaded.");
+}
+
+export async function readAppwriteResidentSosIncident(incidentId: string) {
+  const response = await fetch(`/api/appwrite/resident/sos/${encodeURIComponent(incidentId)}`, { cache: "no-store" });
+  const payload = await response.json().catch(() => ({})) as {
+    incident?: SecurityIncident;
+    error?: string;
+  };
+
+  if (!response.ok || !payload.incident) {
+    throw new Error(payload.error ?? "SOS alert status could not be loaded.");
+  }
+
+  return payload.incident;
+}
+
+export async function readAppwriteAdminSosIncidents() {
+  const response = await fetch("/api/appwrite/admin/sos", { cache: "no-store" });
+  return readSosResponse(response, "SOS alerts could not be loaded.");
+}
+
+export async function updateAppwriteSosIncident(input: SosUpdateInput) {
+  const response = await fetch("/api/appwrite/admin/sos", {
+    method: "PATCH",
+    cache: "no-store",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+  const payload = await response.json().catch(() => ({})) as {
+    incident?: SecurityIncident;
+    error?: string;
+  };
+
+  if (!response.ok || !payload.incident) {
+    throw new Error(payload.error ?? "SOS alert could not be updated.");
+  }
+
+  return payload.incident;
+}
+
 async function readVisitorViewsResponse(response: Response, fallbackMessage: string) {
   const payload = await response.json().catch(() => ({})) as {
     visitors?: AppwriteVisitorView[];
@@ -253,6 +332,19 @@ async function readVisitorViewsResponse(response: Response, fallbackMessage: str
   }
 
   return payload.visitors ?? [];
+}
+
+async function readSosResponse(response: Response, fallbackMessage: string) {
+  const payload = await response.json().catch(() => ({})) as {
+    incidents?: SecurityIncident[];
+    error?: string;
+  };
+
+  if (!response.ok) {
+    throw new Error(payload.error ?? fallbackMessage);
+  }
+
+  return payload.incidents ?? [];
 }
 
 export async function updateAppwriteResident(residentId: string, input: ResidentUpdateInput) {

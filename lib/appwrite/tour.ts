@@ -52,15 +52,21 @@ type AppwriteSecurityIncidentRow = {
   $id?: string;
   estateId?: string;
   incidentType?: string;
+  alertType?: string;
   severity?: string;
   status?: string;
   reportedByRole?: string;
   reportedByProfileId?: string;
   assignedToProfileId?: string;
+  residentName?: string;
+  unitCode?: string;
   locationLabel?: string;
   summary?: string;
   details?: string;
   openedAt?: string;
+  acknowledgedAt?: string;
+  acknowledgedBy?: string;
+  respondingAt?: string;
   resolvedAt?: string;
 };
 
@@ -368,15 +374,21 @@ function mapSecurityIncidentRow(row: AppwriteSecurityIncidentRow): SecurityIncid
     id: row.$id ?? safeAppwriteId("incident", `${row.summary}:${row.openedAt}`),
     estateId: row.estateId ?? APPWRITE_LBSVIEW_ESTATE_ID,
     incidentType: row.incidentType ?? "security",
+    alertType: mapIncidentAlertType(row.alertType),
     severity: mapIncidentSeverity(row.severity),
     status: mapIncidentStatus(row.status),
     reportedByRole: row.reportedByRole ?? "security_guard",
     reportedByProfileId: optionalText(row.reportedByProfileId),
     assignedToProfileId: optionalText(row.assignedToProfileId),
+    residentName: optionalText(row.residentName),
+    unitCode: optionalText(row.unitCode),
     locationLabel: optionalText(row.locationLabel),
     summary: row.summary ?? "Security incident",
     details: optionalText(row.details),
     openedAt: row.openedAt ?? "",
+    acknowledgedAt: optionalText(row.acknowledgedAt),
+    acknowledgedBy: optionalText(row.acknowledgedBy),
+    respondingAt: optionalText(row.respondingAt),
     resolvedAt: optionalText(row.resolvedAt)
   };
 }
@@ -404,15 +416,23 @@ function mapIncidentSeverity(value?: string): SecurityIncident["severity"] {
 }
 
 function mapIncidentStatus(value?: string): SecurityIncident["status"] {
-  if (value === "acknowledged" || value === "resolved" || value === "closed") {
+  if (value === "acknowledged" || value === "responding" || value === "resolved" || value === "false_alarm" || value === "closed") {
     return value;
   }
 
   return "open";
 }
 
+function mapIncidentAlertType(value?: string): SecurityIncident["alertType"] {
+  if (value === "panic" || value === "medical" || value === "fire" || value === "security" || value === "other") {
+    return value;
+  }
+
+  return undefined;
+}
+
 function mapCsoReviewStatus(value?: string): CsoReview["status"] {
-  if (value === "open" || value === "approved" || value === "rejected" || value === "closed") {
+  if (value === "open" || value === "approved" || value === "rejected" || value === "closed" || value === "completed") {
     return value;
   }
 

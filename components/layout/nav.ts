@@ -6,6 +6,7 @@ export const adminNav: NavItem[] = [
   { label: "Users & Roles", href: "/admin/users", icon: "Users" },
   { label: "Residents", href: "/admin/residents", icon: "Users" },
   { label: "Visitor Logs", href: "/admin/visitors", icon: "QrCode" },
+  { label: "SOS Alerts", href: "/admin/sos-alerts", icon: "Siren" },
   { label: "Bills", href: "/admin/bills", icon: "ReceiptText" },
   { label: "Payments", href: "/admin/payments", icon: "WalletCards" },
   { label: "Complaints", href: "/admin/complaints", icon: "ClipboardList" },
@@ -35,6 +36,7 @@ export const securityNav: NavItem[] = [
   { label: "Dashboard", href: "/security", icon: "Gauge" },
   { label: "Verify Visitor", href: "/security/verify-visitor", icon: "QrCode" },
   { label: "Guard Tour", href: "/security/verify-visitor", icon: "ShieldCheck" },
+  { label: "SOS Alerts", href: "/security/sos-alerts", icon: "Siren" },
   { label: "Expected Visitors", href: "/security/expected-visitors", icon: "DoorOpen" },
   { label: "Entry Logs", href: "/security/logs", icon: "FileText" },
   { label: "Verify Digital ID", href: "/security/verify-id", icon: "IdCard" }

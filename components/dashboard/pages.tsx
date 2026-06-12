@@ -88,13 +88,20 @@ import {
   useLocalEstateStore
 } from "@/lib/local-store";
 import {
+  createAppwriteResidentSos,
   createAppwriteResidentVisitor,
   findAppwriteVisitorByCode,
+  readAppwriteAdminSosIncidents,
   readAppwriteAdminVisitors,
   readAppwriteExpectedVisitors,
+  readAppwriteResidentSosHistory,
+  readAppwriteResidentSosIncident,
   readAppwriteResidentVisitors,
   readAppwriteSecurityVisitorHistory,
+  updateAppwriteSosIncident,
   updateAppwriteVisitorStatus as saveAppwriteVisitorStatus,
+  type SosCreateInput,
+  type SosUpdateInput,
   type AppwriteVisitorView
 } from "@/lib/appwrite/browser-data";
 import {
@@ -461,6 +468,50 @@ const emergencyAlertOptions: Array<{
     helper: "Unusual person, movement, or activity nearby.",
     icon: <BellRing className="h-5 w-5" />,
     tone: "border-sky/40 bg-white/10 text-sky"
+  }
+];
+
+const sosAlertOptions: Array<{
+  type: SosCreateInput["alertType"];
+  title: string;
+  helper: string;
+  icon: ReactNode;
+  tone: string;
+}> = [
+  {
+    type: "panic",
+    title: "Panic / Intruder",
+    helper: "Immediate threat, intruder, or break-in attempt.",
+    icon: <Siren className="h-6 w-6" />,
+    tone: "border-red-400/50 bg-red-500/10 text-red-100"
+  },
+  {
+    type: "medical",
+    title: "Medical Emergency",
+    helper: "Urgent health incident or ambulance support.",
+    icon: <HeartPulse className="h-6 w-6" />,
+    tone: "border-rose-400/50 bg-rose-500/10 text-rose-100"
+  },
+  {
+    type: "fire",
+    title: "Fire",
+    helper: "Fire, smoke, gas leak, or electrical danger.",
+    icon: <Flame className="h-6 w-6" />,
+    tone: "border-orange-400/50 bg-orange-500/10 text-orange-100"
+  },
+  {
+    type: "security",
+    title: "Security Concern",
+    helper: "Suspicious movement or urgent security support.",
+    icon: <ShieldCheck className="h-6 w-6" />,
+    tone: "border-gold/50 bg-gold/10 text-gold"
+  },
+  {
+    type: "other",
+    title: "Other Emergency",
+    helper: "Any urgent issue that needs estate response.",
+    icon: <AlertTriangle className="h-6 w-6" />,
+    tone: "border-sky/50 bg-sky/10 text-sky"
   }
 ];
 
@@ -5486,16 +5537,31 @@ export function ResidentDashboard() {
               {resident.houseNumber}
             </p>
           </div>
-          {summary ? (
-            <span className={`shrink-0 rounded-full border px-3 py-1 text-xs font-semibold ${summary.outstandingBalance > 0 ? "border-danger/30 bg-danger/10 text-danger" : "border-smart/30 bg-smart/10 text-smart"}`}>
-              {mobileStatusText}
-            </span>
-          ) : null}
+          <div className="flex shrink-0 items-center gap-2">
+            <Link
+              href="/resident/sos"
+              className="inline-flex min-h-9 items-center justify-center gap-1 rounded-lg bg-danger px-3 py-1 text-xs font-semibold text-white shadow-[0_10px_24px_rgba(255,59,48,0.18)]"
+            >
+              <Siren className="h-3.5 w-3.5" />
+              SOS
+            </Link>
+            {summary ? (
+              <span className={`rounded-full border px-3 py-1 text-xs font-semibold ${summary.outstandingBalance > 0 ? "border-danger/30 bg-danger/10 text-danger" : "border-smart/30 bg-smart/10 text-smart"}`}>
+                {mobileStatusText}
+              </span>
+            ) : null}
+          </div>
         </div>
       </div>
       <div className="hidden sm:block">
         <PageHeader title={`Welcome, ${resident.name}`} description="Invite visitors, check bills, submit complaints, read announcements, and keep your digital ID ready." >
           <div className="flex flex-wrap gap-2">
+            <Link href="/resident/sos">
+              <Button variant="danger">
+                <Siren className="h-4 w-4" />
+                SOS
+              </Button>
+            </Link>
             <Button type="button" variant="secondary" onClick={() => void refreshAccounting({ bypassCache: true })}>
               <RefreshCw className="h-4 w-4" />
               {loadingAccounting ? "Refreshing" : "Refresh account"}
@@ -5598,59 +5664,115 @@ function PausedSosFeaturePage({ backHref, backLabel }: { backHref: string; backL
 }
 
 export function ResidentSosPage() {
-  return <PausedSosFeaturePage backHref="/resident" backLabel="Dashboard" />;
+  return <ResidentSosFlow />;
 }
 
 function ResidentSosFlow() {
-  const { state, createEmergencyAlert, updateEmergencyAlertStatus } = useLocalEstateStore();
+  const { state } = useLocalEstateStore();
   const resident = useCurrentResidentProfile(state);
   const estate = state.estates.find((item) => item.id === resident.estateId) ?? state.estates[0];
-  const [selectedType, setSelectedType] = useState<EmergencyAlertType>("security");
-  const [siren, setSiren] = useState(true);
+  const [selectedType, setSelectedType] = useState<SosCreateInput["alertType"]>("panic");
+  const [confirming, setConfirming] = useState(false);
+  const [sending, setSending] = useState(false);
   const [message, setMessage] = useState("");
-  const [lastAlert, setLastAlert] = useState<EmergencyAlert | null>(null);
+  const [statusMessage, setStatusMessage] = useState("");
+  const [details, setDetails] = useState("");
+  const [activeIncident, setActiveIncident] = useState<SecurityIncident | null>(null);
+  const [history, setHistory] = useState<SecurityIncident[]>([]);
+  const [loadingHistory, setLoadingHistory] = useState(true);
   const [lastSubmitAt, setLastSubmitAt] = useState(0);
-  const selectedOption = emergencyAlertOptions.find((option) => option.type === selectedType) ?? emergencyAlertOptions[1];
-  const myAlerts = state.emergencyAlerts.filter((alert) => alert.residentId === resident.id);
-  const openResidentAlert = myAlerts.find((alert) => alert.status === "active" || alert.status === "acknowledged");
+  const selectedOption = sosAlertOptions.find((option) => option.type === selectedType) ?? sosAlertOptions[0];
   const locationLabel = `${residentUnitLabel(state, resident)}, ${estate?.address ?? "LBS View Estate"}`;
   const cooldownRemaining = Math.max(0, Math.ceil((SOS_RESUBMIT_COOLDOWN_MS - (Date.now() - lastSubmitAt)) / 1000));
-  const sendLocked = Boolean(openResidentAlert) || cooldownRemaining > 0;
+  const activeHistoryIncident = history.find((incident) => isActiveSosStatus(incident.status));
+  const activeTrackedIncident = activeIncident ?? activeHistoryIncident ?? null;
+  const sendLocked = Boolean(activeTrackedIncident) || cooldownRemaining > 0 || sending;
 
-  function submitSos(event: FormEvent<HTMLFormElement>) {
+  useEffect(() => {
+    let active = true;
+
+    async function loadHistory() {
+      try {
+        const incidents = await readAppwriteResidentSosHistory();
+        if (!active) return;
+        setHistory(incidents);
+        const openIncident = incidents.find((incident) => isActiveSosStatus(incident.status));
+        if (openIncident) {
+          setActiveIncident(openIncident);
+          setStatusMessage(residentSosStatusMessage(openIncident.status));
+        }
+      } catch (error) {
+        if (!active) return;
+        setMessage(error instanceof Error ? error.message : "SOS history could not be loaded.");
+      } finally {
+        if (active) {
+          setLoadingHistory(false);
+        }
+      }
+    }
+
+    void loadHistory();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!activeTrackedIncident || activeTrackedIncident.status === "resolved" || activeTrackedIncident.status === "false_alarm" || activeTrackedIncident.status === "closed") {
+      return;
+    }
+
+    const interval = window.setInterval(async () => {
+      try {
+        const incident = await readAppwriteResidentSosIncident(activeTrackedIncident.id);
+        setActiveIncident(incident);
+        setHistory((current) => prependUniqueById(current, incident));
+        setStatusMessage(residentSosStatusMessage(incident.status));
+      } catch (error) {
+        setMessage(error instanceof Error ? error.message : "SOS status could not be refreshed.");
+      }
+    }, 10000);
+
+    return () => window.clearInterval(interval);
+  }, [activeTrackedIncident?.id, activeTrackedIncident?.status]);
+
+  function beginConfirmation(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    if (openResidentAlert) {
-      setMessage(`You already have an open SOS alert for ${formatEmergencyType(openResidentAlert.type)}. Security can see it now.`);
+    if (sendLocked) {
+      setMessage(activeTrackedIncident
+        ? "You already have an open SOS alert. Security and management can see it now."
+        : `Please wait ${cooldownRemaining} seconds before sending another SOS alert.`);
       return;
     }
 
-    if (cooldownRemaining > 0) {
-      setMessage(`Please wait ${cooldownRemaining} seconds before sending another SOS alert.`);
-      return;
-    }
-
-    const form = new FormData(event.currentTarget);
-    const alert = createEmergencyAlert({
-      type: selectedType,
-      notes: String(form.get("notes") ?? ""),
-      siren,
-      locationLabel
-    });
-
-    setLastAlert(alert);
-    setLastSubmitAt(Date.now());
-    setMessage("SOS alert sent to estate security. Keep your phone nearby and stay in a safe place if possible.");
-    event.currentTarget.reset();
+    setMessage("");
+    setConfirming(true);
   }
 
-  function cancelOpenSos() {
-    if (!openResidentAlert) {
-      return;
-    }
+  async function sendConfirmedSos() {
+    setSending(true);
+    setMessage("Sending alert...");
+    setStatusMessage("");
 
-    updateEmergencyAlertStatus(openResidentAlert.id, "cancelled");
-    setLastAlert(null);
-    setMessage("Your SOS alert has been cancelled. Security will see it as cancelled in the incident log.");
+    try {
+      const incident = await createAppwriteResidentSos({
+        alertType: selectedType,
+        locationLabel,
+        details
+      });
+      setActiveIncident(incident);
+      setHistory((current) => prependUniqueById(current, incident));
+      setLastSubmitAt(Date.now());
+      setConfirming(false);
+      setDetails("");
+      setMessage(`Alert sent. Help is on the way. Your alert ID is ${incident.id}. Keep this page open to track response.`);
+      setStatusMessage(residentSosStatusMessage(incident.status));
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "SOS alert could not be sent.");
+    } finally {
+      setSending(false);
+    }
   }
 
   return (
@@ -5670,26 +5792,25 @@ function ResidentSosFlow() {
       <div className="grid gap-6 xl:grid-cols-[1fr_0.75fr]">
         <Card className="border-danger/30 bg-[radial-gradient(circle_at_top_left,rgba(255,59,48,0.18),rgba(255,255,255,0.08)_40%,rgba(255,255,255,0.06))]">
           <CardHeader
-            title="What is happening?"
-            description="Choose one alert type, add a short note if you can, then send the alert."
+            title="Emergency type"
+            description="Choose one alert type first. Nothing is sent until you confirm on the next step."
           />
-          {openResidentAlert ? (
+          {activeTrackedIncident ? (
             <div className="mb-5 rounded-lg border border-danger/40 bg-danger/10 p-4">
               <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
                 <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-red-100">Open SOS already sent</p>
-                  <p className="mt-1 font-semibold text-white">{formatEmergencyType(openResidentAlert.type)} - {formatEmergencyStatus(openResidentAlert.status)}</p>
-                  <p className="mt-1 text-sm text-slate-300">{openResidentAlert.locationLabel}</p>
+                  <p className="text-xs font-semibold uppercase tracking-[0.16em] text-red-100">Open SOS alert</p>
+                  <p className="mt-1 font-semibold text-white">{activeTrackedIncident.summary}</p>
+                  <p className="mt-1 text-sm text-slate-300">{statusMessage || residentSosStatusMessage(activeTrackedIncident.status)}</p>
+                  <p className="mt-2 font-mono text-xs text-slate-200">Incident ID: {activeTrackedIncident.id}</p>
                 </div>
-                <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={cancelOpenSos}>
-                  Cancel SOS
-                </Button>
+                <StatusBadge status={formatEmergencyStatus(activeTrackedIncident.status)} tone={emergencyStatusTone(activeTrackedIncident.status)} />
               </div>
             </div>
           ) : null}
-          <form className="grid gap-5" onSubmit={submitSos}>
+          <form className="grid gap-5" onSubmit={beginConfirmation}>
             <div className="grid gap-3 md:grid-cols-2">
-              {emergencyAlertOptions.map((option) => (
+              {sosAlertOptions.map((option) => (
                 <button
                   key={option.type}
                   type="button"
@@ -5701,7 +5822,7 @@ function ResidentSosFlow() {
                   }`}
                 >
                   <span className="flex items-center gap-3">
-                    <span className="grid h-10 w-10 place-items-center rounded-lg bg-black/25">{option.icon}</span>
+                    <span className="grid h-12 w-12 place-items-center rounded-lg bg-black/25">{option.icon}</span>
                     <span>
                       <span className="block font-semibold text-white">{option.title}</span>
                       <span className="mt-1 block text-xs leading-5 text-slate-300">{option.helper}</span>
@@ -5713,7 +5834,7 @@ function ResidentSosFlow() {
 
             <div className="grid gap-4 md:grid-cols-[1fr_0.8fr]">
               <Field label="Optional note">
-                <Textarea name="notes" placeholder="Example: I need help at my apartment gate." />
+                <Textarea value={details} onChange={(event) => setDetails(event.target.value)} placeholder="Example: I need help at my apartment gate." />
               </Field>
               <div className="grid gap-3">
                 <div className="rounded-lg border border-white/15 bg-black/25 p-4">
@@ -5726,32 +5847,37 @@ function ResidentSosFlow() {
                     </div>
                   </div>
                 </div>
-                <label className="flex items-center justify-between gap-4 rounded-lg border border-white/15 bg-black/25 p-4 text-sm text-slate-200">
-                  <span className="flex items-center gap-3">
-                    <Volume2 className="h-5 w-5 text-danger" />
-                    Request siren alert
-                  </span>
-                  <input
-                    type="checkbox"
-                    checked={siren}
-                    onChange={(event) => setSiren(event.target.checked)}
-                    className="h-5 w-5 accent-[#C0FF6B]"
-                  />
-                </label>
               </div>
             </div>
 
-            {message ? (
-              <div className="rounded-lg border border-smart/30 bg-smart/10 p-4 text-sm text-smart">
-                <p className="font-semibold text-white">Alert sent</p>
-                <p className="mt-1">{message}</p>
-                {lastAlert ? <p className="mt-2 font-mono text-xs text-slate-200">Incident ID: {lastAlert.id.slice(0, 8).toUpperCase()}</p> : null}
+            {confirming ? (
+              <div className="rounded-lg border border-danger/40 bg-danger/10 p-4">
+                <p className="text-base font-semibold text-white">You are about to send a {selectedOption.title} alert.</p>
+                <p className="mt-2 text-sm leading-6 text-slate-200">
+                  Security and management will be notified immediately. Only use this in a real emergency.
+                </p>
+                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                  <Button type="button" variant="danger" className="min-h-12 w-full" onClick={() => void sendConfirmedSos()} disabled={sending}>
+                    <Siren className="h-5 w-5" />
+                    {sending ? "Sending alert..." : "Send SOS now"}
+                  </Button>
+                  <Button type="button" variant="secondary" className="min-h-12 w-full" onClick={() => setConfirming(false)} disabled={sending}>
+                    Cancel
+                  </Button>
+                </div>
               </div>
             ) : null}
 
-            <Button type="submit" variant="danger" className="min-h-14 text-base" disabled={sendLocked}>
+            {message ? (
+              <div className={`rounded-lg border p-4 text-sm ${activeTrackedIncident ? "border-smart/30 bg-smart/10 text-smart" : "border-gold/30 bg-gold/10 text-gold"}`}>
+                <p className="font-semibold text-white">{activeTrackedIncident ? "SOS status" : "SOS message"}</p>
+                <p className="mt-1">{message}</p>
+              </div>
+            ) : null}
+
+            <Button type="submit" variant="danger" className="min-h-14 text-base" disabled={sendLocked || confirming}>
               <Siren className="h-5 w-5" />
-              {openResidentAlert ? "SOS already active" : cooldownRemaining > 0 ? `Wait ${cooldownRemaining}s` : `Send ${selectedOption.title}`}
+              {activeTrackedIncident ? "SOS already active" : cooldownRemaining > 0 ? `Wait ${cooldownRemaining}s` : `Continue with ${selectedOption.title}`}
             </Button>
           </form>
         </Card>
@@ -5759,9 +5885,13 @@ function ResidentSosFlow() {
         <Card>
           <CardHeader title="Recent SOS history" description="Every submitted SOS is logged for estate response and follow-up." />
           <div className="grid gap-3">
-            {myAlerts.length ? (
-              myAlerts.slice(0, 5).map((alert) => (
-                <EmergencyAlertCard key={alert.id} alert={alert} compact />
+            {loadingHistory ? (
+              visitorLoadingRows(3).map((row, index) => (
+                <div key={index} className="h-20 animate-pulse rounded-lg border border-white/10 bg-white/[0.08]" />
+              ))
+            ) : history.length ? (
+              history.slice(0, 3).map((incident) => (
+                <SosIncidentSummaryCard key={incident.id} incident={incident} />
               ))
             ) : (
               <div className="rounded-lg border border-white/15 bg-white/[0.08] p-4 text-sm text-slate-300">
@@ -7022,14 +7152,59 @@ export function HouseholdPage() {
 
 export function SecurityDashboard() {
   const { visitorViews, loadingVisitors, visitorError } = useLiveVisitorViews(readAppwriteExpectedVisitors, { refreshIntervalMs: 60_000 });
+  const [sosAlerts, setSosAlerts] = useState<SecurityIncident[]>([]);
+  const [sosMessage, setSosMessage] = useState("");
   const visitors = visitorViews.map((view) => view.visitor);
   const checkedInCount = visitors.filter((visitor) => visitor.status === "checked-in").length;
   const verifiedCount = visitors.filter((visitor) => visitor.status === "verified").length;
   const recentVisitors = visitors.slice(0, 4);
+  const activeSosAlerts = sosAlerts.filter((incident) => isActiveSosStatus(incident.status));
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadSosAlerts() {
+      try {
+        const incidents = await readAppwriteAdminSosIncidents();
+        if (!active) return;
+        setSosAlerts(incidents);
+        setSosMessage("");
+      } catch (error) {
+        if (!active) return;
+        setSosMessage(error instanceof Error ? error.message : "SOS alerts could not be loaded.");
+      }
+    }
+
+    void loadSosAlerts();
+    const interval = window.setInterval(loadSosAlerts, 30000);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, []);
 
   return (
     <>
       <PageHeader title="Security dashboard" description="Verify access and record gate movement." />
+      {sosMessage ? <p className="mb-4 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm text-gold">{sosMessage}</p> : null}
+      {activeSosAlerts.length ? (
+        <Link
+          href="/security/sos-alerts"
+          className="mb-4 flex items-center justify-between gap-3 rounded-lg border border-danger/40 bg-danger/10 p-4 text-sm text-red-100 shadow-[0_18px_40px_rgba(255,59,48,0.12)]"
+        >
+          <span className="flex items-center gap-3">
+            <span className="grid h-10 w-10 place-items-center rounded-lg bg-danger text-white">
+              <Siren className="h-5 w-5" />
+            </span>
+            <span>
+              <span className="block font-semibold text-white">{activeSosAlerts.length} active SOS alert{activeSosAlerts.length === 1 ? "" : "s"}</span>
+              <span className="mt-1 block text-xs text-red-100">Tap to acknowledge or mark responding.</span>
+            </span>
+          </span>
+          <ChevronRight className="h-5 w-5" />
+        </Link>
+      ) : null}
       <div className="grid gap-3 sm:hidden">
         <Link href="/security/verify-visitor">
           <Button className="min-h-[72px] w-full justify-center text-base">
@@ -7113,8 +7288,9 @@ export function CsoDashboard() {
   );
   const gpsViolations = patrols.filter((patrol) => patrol.isGpsVerified === false || patrol.status === "gps_violation");
   const offlineLogs = patrols.filter((patrol) => patrol.isOfflineLog === true);
-  const openIncidents = incidents.filter((incident) => incident.status === "open" || incident.status === "acknowledged");
+  const openIncidents = incidents.filter((incident) => isActiveSosStatus(incident.status));
   const pendingReviews = reviews.filter((review) => review.status === "open" || review.status === "pending");
+  const canResolve = true;
 
   useEffect(() => {
     function syncTabFromHash() {
@@ -7192,11 +7368,30 @@ export function CsoDashboard() {
       onIncidentCreate: (incident) => {
         setIncidents((current) => prependUniqueById(current, incident));
         setSecurityAlerts((current) => prependSecurityAlert(current, incidentAlertFromRealtime(incident)));
+        if (incident.incidentType === "sos") {
+          notifySosIncident(incident);
+          flashSosBrowserTitle();
+        }
       }
     });
 
     return unsubscribe;
   }, []);
+
+  async function updateCsoIncidentStatus(incident: SecurityIncident, status: SosUpdateInput["status"], note = "") {
+    try {
+      const updated = await updateAppwriteSosIncident({
+        incidentId: incident.id,
+        status,
+        note
+      });
+      setIncidents((current) => prependUniqueById(current, updated).sort(sortSecurityIncidentsNewestFirst));
+      setSecurityAlerts((current) => prependSecurityAlert(current, incidentAlertFromRealtime(updated)));
+      setMessage(`${updated.summary} marked as ${formatEmergencyStatus(updated.status)}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "SOS alert could not be updated.");
+    }
+  }
 
   async function saveCheckpoint(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -7331,7 +7526,19 @@ export function CsoDashboard() {
               {openIncidents.length ? (
                 <div className="grid gap-3">
                   {openIncidents.slice(0, 5).map((incident) => (
-                    <SecurityIncidentCard key={incident.id} incident={incident} />
+                    incident.incidentType === "sos" ? (
+                      <SosIncidentActionCard
+                        key={incident.id}
+                        incident={incident}
+                        canResolve
+                        onAcknowledge={() => void updateCsoIncidentStatus(incident, "acknowledged")}
+                        onRespond={() => void updateCsoIncidentStatus(incident, "responding")}
+                        onResolve={(note) => void updateCsoIncidentStatus(incident, "resolved", note)}
+                        onFalseAlarm={(note) => void updateCsoIncidentStatus(incident, "false_alarm", note)}
+                      />
+                    ) : (
+                      <SecurityIncidentCard key={incident.id} incident={incident} />
+                    )
                   ))}
                 </div>
               ) : null}
@@ -7504,6 +7711,119 @@ function SecurityIncidentCard({ incident }: { incident: SecurityIncident }) {
   );
 }
 
+function SosIncidentSummaryCard({ incident }: { incident: SecurityIncident }) {
+  return (
+    <article className={`rounded-lg border p-4 ${isActiveSosStatus(incident.status) ? "border-danger/40 bg-danger/10" : "border-white/15 bg-white/[0.08]"}`}>
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="font-semibold text-white">{incident.summary}</p>
+          <p className="mt-1 text-sm text-slate-300">{incident.locationLabel ?? incident.unitCode ?? "LBS View Estate"}</p>
+          <p className="mt-2 text-xs text-slate-500">{formatDateTime(incident.openedAt)}</p>
+        </div>
+        <StatusBadge status={formatEmergencyStatus(incident.status)} tone={emergencyStatusTone(incident.status)} />
+      </div>
+    </article>
+  );
+}
+
+function SosIncidentActionCard({
+  incident,
+  compact = false,
+  canResolve = true,
+  onAcknowledge,
+  onRespond,
+  onResolve,
+  onFalseAlarm
+}: {
+  incident: SecurityIncident;
+  compact?: boolean;
+  canResolve?: boolean;
+  onAcknowledge?: () => void;
+  onRespond?: () => void;
+  onResolve?: (note: string) => void;
+  onFalseAlarm?: (note: string) => void;
+}) {
+  const [note, setNote] = useState("");
+  const active = isActiveSosStatus(incident.status);
+  const residentLabel = incident.residentName || "Resident";
+  const unitLabel = incident.unitCode || incident.locationLabel || "Unit not recorded";
+
+  function resolveWithNote() {
+    onResolve?.(note);
+    setNote("");
+  }
+
+  function falseAlarmWithNote() {
+    if (window.confirm("Mark this SOS as a false alarm?")) {
+      onFalseAlarm?.(note);
+      setNote("");
+    }
+  }
+
+  return (
+    <article className={`rounded-lg border p-4 ${active ? "border-danger/40 bg-danger/10 shadow-[0_18px_40px_rgba(255,59,48,0.12)]" : "border-white/15 bg-white/[0.08]"}`}>
+      <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="flex gap-3">
+          <span className={`grid h-11 w-11 shrink-0 place-items-center rounded-lg ${active ? "bg-danger text-white" : "bg-smart/10 text-smart"}`}>
+            <Siren className="h-5 w-5" />
+          </span>
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <h3 className="font-semibold text-white">{residentLabel}</h3>
+              <StatusBadge status={formatEmergencyStatus(incident.status)} tone={emergencyStatusTone(incident.status)} />
+              <span className="rounded-full border border-danger/30 bg-danger/10 px-2 py-1 text-xs font-semibold text-red-100">
+                {sosAlertTypeLabel(incident.alertType)}
+              </span>
+            </div>
+            <p className="mt-2 text-lg font-semibold text-white">{unitLabel}</p>
+            <p className="mt-1 flex items-center gap-2 text-sm text-slate-300">
+              <MapPin className="h-4 w-4 text-smart" />
+              {incident.locationLabel ?? "Estate location"}
+            </p>
+            {!compact || incident.details ? <p className="mt-3 text-sm leading-6 text-slate-300">{incident.details || "No extra note provided."}</p> : null}
+            <div className="mt-3 flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+              <span>{timeAgo(incident.openedAt)}</span>
+              <span>{formatDateTime(incident.openedAt)}</span>
+              {incident.acknowledgedAt ? <span>Acknowledged {formatDateTime(incident.acknowledgedAt)}</span> : null}
+              {incident.respondingAt ? <span>Responding {formatDateTime(incident.respondingAt)}</span> : null}
+              {incident.resolvedAt ? <span>Closed {formatDateTime(incident.resolvedAt)}</span> : null}
+            </div>
+          </div>
+        </div>
+
+        {active ? (
+          <div className="grid gap-2 lg:min-w-56">
+            <div className="flex flex-wrap gap-2 lg:justify-end">
+              {incident.status === "open" ? (
+                <Button type="button" className="min-h-9 px-3 py-1 text-xs" onClick={onAcknowledge}>
+                  <BadgeCheck className="h-3.5 w-3.5" />
+                  Acknowledge
+                </Button>
+              ) : null}
+              <Button type="button" variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={onRespond}>
+                Mark responding
+              </Button>
+            </div>
+            {canResolve ? (
+              <>
+                <Textarea value={note} onChange={(event) => setNote(event.target.value)} placeholder="Resolution note" className="min-h-20 text-xs" />
+                <div className="flex flex-wrap gap-2 lg:justify-end">
+                  <Button type="button" variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={resolveWithNote}>
+                    Resolve
+                  </Button>
+                  <Button type="button" variant="secondary" className="min-h-9 px-3 py-1 text-xs" onClick={falseAlarmWithNote}>
+                    False alarm
+                  </Button>
+                </div>
+              </>
+            ) : null}
+          </div>
+        ) : null}
+      </div>
+    </article>
+  );
+}
+
 function CsoReviewCard({ review }: { review: CsoReview }) {
   return (
     <article className="security-state-card security-state-card--ok rounded-lg border p-4">
@@ -7659,15 +7979,21 @@ function mapRealtimeSecurityIncident(payload: unknown): SecurityIncident {
     id,
     estateId: textValue(row.estateId) || "lbsview-estate",
     incidentType: textValue(row.incidentType) || "security",
+    alertType: sosRealtimeAlertType(row.alertType),
     severity: incidentSeverityValue(row.severity),
     status: incidentStatusValue(row.status),
     reportedByRole: textValue(row.reportedByRole) || "security_guard",
     reportedByProfileId: optionalTextValue(row.reportedByProfileId),
     assignedToProfileId: optionalTextValue(row.assignedToProfileId),
+    residentName: optionalTextValue(row.residentName),
+    unitCode: optionalTextValue(row.unitCode),
     locationLabel: optionalTextValue(row.locationLabel),
     summary: textValue(row.summary) || "Security incident",
     details: optionalTextValue(row.details),
     openedAt,
+    acknowledgedAt: optionalTextValue(row.acknowledgedAt),
+    acknowledgedBy: optionalTextValue(row.acknowledgedBy),
+    respondingAt: optionalTextValue(row.respondingAt),
     resolvedAt: optionalTextValue(row.resolvedAt)
   };
 }
@@ -7703,12 +8029,13 @@ function patrolAlertFromRealtime(patrol: GuardPatrolEvent): CsoSecurityAlert {
 }
 
 function incidentAlertFromRealtime(incident: SecurityIncident): CsoSecurityAlert {
+  const isSos = incident.incidentType === "sos";
   return {
     id: `incident-${incident.id}`,
     sourceId: incident.id,
     kind: "incident",
-    title: incident.summary || "Security incident",
-    detail: `${incident.locationLabel ?? "Estate security"} - ${incident.severity} priority.`,
+    title: incident.summary || (isSos ? "SOS alert" : "Security incident"),
+    detail: `${incident.locationLabel ?? incident.unitCode ?? "Estate security"} - ${isSos ? sosAlertTypeLabel(incident.alertType) : `${incident.severity} priority`}.`,
     createdAt: normalizeRealtimeTimestamp(incident.openedAt),
     severity: "urgent"
   };
@@ -7759,11 +8086,19 @@ function incidentSeverityValue(value: unknown): SecurityIncident["severity"] {
 }
 
 function incidentStatusValue(value: unknown): SecurityIncident["status"] {
-  if (value === "open" || value === "acknowledged" || value === "resolved" || value === "closed") {
+  if (value === "open" || value === "acknowledged" || value === "responding" || value === "resolved" || value === "false_alarm" || value === "closed") {
     return value;
   }
 
   return "open";
+}
+
+function sosRealtimeAlertType(value: unknown): SecurityIncident["alertType"] {
+  if (value === "panic" || value === "medical" || value === "fire" || value === "security" || value === "other") {
+    return value;
+  }
+
+  return undefined;
 }
 
 function buildCheckpointQrToken(checkpointName: string, suffix = createCheckpointQrSuffix()) {
@@ -7975,26 +8310,82 @@ function formatDateTime(value: string) {
   }).format(date);
 }
 
-export function EmergencyAlertsPage({ audience = "security" }: { audience?: "security" | "admin" }) {
-  return (
-    <PausedSosFeaturePage
-      backHref={audience === "admin" ? "/admin" : "/security"}
-      backLabel="Dashboard"
-    />
-  );
+export function EmergencyAlertsPage({ audience = "security" }: { audience?: "security" | "admin" | "cso" }) {
+  return <EmergencyAlertsFlow audience={audience} />;
 }
 
-function EmergencyAlertsFlow({ audience = "security" }: { audience?: "security" | "admin" }) {
-  const { state, updateEmergencyAlertStatus } = useLocalEstateStore();
+function EmergencyAlertsFlow({ audience = "security" }: { audience?: "security" | "admin" | "cso" }) {
+  const [alerts, setAlerts] = useState<SecurityIncident[]>([]);
+  const [loading, setLoading] = useState(true);
   const [message, setMessage] = useState("");
-  const activeAlerts = state.emergencyAlerts.filter((alert) => alert.status === "active");
-  const acknowledgedAlerts = state.emergencyAlerts.filter((alert) => alert.status === "acknowledged");
-  const closedAlerts = state.emergencyAlerts.filter((alert) => alert.status === "resolved" || alert.status === "false_alarm" || alert.status === "cancelled");
-  const orderedAlerts = [...activeAlerts, ...acknowledgedAlerts, ...closedAlerts];
+  const activeAlerts = alerts.filter((alert) => isActiveSosStatus(alert.status));
+  const resolvedToday = alerts.filter((alert) => isClosedSosStatus(alert.status) && isWithinLastHours(alert.resolvedAt ?? alert.openedAt, 24));
+  const historyAlerts = alerts.filter((alert) => isClosedSosStatus(alert.status) && !isWithinLastHours(alert.resolvedAt ?? alert.openedAt, 24));
+  const canResolve = audience !== "security";
 
-  function changeAlertStatus(alert: EmergencyAlert, status: EmergencyAlertStatus) {
-    updateEmergencyAlertStatus(alert.id, status);
-    setMessage(`${formatEmergencyType(alert.type)} for ${alert.houseNumber} marked as ${formatEmergencyStatus(status)}.`);
+  useEffect(() => {
+    let active = true;
+
+    async function loadAlerts() {
+      try {
+        const incidents = await readAppwriteAdminSosIncidents();
+        if (!active) return;
+        setAlerts(incidents);
+        setMessage("SOS alerts are synced.");
+      } catch (error) {
+        if (!active) return;
+        setMessage(error instanceof Error ? error.message : "Unable to load SOS alerts.");
+      } finally {
+        if (active) {
+          setLoading(false);
+        }
+      }
+    }
+
+    void loadAlerts();
+    const interval = window.setInterval(loadAlerts, 30000);
+
+    return () => {
+      active = false;
+      window.clearInterval(interval);
+    };
+  }, []);
+
+  useEffect(() => {
+    const unsubscribe = subscribeToCsoSecurityRealtime({
+      onPatrolCreate: () => undefined,
+      onIncidentCreate: (incident) => {
+        if (incident.incidentType !== "sos") {
+          return;
+        }
+
+        setAlerts((current) => prependUniqueById(current, incident).sort(sortSecurityIncidentsNewestFirst));
+        setMessage(`New SOS alert received: ${incident.summary}`);
+        notifySosIncident(incident);
+        flashSosBrowserTitle();
+      }
+    });
+
+    return unsubscribe;
+  }, []);
+
+  async function changeAlertStatus(alert: SecurityIncident, status: SosUpdateInput["status"], note = "") {
+    if (!canResolve && (status === "resolved" || status === "false_alarm")) {
+      setMessage("Security guards can acknowledge and respond. Resolution requires CSO or admin.");
+      return;
+    }
+
+    try {
+      const updated = await updateAppwriteSosIncident({
+        incidentId: alert.id,
+        status,
+        note
+      });
+      setAlerts((current) => prependUniqueById(current, updated).sort(sortSecurityIncidentsNewestFirst));
+      setMessage(`${updated.summary} marked as ${formatEmergencyStatus(updated.status)}.`);
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "SOS alert could not be updated.");
+    }
   }
 
   return (
@@ -8003,7 +8394,7 @@ function EmergencyAlertsFlow({ audience = "security" }: { audience?: "security" 
         title={audience === "admin" ? "Estate SOS alerts" : "Security SOS console"}
         description="Monitor panic alerts, view resident house/location, acknowledge response, and close incidents after action."
       >
-        <Link href={audience === "admin" ? "/admin" : "/security"}>
+        <Link href={audience === "admin" ? "/admin" : audience === "cso" ? "/cso" : "/security"}>
           <Button variant="secondary">
             <ArrowLeft className="h-4 w-4" />
             Dashboard
@@ -8015,24 +8406,34 @@ function EmergencyAlertsFlow({ audience = "security" }: { audience?: "security" 
 
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
         <StatCard label="Active alerts" value={String(activeAlerts.length)} helper="Needs immediate response" icon={<Siren className="h-5 w-5" />} />
-        <StatCard label="Acknowledged" value={String(acknowledgedAlerts.length)} helper="Security has started response" icon={<BadgeCheck className="h-5 w-5" />} />
-        <StatCard label="Closed incidents" value={String(closedAlerts.length)} helper="Resolved or false alarm" icon={<CheckCircle2 className="h-5 w-5" />} />
+        <StatCard label="Responding" value={String(alerts.filter((alert) => alert.status === "responding").length)} helper="Security has started response" icon={<BadgeCheck className="h-5 w-5" />} />
+        <StatCard label="Closed today" value={String(resolvedToday.length)} helper="Resolved or false alarm" icon={<CheckCircle2 className="h-5 w-5" />} />
       </div>
+
+      {loading ? (
+        <div className="mt-6 grid gap-3">
+          {visitorLoadingRows(3).map((row, index) => (
+            <div key={index} className="h-24 animate-pulse rounded-lg border border-white/10 bg-white/[0.08]" />
+          ))}
+        </div>
+      ) : null}
 
       {activeAlerts.length ? (
         <Card className="mt-6 border-danger/40 bg-danger/10">
           <CardHeader
-            title="Live response required"
+            title="Active response required"
             description="Gate/security should call or dispatch response to the listed house immediately."
           />
           <div className="grid gap-4">
             {activeAlerts.map((alert) => (
-              <EmergencyAlertCard
+              <SosIncidentActionCard
                 key={alert.id}
-                alert={alert}
-                onAcknowledge={() => changeAlertStatus(alert, "acknowledged")}
-                onResolve={() => changeAlertStatus(alert, "resolved")}
-                onFalseAlarm={() => changeAlertStatus(alert, "false_alarm")}
+                incident={alert}
+                canResolve={canResolve}
+                onAcknowledge={() => void changeAlertStatus(alert, "acknowledged")}
+                onRespond={() => void changeAlertStatus(alert, "responding")}
+                onResolve={(note) => void changeAlertStatus(alert, "resolved", note)}
+                onFalseAlarm={(note) => void changeAlertStatus(alert, "false_alarm", note)}
               />
             ))}
           </div>
@@ -8046,24 +8447,37 @@ function EmergencyAlertsFlow({ audience = "security" }: { audience?: "security" 
         />
         {message ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{message}</p> : null}
         <div className="grid gap-3">
-          {orderedAlerts.length ? (
-            orderedAlerts.map((alert) => (
-              <EmergencyAlertCard
+          {resolvedToday.length ? (
+            resolvedToday.map((alert) => (
+              <SosIncidentActionCard
                 key={alert.id}
-                alert={alert}
-                compact={alert.status !== "active"}
-                onAcknowledge={() => changeAlertStatus(alert, "acknowledged")}
-                onResolve={() => changeAlertStatus(alert, "resolved")}
-                onFalseAlarm={() => changeAlertStatus(alert, "false_alarm")}
+                incident={alert}
+                compact
+                canResolve={canResolve}
+                onAcknowledge={() => void changeAlertStatus(alert, "acknowledged")}
+                onRespond={() => void changeAlertStatus(alert, "responding")}
+                onResolve={(note) => void changeAlertStatus(alert, "resolved", note)}
+                onFalseAlarm={(note) => void changeAlertStatus(alert, "false_alarm", note)}
               />
             ))
           ) : (
             <div className="rounded-lg border border-white/15 bg-white/[0.08] p-4 text-sm text-slate-300">
-              No SOS incidents have been logged yet.
+              No resolved SOS incidents today.
             </div>
           )}
         </div>
       </Card>
+
+      {historyAlerts.length ? (
+        <details className="mt-6 rounded-lg border border-white/10 bg-white/[0.05] p-4">
+          <summary className="cursor-pointer text-sm font-semibold text-white">Older SOS history ({historyAlerts.length})</summary>
+          <div className="mt-4 grid gap-3">
+            {historyAlerts.map((alert) => (
+              <SosIncidentSummaryCard key={alert.id} incident={alert} />
+            ))}
+          </div>
+        </details>
+      ) : null}
     </>
   );
 }
@@ -9045,7 +9459,7 @@ function SosAlertSoundControl({
   activeAlerts,
   compact = false
 }: {
-  activeAlerts: EmergencyAlert[];
+  activeAlerts: Array<{ id: string }>;
   compact?: boolean;
 }) {
   const { enabled, message, enableSound, disableSound, testSound } = useSosAlertSound(activeAlerts);
@@ -9102,7 +9516,7 @@ function SosAlertSoundControl({
   );
 }
 
-function useSosAlertSound(activeAlerts: EmergencyAlert[]) {
+function useSosAlertSound(activeAlerts: Array<{ id: string }>) {
   const [enabled, setEnabled] = useState(false);
   const [message, setMessage] = useState("");
   const audioContextRef = useRef<AudioContext | null>(null);
@@ -9308,16 +9722,103 @@ function formatEmergencyType(type: EmergencyAlertType) {
   return emergencyAlertOptions.find((option) => option.type === type)?.title ?? type.replaceAll("_", " ");
 }
 
-function formatEmergencyStatus(status: EmergencyAlertStatus) {
+function formatEmergencyStatus(status: EmergencyAlertStatus | SecurityIncident["status"]) {
   return status.replaceAll("_", " ");
 }
 
-function emergencyStatusTone(status: EmergencyAlertStatus) {
-  if (status === "active") return "red";
+function emergencyStatusTone(status: EmergencyAlertStatus | SecurityIncident["status"]) {
+  if (status === "active" || status === "open") return "red";
   if (status === "acknowledged") return "yellow";
-  if (status === "resolved") return "green";
-  if (status === "cancelled") return "red";
+  if (status === "responding") return "blue";
+  if (status === "resolved" || status === "closed") return "green";
+  if (status === "cancelled" || status === "false_alarm") return "red";
   return "slate";
+}
+
+function isActiveSosStatus(status: SecurityIncident["status"]) {
+  return status === "open" || status === "acknowledged" || status === "responding";
+}
+
+function isClosedSosStatus(status: SecurityIncident["status"]) {
+  return status === "resolved" || status === "false_alarm" || status === "closed";
+}
+
+function residentSosStatusMessage(status: SecurityIncident["status"]) {
+  if (status === "acknowledged") {
+    return "Security has acknowledged your alert and is responding.";
+  }
+
+  if (status === "responding") {
+    return "Security response is in progress. Keep your phone nearby.";
+  }
+
+  if (status === "resolved") {
+    return "Incident resolved. Stay safe.";
+  }
+
+  if (status === "false_alarm") {
+    return "Incident closed as a false alarm.";
+  }
+
+  return "Alert sent. Help is on the way.";
+}
+
+function sosAlertTypeLabel(value?: SecurityIncident["alertType"]) {
+  if (value === "panic") return "Panic / Intruder";
+  if (value === "medical") return "Medical";
+  if (value === "fire") return "Fire";
+  if (value === "security") return "Security";
+  return "Emergency";
+}
+
+function sortSecurityIncidentsNewestFirst(left: SecurityIncident, right: SecurityIncident) {
+  return right.openedAt.localeCompare(left.openedAt);
+}
+
+function isWithinLastHours(value: string, hours: number) {
+  const timestamp = new Date(value).getTime();
+  return Number.isFinite(timestamp) && Date.now() - timestamp <= hours * 60 * 60 * 1000;
+}
+
+function timeAgo(value: string) {
+  const timestamp = new Date(value).getTime();
+  if (!Number.isFinite(timestamp)) {
+    return "Just now";
+  }
+
+  const minutes = Math.max(0, Math.round((Date.now() - timestamp) / 60000));
+  if (minutes < 1) return "Just now";
+  if (minutes === 1) return "1 minute ago";
+  if (minutes < 60) return `${minutes} minutes ago`;
+  const hours = Math.round(minutes / 60);
+  return hours === 1 ? "1 hour ago" : `${hours} hours ago`;
+}
+
+function notifySosIncident(incident: SecurityIncident) {
+  if (typeof window === "undefined" || !("Notification" in window) || Notification.permission !== "granted") {
+    return;
+  }
+
+  new Notification(`SOS Alert from ${incident.residentName ?? "Resident"}`, {
+    body: incident.locationLabel ?? incident.unitCode ?? "LBS View Estate"
+  });
+}
+
+function flashSosBrowserTitle() {
+  if (typeof document === "undefined") {
+    return;
+  }
+
+  const original = document.title;
+  let count = 0;
+  const interval = window.setInterval(() => {
+    document.title = count % 2 === 0 ? "NEW SOS ALERT" : original;
+    count += 1;
+    if (count > 6) {
+      window.clearInterval(interval);
+      document.title = original;
+    }
+  }, 900);
 }
 
 function formatAlertTime(value: string) {

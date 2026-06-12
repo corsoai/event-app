@@ -37,7 +37,7 @@ type ResidentAccountingResponse = {
   } | null;
 };
 
-type PatrolResponse = {
+type SosResponse = {
   incidents?: Array<{ status?: string }>;
 };
 
@@ -65,14 +65,14 @@ export function MobileBottomNav({ role }: { role: MobileRole }) {
   }, [role]);
 
   useEffect(() => {
-    if (role !== "cso") return;
+    if (role !== "cso" && role !== "security_guard") return;
 
     let active = true;
-    fetch("/api/appwrite/security/patrols", { cache: "no-store" })
+    fetch("/api/appwrite/admin/sos", { cache: "no-store" })
       .then((response) => response.json())
-      .then((payload: PatrolResponse) => {
+      .then((payload: SosResponse) => {
         if (!active) return;
-        setOpenIncidents((payload.incidents ?? []).filter((incident) => incident.status === "open" || incident.status === "acknowledged").length);
+        setOpenIncidents((payload.incidents ?? []).filter((incident) => incident.status === "open" || incident.status === "acknowledged" || incident.status === "responding").length);
       })
       .catch(() => undefined);
 
@@ -136,6 +136,7 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
       { label: "Dashboard", href: "/security", icon: Shield },
       { label: "Verify", href: "/security/verify-visitor", icon: QrCode },
       { label: "Visitors", href: "/security/expected-visitors", icon: Users },
+      { label: "Alerts", href: "/security/sos-alerts", icon: Bell, badge: openIncidents },
       { label: "Logs", href: "/security/logs", icon: ClipboardList }
     ];
   }

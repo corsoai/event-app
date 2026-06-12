@@ -364,15 +364,21 @@ export type SecurityIncident = {
   id: string;
   estateId: string;
   incidentType: string;
+  alertType?: "panic" | "medical" | "fire" | "security" | "other";
   severity: "low" | "medium" | "high" | "critical";
-  status: "open" | "acknowledged" | "resolved" | "closed";
+  status: "open" | "acknowledged" | "responding" | "resolved" | "false_alarm" | "closed";
   reportedByRole: string;
   reportedByProfileId?: string;
   assignedToProfileId?: string;
+  residentName?: string;
+  unitCode?: string;
   locationLabel?: string;
   summary: string;
   details?: string;
   openedAt: string;
+  acknowledgedAt?: string;
+  acknowledgedBy?: string;
+  respondingAt?: string;
   resolvedAt?: string;
 };
 
@@ -385,5 +391,5 @@ export type CsoReview = {
   note?: string;
   reviewedAt: string;
   followUpDate?: string;
-  status: "open" | "pending" | "approved" | "rejected" | "closed";
+  status: "open" | "pending" | "approved" | "rejected" | "closed" | "completed";
 };
