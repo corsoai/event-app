@@ -90,6 +90,7 @@ export function AppShell({
   const [themeLoaded, setThemeLoaded] = useState(false);
   const [activeSosCount, setActiveSosCount] = useState(0);
   const dashboardHref = navItems[0]?.href ?? "/";
+  const sosAction = sosActionForRole(role);
 
   useEffect(() => {
     setOpen(false);
@@ -253,6 +254,23 @@ export function AppShell({
         {children}
       </main>
 
+      {sosAction && pathname !== sosAction.href ? (
+        <Link
+          href={sosAction.href}
+          className="fixed bottom-[5.25rem] right-4 z-50 inline-flex min-h-12 items-center gap-2 rounded-full border border-red-300 bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-[0_18px_38px_rgba(220,38,38,0.32)] transition hover:bg-red-700 lg:bottom-auto lg:right-6 lg:top-24"
+          title={sosAction.label}
+          aria-label={sosAction.label}
+        >
+          <AlertTriangle className="h-5 w-5" />
+          <span>{sosAction.label}</span>
+          {activeSosCount > 0 && sosAction.badge ? (
+            <span className="grid min-w-5 place-items-center rounded-full bg-white px-1.5 py-0.5 text-[10px] font-black leading-none text-red-700">
+              {activeSosCount > 9 ? "9+" : activeSosCount}
+            </span>
+          ) : null}
+        </Link>
+      ) : null}
+
       <MobileBottomNav role={role} />
     </div>
   );
@@ -329,4 +347,24 @@ function NavLink({
 
 function isActiveSosStatus(status: unknown) {
   return status === "open" || status === "acknowledged" || status === "responding";
+}
+
+function sosActionForRole(role: UserRole | "admin") {
+  if (role === "resident") {
+    return { href: "/resident/sos", label: "SOS Emergency", badge: false };
+  }
+
+  if (role === "admin" || role === "estate_admin" || role === "super_admin") {
+    return { href: "/admin/sos-alerts", label: "SOS Alerts", badge: true };
+  }
+
+  if (role === "security_guard") {
+    return { href: "/security/sos-alerts", label: "SOS Alerts", badge: true };
+  }
+
+  if (role === "cso") {
+    return { href: "/cso/sos-alerts", label: "SOS Alerts", badge: true };
+  }
+
+  return null;
 }
