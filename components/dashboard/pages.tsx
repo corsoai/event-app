@@ -527,13 +527,15 @@ function mergeAccountingState(state: LocalEstateState, accounting: AppwriteAccou
   };
 }
 
-function useLiveVisitorViews(loader: () => Promise<AppwriteVisitorView[]>) {
+function useLiveVisitorViews(loader: () => Promise<AppwriteVisitorView[]>, options: { refreshIntervalMs?: number } = {}) {
   const [visitorViews, setVisitorViews] = useState<AppwriteVisitorView[]>([]);
   const [loadingVisitors, setLoadingVisitors] = useState(true);
   const [visitorError, setVisitorError] = useState("");
 
-  const refreshVisitors = async () => {
-    setLoadingVisitors(true);
+  const refreshVisitors = async (refreshOptions: { silent?: boolean } = {}) => {
+    if (!refreshOptions.silent) {
+      setLoadingVisitors(true);
+    }
     setVisitorError("");
 
     try {
@@ -549,6 +551,18 @@ function useLiveVisitorViews(loader: () => Promise<AppwriteVisitorView[]>) {
   useEffect(() => {
     void refreshVisitors();
   }, [loader]);
+
+  useEffect(() => {
+    if (!options.refreshIntervalMs) {
+      return;
+    }
+
+    const interval = window.setInterval(() => {
+      void refreshVisitors({ silent: true });
+    }, options.refreshIntervalMs);
+
+    return () => window.clearInterval(interval);
+  }, [loader, options.refreshIntervalMs]);
 
   return { visitorViews, setVisitorViews, loadingVisitors, visitorError, refreshVisitors };
 }
@@ -7007,7 +7021,7 @@ export function HouseholdPage() {
 }
 
 export function SecurityDashboard() {
-  const { visitorViews, loadingVisitors, visitorError } = useLiveVisitorViews(readAppwriteExpectedVisitors);
+  const { visitorViews, loadingVisitors, visitorError } = useLiveVisitorViews(readAppwriteExpectedVisitors, { refreshIntervalMs: 60_000 });
   const visitors = visitorViews.map((view) => view.visitor);
   const checkedInCount = visitors.filter((visitor) => visitor.status === "checked-in").length;
   const verifiedCount = visitors.filter((visitor) => visitor.status === "verified").length;
@@ -8677,11 +8691,11 @@ export function ExpectedVisitorsPage() {
 
 export function EntryLogsPage() {
   const { visitorViews, loadingVisitors, visitorError } = useLiveVisitorViews(readAppwriteSecurityVisitorHistory);
-  const movementVisitors = visitorViews.filter(({ visitor }) => visitor.status === "verified" || visitor.status === "checked-in" || visitor.status === "checked-out");
+  const sortedVisitorViews = [...visitorViews].sort((left, right) => visitorSortTime(right.visitor) - visitorSortTime(left.visitor));
   const movementRows = loadingVisitors
     ? visitorLoadingRows(6)
-    : movementVisitors.length
-      ? movementVisitors.map(({ visitor, residentName, unitCode }) => [
+    : sortedVisitorViews.length
+      ? sortedVisitorViews.map(({ visitor, residentName, unitCode }) => [
         visitor.visitorName,
         <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
         `${visitor.visitDate} ${formatClockTime(visitor.arrivalTime)}`,
@@ -8689,7 +8703,7 @@ export function EntryLogsPage() {
         unitCode,
         <StatusBadge key={visitor.status} status={visitor.status} />
       ])
-      : [["No visitor movement logs yet", "—", "—", "—", "—", "—"]];
+      : [["No visitor records yet", "—", "—", "—", "—", "—"]];
 
   return (
     <>
