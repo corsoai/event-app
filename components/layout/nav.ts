@@ -28,9 +28,9 @@ export const residentNav: NavItem[] = [
   { label: "Payments", href: "/resident/payments", icon: "CreditCard" },
   { label: "Announcements", href: "/resident/announcements", icon: "Bell" },
   { label: "Household", href: "/resident/household", icon: "Users" },
+  { label: "Marketplace", href: "/marketplace", icon: "Store" },
   { label: "Knowledge Base", href: "/resident/knowledge-base", icon: "BookOpen" },
-  { label: "SOS Emergency", href: "/resident/sos", icon: "AlertTriangle", tone: "danger" },
-  { label: "Marketplace", href: "/marketplace", icon: "Store" }
+  { label: "SOS Emergency", href: "/resident/sos", icon: "AlertTriangle", tone: "danger" }
 ];
 
 export const securityNav: NavItem[] = [

@@ -90,7 +90,6 @@ export function AppShell({
   const [themeLoaded, setThemeLoaded] = useState(false);
   const [activeSosCount, setActiveSosCount] = useState(0);
   const dashboardHref = navItems[0]?.href ?? "/";
-  const sosAction = sosActionForRole(role);
 
   useEffect(() => {
     setOpen(false);
@@ -254,23 +253,6 @@ export function AppShell({
         {children}
       </main>
 
-      {sosAction && pathname !== sosAction.href ? (
-        <Link
-          href={sosAction.href}
-          className="fixed bottom-[5.25rem] right-4 z-50 inline-flex min-h-12 items-center gap-2 rounded-full border border-red-300 bg-red-600 px-4 py-2 text-sm font-bold text-white shadow-[0_18px_38px_rgba(220,38,38,0.32)] transition hover:bg-red-700 lg:bottom-auto lg:right-6 lg:top-24"
-          title={sosAction.label}
-          aria-label={sosAction.label}
-        >
-          <AlertTriangle className="h-5 w-5" />
-          <span>{sosAction.label}</span>
-          {activeSosCount > 0 && sosAction.badge ? (
-            <span className="grid min-w-5 place-items-center rounded-full bg-white px-1.5 py-0.5 text-[10px] font-black leading-none text-red-700">
-              {activeSosCount > 9 ? "9+" : activeSosCount}
-            </span>
-          ) : null}
-        </Link>
-      ) : null}
-
       <MobileBottomNav role={role} />
     </div>
   );
@@ -328,10 +310,10 @@ function NavLink({
       onClick={onNavigate}
       title={item.label}
       className={cn(
-        "flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white",
-        danger && "border border-red-500/30 bg-red-500/10 text-red-700 hover:bg-red-500/15 hover:text-red-800 dark:text-red-200 dark:hover:text-white",
+        "flex items-center gap-3 rounded-lg border-l-4 border-transparent px-3 py-3 text-sm font-medium text-slate-300 transition hover:bg-white/10 hover:text-white",
+        danger && "text-red-600 hover:bg-red-50 hover:text-red-700 dark:text-red-200 dark:hover:bg-red-500/15 dark:hover:text-white",
         collapseLabel ? "justify-center xl:justify-start" : "justify-start",
-        active && (danger ? "bg-red-500/15 text-red-800 shadow-[0_1px_0_rgba(255,255,255,0.08)_inset] dark:text-red-100" : "bg-white/10 text-smart shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]")
+        active && (danger ? "border-red-600 bg-red-50 text-red-700 shadow-[0_1px_0_rgba(255,255,255,0.08)_inset] dark:bg-red-500/15 dark:text-red-100" : "bg-white/10 text-smart shadow-[0_1px_0_rgba(255,255,255,0.08)_inset]")
       )}
     >
       <Icon className="h-4 w-4" />
@@ -347,24 +329,4 @@ function NavLink({
 
 function isActiveSosStatus(status: unknown) {
   return status === "open" || status === "acknowledged" || status === "responding";
-}
-
-function sosActionForRole(role: UserRole | "admin") {
-  if (role === "resident") {
-    return { href: "/resident/sos", label: "SOS Emergency", badge: false };
-  }
-
-  if (role === "admin" || role === "estate_admin" || role === "super_admin") {
-    return { href: "/admin/sos-alerts", label: "SOS Alerts", badge: true };
-  }
-
-  if (role === "security_guard") {
-    return { href: "/security/sos-alerts", label: "SOS Alerts", badge: true };
-  }
-
-  if (role === "cso") {
-    return { href: "/cso/sos-alerts", label: "SOS Alerts", badge: true };
-  }
-
-  return null;
 }

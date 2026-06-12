@@ -1335,20 +1335,12 @@ export function AdminDashboard() {
         title="Estate command center"
         description="Manage LBS View Estate operations across residents, access control, billing, complaints, announcements, and reports."
       >
-        <div className="flex flex-wrap gap-2">
-          <Link href="/admin/sos-alerts">
-            <Button variant="danger">
-              <Siren className="h-4 w-4" />
-              SOS Alerts
-            </Button>
-          </Link>
-          <Link href="/admin/bills">
-            <Button>
-              <FilePlus2 className="h-4 w-4" />
-              Create bill
-            </Button>
-          </Link>
-        </div>
+        <Link href="/admin/bills">
+          <Button>
+            <FilePlus2 className="h-4 w-4" />
+            Create bill
+          </Button>
+        </Link>
       </PageHeader>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
         <StatCard label="Total residents" value={String(state.residents.length)} helper="Across active demo estates" icon={<Users className="h-5 w-5" />} />
@@ -5561,24 +5553,35 @@ export function ResidentDashboard() {
           </div>
         </div>
       </div>
-      <div className="hidden sm:block">
-        <PageHeader title={`Welcome, ${resident.name}`} description="Invite visitors, check bills, submit complaints, read announcements, and keep your digital ID ready." >
-          <div className="flex flex-wrap gap-2">
+      <div className="mb-8 hidden sm:block">
+        <div className="grid gap-3">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+            <div>
+              <p className="text-sm font-medium uppercase tracking-[0.2em] text-smart">Corso</p>
+              <h1 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">Welcome, {resident.name}</h1>
+            </div>
             <Link href="/resident/sos">
-              <Button variant="danger">
-                <Siren className="h-4 w-4" />
-                🚨 SOS Emergency
+              <Button className="min-h-11 rounded-full bg-red-600 px-5 text-white hover:bg-red-700">
+                <AlertTriangle className="h-4 w-4" />
+                SOS Emergency
               </Button>
             </Link>
-            <Button type="button" variant="secondary" onClick={() => void refreshAccounting({ bypassCache: true })}>
-              <RefreshCw className="h-4 w-4" />
-              {loadingAccounting ? "Refreshing" : "Refresh account"}
-            </Button>
-            <Link href="/resident/invite-visitor">
-              <Button><QrCode className="h-4 w-4" />Invite visitor</Button>
-            </Link>
           </div>
-        </PageHeader>
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <p className="max-w-3xl text-sm leading-6 text-slate-300">
+              Invite visitors, check bills, submit complaints, read announcements, and keep your digital ID ready.
+            </p>
+            <div className="flex flex-wrap gap-2">
+              <Button type="button" variant="secondary" onClick={() => void refreshAccounting({ bypassCache: true })}>
+                <RefreshCw className="h-4 w-4" />
+                {loadingAccounting ? "Refreshing" : "Refresh account"}
+              </Button>
+              <Link href="/resident/invite-visitor">
+                <Button><QrCode className="h-4 w-4" />Invite visitor</Button>
+              </Link>
+            </div>
+          </div>
+        </div>
       </div>
       {showSkeleton ? <ResidentFinancialSkeleton /> : null}
       {!showSkeleton && accountingError ? <ResidentAccountError /> : null}
@@ -7194,14 +7197,7 @@ export function SecurityDashboard() {
 
   return (
     <>
-      <PageHeader title="Security dashboard" description="Verify access and record gate movement.">
-        <Link href="/security/sos-alerts">
-          <Button variant="danger">
-            <Siren className="h-4 w-4" />
-            SOS Alerts
-          </Button>
-        </Link>
-      </PageHeader>
+      <PageHeader title="Security dashboard" description="Verify access and record gate movement." />
       {sosMessage ? <p className="mb-4 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm text-gold">{sosMessage}</p> : null}
       {activeSosAlerts.length ? (
         <Link
@@ -7503,14 +7499,7 @@ export function CsoDashboard() {
       <PageHeader
         title="CSO command"
         description="Monitor patrols, GPS exceptions, checkpoint coverage, and guard activity."
-      >
-        <Link href="/cso/sos-alerts">
-          <Button variant="danger">
-            <Siren className="h-4 w-4" />
-            SOS Alerts
-          </Button>
-        </Link>
-      </PageHeader>
+      />
 
       {message ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{message}</p> : null}
 
