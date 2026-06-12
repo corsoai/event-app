@@ -1,4 +1,4 @@
-const CACHE_NAME = "corso-estate-v16-visitor-dashboard-live";
+const CACHE_NAME = `corso-v${new Date().toISOString().slice(0, 10)}`;
 const OFFLINE_URL = "/offline.html";
 const APP_SHELL = [
   OFFLINE_URL,
@@ -22,18 +22,27 @@ const APP_SHELL = [
 ];
 
 self.addEventListener("install", (event) => {
+  self.skipWaiting();
   event.waitUntil(
-    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL)).then(() => self.skipWaiting())
+    caches.open(CACHE_NAME).then((cache) => cache.addAll(APP_SHELL))
   );
 });
 
 self.addEventListener("activate", (event) => {
   event.waitUntil(
-    caches
-      .keys()
-      .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
-      .then(() => self.clients.claim())
+    Promise.all([
+      self.clients.claim(),
+      caches
+        .keys()
+        .then((keys) => Promise.all(keys.filter((key) => key !== CACHE_NAME).map((key) => caches.delete(key))))
+    ])
   );
+});
+
+self.addEventListener("message", (event) => {
+  if (event.data?.type === "SKIP_WAITING") {
+    self.skipWaiting();
+  }
 });
 
 self.addEventListener("fetch", (event) => {
@@ -45,21 +54,18 @@ self.addEventListener("fetch", (event) => {
     return;
   }
 
-  if (event.request.mode === "navigate") {
-    event.respondWith(
-      fetch(event.request)
-        .catch(() => caches.match(OFFLINE_URL))
-    );
-    return;
-  }
-
   if (requestUrl.origin !== self.location.origin) {
     event.respondWith(fetch(event.request));
     return;
   }
 
   if (requestUrl.pathname.startsWith("/_next/static/")) {
-    event.respondWith(networkFirst(event.request));
+    event.respondWith(cacheFirst(event.request));
+    return;
+  }
+
+  if (isNavigationLikeRequest(event.request, requestUrl)) {
+    event.respondWith(networkFirst(event.request, { offlineFallback: true }));
     return;
   }
 
@@ -79,7 +85,15 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(cacheableAsset ? staleWhileRevalidate(event.request) : networkFirst(event.request));
 });
 
-async function networkFirst(request) {
+function isNavigationLikeRequest(request, requestUrl) {
+  if (request.mode === "navigate") return true;
+  if (request.headers.get("accept")?.includes("text/html")) return true;
+  if (requestUrl.pathname.endsWith(".html")) return true;
+  const lastSegment = requestUrl.pathname.split("/").pop() || "";
+  return !lastSegment.includes(".");
+}
+
+async function networkFirst(request, options = {}) {
   try {
     const response = await fetch(request);
     if (response.ok) {
@@ -89,8 +103,25 @@ async function networkFirst(request) {
     return response;
   } catch {
     const cached = await caches.match(request);
-    return cached || new Response("", { status: 503, statusText: "Offline" });
+    if (cached) return cached;
+    if (options.offlineFallback) {
+      const fallback = await caches.match(OFFLINE_URL);
+      if (fallback) return fallback;
+    }
+    return new Response("", { status: 503, statusText: "Offline" });
   }
+}
+
+async function cacheFirst(request) {
+  const cached = await caches.match(request);
+  if (cached) return cached;
+
+  const response = await fetch(request);
+  if (response.ok) {
+    const cache = await caches.open(CACHE_NAME);
+    cache.put(request, response.clone());
+  }
+  return response;
 }
 
 async function staleWhileRevalidate(request) {

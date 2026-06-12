@@ -129,7 +129,7 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
       { label: "Bills", href: "/resident/bills", icon: ReceiptText, badge: outstandingBalance > 0 ? 1 : 0 },
       { label: "Pay", href: "/resident/payments", icon: CreditCard },
       { label: "Visitors", href: "/resident/visitors", icon: Users },
-      { label: "SOS", href: "/resident/sos", icon: AlertTriangle, tone: "danger" }
+      { label: "🚨 SOS", href: "/resident/sos", icon: AlertTriangle, tone: "danger" }
     ];
   }
 
@@ -137,16 +137,16 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
     return [
       { label: "Dashboard", href: "/security", icon: Shield },
       { label: "Verify", href: "/security/verify-visitor", icon: QrCode },
-      { label: "Visitors", href: "/security/expected-visitors", icon: Users },
-      { label: "SOS", href: "/security/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
-      { label: "Logs", href: "/security/logs", icon: ClipboardList }
+      { label: "Expected", href: "/security/expected-visitors", icon: Users },
+      { label: "Logs", href: "/security/logs", icon: ClipboardList },
+      { label: "🚨 SOS", href: "/security/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" }
     ];
   }
 
   if (role === "cso") {
     return [
       { label: "Dashboard", href: "/cso", icon: Shield },
-      { label: "SOS", href: "/cso/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
+      { label: "🚨 SOS", href: "/cso/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
       { label: "Checkpoints", href: "/cso#checkpoints", icon: MapPin },
       { label: "Patrol", href: "/cso#patrol-feed", icon: Activity }
     ];
@@ -155,7 +155,7 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
   return [
     { label: "Dashboard", href: role === "super_admin" ? "/super-admin" : "/admin", icon: LayoutDashboard },
     { label: "Residents", href: "/admin/residents", icon: Users },
-    { label: "SOS", href: "/admin/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
+    { label: "🚨 SOS", href: "/admin/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
     { label: "Payments", href: "/admin/payments", icon: WalletCards },
     { label: "Reports", href: role === "super_admin" ? "/super-admin/reports" : "/admin/reports", icon: BarChart3 }
   ];

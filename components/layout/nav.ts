@@ -2,7 +2,7 @@ import type { NavItem } from "@/components/layout/app-shell";
 
 export const adminNav: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: "Gauge" },
-  { label: "SOS Alerts", href: "/admin/sos-alerts", icon: "AlertTriangle", tone: "danger", badge: "sos" },
+  { label: "🚨 SOS", href: "/admin/sos-alerts", icon: "AlertTriangle", tone: "danger", badge: "sos" },
   { label: "Estate Profile", href: "/admin/estate", icon: "Building2" },
   { label: "Users & Roles", href: "/admin/users", icon: "Users" },
   { label: "Residents", href: "/admin/residents", icon: "Users" },
@@ -30,12 +30,12 @@ export const residentNav: NavItem[] = [
   { label: "Household", href: "/resident/household", icon: "Users" },
   { label: "Marketplace", href: "/marketplace", icon: "Store" },
   { label: "Knowledge Base", href: "/resident/knowledge-base", icon: "BookOpen" },
-  { label: "SOS Emergency", href: "/resident/sos", icon: "AlertTriangle", tone: "danger" }
+  { label: "🚨 SOS", href: "/resident/sos", icon: "AlertTriangle", tone: "danger" }
 ];
 
 export const securityNav: NavItem[] = [
   { label: "Dashboard", href: "/security", icon: "Gauge" },
-  { label: "SOS Alerts", href: "/security/sos-alerts", icon: "AlertTriangle", tone: "danger", badge: "sos" },
+  { label: "🚨 SOS", href: "/security/sos-alerts", icon: "AlertTriangle", tone: "danger", badge: "sos" },
   { label: "Verify Visitor", href: "/security/verify-visitor", icon: "QrCode" },
   { label: "Guard Tour", href: "/security/verify-visitor", icon: "ShieldCheck" },
   { label: "Expected Visitors", href: "/security/expected-visitors", icon: "DoorOpen" },
@@ -45,7 +45,7 @@ export const securityNav: NavItem[] = [
 
 export const csoNav: NavItem[] = [
   { label: "Command", href: "/cso", icon: "Gauge" },
-  { label: "SOS Alerts", href: "/cso/sos-alerts", icon: "AlertTriangle", tone: "danger", badge: "sos" },
+  { label: "🚨 SOS", href: "/cso/sos-alerts", icon: "AlertTriangle", tone: "danger", badge: "sos" },
   { label: "Checkpoints", href: "/cso#checkpoints", icon: "ShieldCheck" },
   { label: "Patrol Feed", href: "/cso#patrol-feed", icon: "FileText" }
 ];

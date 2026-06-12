@@ -2,7 +2,7 @@ import type { InputHTMLAttributes, ReactNode, SelectHTMLAttributes, TextareaHTML
 import { cn } from "@/lib/utils";
 
 const base =
-  "w-full rounded-lg border border-white/15 bg-white/10 px-3 py-3 text-sm text-white shadow-[0_1px_0_rgba(255,255,255,0.06)_inset] outline-none backdrop-blur-xl transition placeholder:text-slate-400 focus:border-smart/70 focus:ring-2 focus:ring-smart/25";
+  "w-full rounded-lg border border-slate-300 bg-white px-3 py-3 text-sm text-slate-950 shadow-[0_1px_0_rgba(255,255,255,0.75)_inset] outline-none transition placeholder:text-slate-400 focus:border-smart/70 focus:ring-2 focus:ring-smart/25 dark:border-slate-600 dark:bg-slate-800 dark:text-white dark:placeholder:text-slate-400";
 
 export function Input(props: InputHTMLAttributes<HTMLInputElement>) {
   return <input {...props} className={cn(base, props.className)} />;
@@ -24,7 +24,7 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="grid gap-2 text-sm font-medium text-slate-200">
+    <label className="grid gap-2 text-sm font-medium text-slate-800 dark:text-slate-200">
       {label}
       {children}
     </label>
