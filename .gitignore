@@ -17,3 +17,5 @@ tsconfig.tsbuildinfo
 .local-dev/
 .local-import/
 appwrite.config.json
+
+.vercel
