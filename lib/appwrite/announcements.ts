@@ -11,7 +11,8 @@ import {
   getAppwriteServerConfig,
   safeAppwriteId
 } from "@/lib/appwrite/server";
-import { listAppwriteTableRows } from "@/lib/appwrite/residents";
+import { listAppwriteTableRows, type AppwriteEstateScope } from "@/lib/appwrite/residents";
+import type { SessionContext } from "@/lib/appwrite/session-context";
 
 type AnnouncementPriority = AppwriteAnnouncement["priority"];
 type AnnouncementTargetRole = AppwriteAnnouncement["targetRole"];
@@ -57,7 +58,10 @@ type AnnouncementActor = {
   profileId: string;
   fullName: string;
   estateId: string;
+  role: UserRole;
 };
+
+type VerifiedAnnouncementContext = Pick<SessionContext, "userId" | "profileId" | "role" | "estateId">;
 
 export type AnnouncementInput = {
   title: string;
@@ -71,7 +75,9 @@ export type AnnouncementInput = {
 
 export type AnnouncementUpdateInput = Partial<AnnouncementInput>;
 
-export async function resolveAnnouncementActor(userId: string, role: string): Promise<AnnouncementActor> {
+export async function resolveAnnouncementActor(input: string | VerifiedAnnouncementContext, role?: string): Promise<AnnouncementActor> {
+  const userId = typeof input === "string" ? input : input.userId;
+  const verifiedRole = (typeof input === "string" ? role : input.role) as UserRole | undefined;
   if (!userId) {
     throw new Error("Authenticated Appwrite user is required.");
   }
@@ -87,24 +93,24 @@ export async function resolveAnnouncementActor(userId: string, role: string): Pr
     ?? user.name
     ?? user.email
     ?? "Estate admin";
-  const estateId = role === "super_admin"
+  const estateId = typeof input === "string"
     ? (profile?.estateId || stringPref(prefs.estateId) || APPWRITE_LBSVIEW_ESTATE_ID)
-    : (profile?.estateId || stringPref(prefs.estateId) || APPWRITE_LBSVIEW_ESTATE_ID);
+    : input.estateId;
 
   return {
-    profileId: profile?.$id ?? userId,
+    profileId: typeof input === "string" ? profile?.$id ?? userId : input.profileId,
     fullName,
-    estateId
+    estateId,
+    role: verifiedRole ?? profile?.role ?? "resident"
   };
 }
 
-export async function listAdminAnnouncements(options: { status?: string } = {}) {
-  const rows = await listAnnouncementRows();
+export async function listAdminAnnouncements(options: { status?: string } = {}, scope: AppwriteEstateScope = {}) {
+  const rows = await listAnnouncementRows(scope);
   const status = options.status ? normalizeStatus(options.status) : null;
 
   return rows
     .map(mapAnnouncementRow)
-    .filter((announcement) => announcement.estateId === APPWRITE_LBSVIEW_ESTATE_ID)
     .filter((announcement) => !status || announcement.status === status)
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
@@ -148,6 +154,7 @@ export async function updateAnnouncement(announcementId: string, input: Announce
   }
 
   const existing = await getAnnouncementRow(id);
+  assertActorCanAccessAnnouncement(actor, existing);
   const now = new Date().toISOString();
   const nextStatus = input.status ? normalizeStatus(input.status) : normalizeStatus(existing.status ?? "draft");
   const shouldPublish = nextStatus === "published" && !existing.publishedAt;
@@ -170,6 +177,7 @@ export async function archiveAnnouncement(announcementId: string, actor: Announc
   }
 
   const existing = await getAnnouncementRow(id);
+  assertActorCanAccessAnnouncement(actor, existing);
   const now = new Date().toISOString();
   const row = await appwriteUpsertRow<AppwriteAnnouncementRow>(APPWRITE_TABLE_ANNOUNCEMENTS, id, {
     ...existing,
@@ -186,12 +194,11 @@ export async function archiveAnnouncement(announcementId: string, actor: Announc
   return announcement;
 }
 
-export async function listResidentAnnouncements() {
+export async function listResidentAnnouncements(scope: AppwriteEstateScope = {}) {
   const now = Date.now();
 
-  return (await listAnnouncementRows())
+  return (await listAnnouncementRows(scope))
     .map(mapAnnouncementRow)
-    .filter((announcement) => announcement.estateId === APPWRITE_LBSVIEW_ESTATE_ID)
     .filter((announcement) => announcement.status === "published")
     .filter((announcement) => announcement.targetRole === "all" || announcement.targetRole === "resident")
     .filter((announcement) => !announcement.expiresAt || Date.parse(announcement.expiresAt) >= now)
@@ -204,13 +211,13 @@ export async function listResidentAnnouncements() {
     });
 }
 
-async function listAnnouncementRows() {
+async function listAnnouncementRows(scope: AppwriteEstateScope = {}) {
   const config = getAppwriteServerConfig();
   if (!config.configured) {
     throw new Error(`Appwrite server configuration is missing: ${config.missing.join(", ")}`);
   }
 
-  return listAppwriteTableRows<AppwriteAnnouncementRow>(APPWRITE_TABLE_ANNOUNCEMENTS);
+  return listAppwriteTableRows<AppwriteAnnouncementRow>(APPWRITE_TABLE_ANNOUNCEMENTS, scope);
 }
 
 async function getAnnouncementRow(announcementId: string) {
@@ -223,6 +230,13 @@ async function getAnnouncementRow(announcementId: string) {
     `/tablesdb/${config.databaseId}/tables/${APPWRITE_TABLE_ANNOUNCEMENTS}/rows/${encodeURIComponent(announcementId)}`,
     { method: "GET" }
   );
+}
+
+function assertActorCanAccessAnnouncement(actor: AnnouncementActor, row: AppwriteAnnouncementRow) {
+  const estateId = row.estateId ?? APPWRITE_LBSVIEW_ESTATE_ID;
+  if (actor.role !== "super_admin" && estateId !== actor.estateId) {
+    throw new Error("You are not allowed to manage this announcement.");
+  }
 }
 
 function buildUpdatePayload(

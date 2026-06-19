@@ -7,8 +7,8 @@ import {
   APPWRITE_TABLE_SUBSCRIPTION_RATES,
   APPWRITE_TABLE_UNITS
 } from "@/lib/appwrite/schema";
-import { APPWRITE_LBSVIEW_ESTATE_ID, appwriteUpsertRow, safeAppwriteId } from "@/lib/appwrite/server";
-import { listAppwriteTableRows } from "@/lib/appwrite/residents";
+import { appwriteUpsertRow, safeAppwriteId } from "@/lib/appwrite/server";
+import { listAppwriteTableRows, type AppwriteEstateScope } from "@/lib/appwrite/residents";
 import { allocatePayment } from "@/lib/appwrite/payment-allocation";
 
 export interface BillingRunParams {
@@ -144,13 +144,14 @@ export async function runMonthlyBilling(params: BillingRunParams): Promise<Billi
   const now = new Date().toISOString();
   const dueDate = `${params.billingMonth}-01`;
   const title = `Monthly Subscription - ${monthTitle(params.billingMonth)}`;
+  const estateScope = { estateId: params.estateId };
   const [residents, units, properties, bills, payments, rates] = await Promise.all([
-    listAppwriteTableRows<ResidentRow>(APPWRITE_TABLE_RESIDENTS),
-    listAppwriteTableRows<UnitRow>(APPWRITE_TABLE_UNITS),
-    listAppwriteTableRows<PropertyRow>(APPWRITE_TABLE_PROPERTIES),
-    listAppwriteTableRows<BillRow>(APPWRITE_TABLE_BILLS),
-    listAppwriteTableRows<PaymentRow>(APPWRITE_TABLE_PAYMENTS),
-    listAppwriteTableRows<SubscriptionRateRow>(APPWRITE_TABLE_SUBSCRIPTION_RATES)
+    listAppwriteTableRows<ResidentRow>(APPWRITE_TABLE_RESIDENTS, estateScope),
+    listAppwriteTableRows<UnitRow>(APPWRITE_TABLE_UNITS, estateScope),
+    listAppwriteTableRows<PropertyRow>(APPWRITE_TABLE_PROPERTIES, estateScope),
+    listAppwriteTableRows<BillRow>(APPWRITE_TABLE_BILLS, estateScope),
+    listAppwriteTableRows<PaymentRow>(APPWRITE_TABLE_PAYMENTS, estateScope),
+    listAppwriteTableRows<SubscriptionRateRow>(APPWRITE_TABLE_SUBSCRIPTION_RATES, estateScope)
   ]);
   const activeResidents = residents.filter((resident) => resident.estateId === params.estateId && normalized(resident.status) === "active");
   const targets = activeResidents.flatMap((resident) => targetsForResident(resident, units, properties));
@@ -269,14 +270,15 @@ export async function runMonthlyBilling(params: BillingRunParams): Promise<Billi
   return result;
 }
 
-export async function listMonthlyBillingRuns(estateId: string) {
-  const rows = await listAppwriteTableRows<BillingRunRow>(APPWRITE_TABLE_MONTHLY_BILLING_RUNS);
+export async function listMonthlyBillingRuns(scope: string | AppwriteEstateScope) {
+  const estateScope = typeof scope === "string" ? { estateId: scope } : scope;
+  const rows = await listAppwriteTableRows<BillingRunRow>(APPWRITE_TABLE_MONTHLY_BILLING_RUNS, estateScope);
+  const fallbackEstateId = typeof scope === "string" ? scope : String(scope.estateId ?? "");
   return rows
-    .filter((row) => row.estateId === estateId)
     .sort((left, right) => String(right.runDate ?? "").localeCompare(String(left.runDate ?? "")))
     .map((row) => ({
       id: row.$id ?? "",
-      estateId: row.estateId ?? estateId,
+      estateId: row.estateId ?? fallbackEstateId,
       billingMonth: row.billingMonth ?? "",
       runDate: row.runDate ?? "",
       runBy: row.runBy ?? "",

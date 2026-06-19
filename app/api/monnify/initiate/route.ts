@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { listAppwriteResidentAccounting } from "@/lib/appwrite/accounting";
 import { createPaymentIntent, updatePaymentIntent } from "@/lib/appwrite/payment-intents";
 import { APPWRITE_LBSVIEW_ESTATE_ID, AppwriteRestError, appwriteRequest } from "@/lib/appwrite/server";
+import { resolveSessionContext, SessionContextError, type SessionContext } from "@/lib/appwrite/session-context";
 import { initializeTransaction } from "@/lib/monnify/client";
 import { normalizePhoneNumber } from "@/lib/utils";
 import type { Bill, Resident } from "@/lib/types";
@@ -23,29 +24,14 @@ type InitiatePaymentBody = {
 const allowedSubscriptionMonths = new Set([1, 3, 6, 12]);
 
 export async function POST(request: NextRequest) {
-  const role = request.cookies.get("corso_role")?.value ?? "";
-  const userId = request.cookies.get("corso_appwrite_user")?.value ?? "";
-
-  if (role !== "resident" || !userId) {
-    return NextResponse.json({ error: "Resident access is required." }, { status: 403 });
-  }
-
   const body = await request.json().catch(() => null) as InitiatePaymentBody | null;
   if (!body) {
     return NextResponse.json({ error: "Invalid payment request." }, { status: 400 });
   }
 
   try {
-    const user = await appwriteRequest<AppwriteUser>(`/users/${encodeURIComponent(userId)}`);
-    const prefs = user.prefs ?? {};
-    const accounting = await listAppwriteResidentAccounting(
-      {
-        email: typeof prefs.email === "string" ? prefs.email : user.email,
-        phone: typeof prefs.phone === "string" ? prefs.phone : normalizePhoneNumber(user.phone ?? ""),
-        fullName: typeof prefs.fullName === "string" ? prefs.fullName : user.name
-      },
-      { bypassCache: true }
-    );
+    const context = await resolveSessionContext(request, { allowedRoles: ["resident"] });
+    const accounting = await residentAccountingFor(context, true);
     const resident = accounting.resident;
     const summary = accounting.summary;
 
@@ -61,6 +47,7 @@ export async function POST(request: NextRequest) {
     const paymentReference = `LBSV-${resident.id}-${Date.now()}`;
     const redirectUrl = buildConfirmUrl(request, paymentReference);
     const intent = await createPaymentIntent({
+      estateId: resident.estateId || context.estateId || APPWRITE_LBSVIEW_ESTATE_ID,
       residentId: resident.id,
       billId: paymentPlan.billId,
       amount: paymentPlan.amount,
@@ -109,10 +96,28 @@ export async function POST(request: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to initiate payment.";
-    const status = error instanceof AppwriteRestError ? error.status : 400;
+    const status = error instanceof SessionContextError
+      ? error.status
+      : error instanceof AppwriteRestError ? error.status : 400;
 
     return NextResponse.json({ error: message }, { status });
   }
+}
+
+async function residentAccountingFor(context: SessionContext, bypassCache: boolean) {
+  const user = await appwriteRequest<AppwriteUser>(`/users/${encodeURIComponent(context.userId)}`);
+  const prefs = user.prefs ?? {};
+  return listAppwriteResidentAccounting(
+    {
+      email: typeof prefs.email === "string" ? prefs.email : user.email,
+      phone: typeof prefs.phone === "string" ? prefs.phone : normalizePhoneNumber(user.phone ?? ""),
+      fullName: typeof prefs.fullName === "string" ? prefs.fullName : user.name
+    },
+    {
+      estateId: context.estateId,
+      bypassCache
+    }
+  );
 }
 
 function resolvePaymentPlan(

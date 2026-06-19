@@ -33,6 +33,7 @@ export type PaymentIntentRow = {
 };
 
 export type CreatePaymentIntentInput = {
+  estateId: string;
   residentId: string;
   billId?: string;
   amount: number;
@@ -48,7 +49,7 @@ export async function createPaymentIntent(input: CreatePaymentIntentInput) {
   const intentId = safeAppwriteId("intent", input.reference);
 
   return appwriteUpsertRow<PaymentIntentRow>(APPWRITE_TABLE_PAYMENT_INTENTS, intentId, {
-    estateId: APPWRITE_LBSVIEW_ESTATE_ID,
+    estateId: input.estateId || APPWRITE_LBSVIEW_ESTATE_ID,
     residentId: input.residentId,
     billId: input.billId,
     amount: input.amount,

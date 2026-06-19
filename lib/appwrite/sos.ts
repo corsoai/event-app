@@ -1,4 +1,5 @@
 import type { SecurityIncident, UserRole } from "@/lib/types";
+import type { SessionContext } from "@/lib/appwrite/session-context";
 import {
   APPWRITE_TABLE_AUDIT_LOGS,
   APPWRITE_TABLE_CSO_REVIEWS,
@@ -12,7 +13,7 @@ import {
   safeAppwriteId
 } from "@/lib/appwrite/server";
 import { resolveComplaintActor, resolveResidentComplaintSession } from "@/lib/appwrite/complaints";
-import { listAppwriteTableRows } from "@/lib/appwrite/residents";
+import { listAppwriteTableRows, type AppwriteEstateScope } from "@/lib/appwrite/residents";
 
 export type SosAlertType = "panic" | "medical" | "fire" | "security" | "other";
 export type SosIncidentStatus = "open" | "acknowledged" | "responding" | "resolved" | "false_alarm" | "closed";
@@ -61,8 +62,11 @@ type SosActor = {
   role: UserRole;
 };
 
-export async function createResidentSosIncident(userId: string, input: CreateSosInput) {
-  const session = await resolveResidentComplaintSession(userId);
+type ResidentSosContext = string | Pick<SessionContext, "userId" | "profileId" | "estateId">;
+type AdminSosContext = string | Pick<SessionContext, "userId" | "profileId" | "role" | "estateId">;
+
+export async function createResidentSosIncident(context: ResidentSosContext, input: CreateSosInput) {
+  const session = await resolveResidentComplaintSession(context);
   const now = new Date().toISOString();
   const alertType = normalizeAlertType(input.alertType);
   const details = optionalText(input.details);
@@ -105,17 +109,17 @@ export async function createResidentSosIncident(userId: string, input: CreateSos
   return incident;
 }
 
-export async function listResidentSosIncidents(userId: string) {
-  const session = await resolveResidentComplaintSession(userId);
+export async function listResidentSosIncidents(context: ResidentSosContext) {
+  const session = await resolveResidentComplaintSession(context);
 
-  return (await listSosIncidentRows())
+  return (await listSosIncidentRows({ estateId: session.estateId }))
     .map(mapSosIncidentRow)
     .filter((incident) => incident.reportedByProfileId === session.profileId)
     .sort(sortIncidentsNewestFirst);
 }
 
-export async function getResidentSosIncident(userId: string, incidentId: string) {
-  const incident = (await listResidentSosIncidents(userId)).find((item) => item.id === incidentId.trim());
+export async function getResidentSosIncident(context: ResidentSosContext, incidentId: string) {
+  const incident = (await listResidentSosIncidents(context)).find((item) => item.id === incidentId.trim());
   if (!incident) {
     throw new Error("You are not allowed to view this SOS alert.");
   }
@@ -123,17 +127,19 @@ export async function getResidentSosIncident(userId: string, incidentId: string)
   return incident;
 }
 
-export async function listAdminSosIncidents(userId: string, role: UserRole) {
-  const actor = await resolveSosActor(userId, role);
+export async function listAdminSosIncidents(context: AdminSosContext, role?: UserRole) {
+  const actor = await resolveSosActor(context, role);
+  const scope = actor.role === "super_admin"
+    ? { includeAllEstates: true }
+    : { estateId: actor.estateId };
 
-  return (await listSosIncidentRows())
+  return (await listSosIncidentRows(scope))
     .map(mapSosIncidentRow)
-    .filter((incident) => incident.estateId === actor.estateId || role === "super_admin")
     .sort(sortIncidentsNewestFirst);
 }
 
-export async function updateSosIncident(userId: string, role: UserRole, input: UpdateSosInput) {
-  const actor = await resolveSosActor(userId, role);
+export async function updateSosIncident(context: AdminSosContext, input: UpdateSosInput, role?: UserRole) {
+  const actor = await resolveSosActor(context, role);
   const incidentId = input.incidentId.trim();
   if (!incidentId) {
     throw new Error("Incident ID is required.");
@@ -141,7 +147,7 @@ export async function updateSosIncident(userId: string, role: UserRole, input: U
 
   const existing = await getSosIncidentRow(incidentId);
   const existingIncident = mapSosIncidentRow(existing);
-  if (role !== "super_admin" && existingIncident.estateId !== actor.estateId) {
+  if (actor.role !== "super_admin" && existingIncident.estateId !== actor.estateId) {
     throw new Error("You are not allowed to update this SOS alert.");
   }
 
@@ -172,7 +178,7 @@ export async function updateSosIncident(userId: string, role: UserRole, input: U
   const row = await writeSosIncidentRow(incidentId, patch);
   const incident = mapSosIncidentRow(row);
 
-  if (role === "cso") {
+  if (actor.role === "cso") {
     await appwriteUpsertRow(APPWRITE_TABLE_CSO_REVIEWS, safeAppwriteId("review", `${incidentId}:${actor.profileId}:${status}:${now}`), {
       estateId: actor.estateId,
       incidentId,
@@ -194,7 +200,7 @@ export async function updateSosIncident(userId: string, role: UserRole, input: U
     metadata: {
       status,
       note: optionalText(input.note) ?? "",
-      role
+      role: actor.role
     }
   });
 
@@ -227,22 +233,29 @@ function mapSosIncidentRow(row: SosIncidentRow): SecurityIncident {
   };
 }
 
-async function resolveSosActor(userId: string, role: UserRole): Promise<SosActor> {
+async function resolveSosActor(context: AdminSosContext, fallbackRole?: UserRole): Promise<SosActor> {
+  const userId = typeof context === "string" ? context : context.userId;
+  const role = typeof context === "string" ? fallbackRole : context.role;
+  if (!role) {
+    throw new Error("A verified security role is required.");
+  }
   const actor = await resolveComplaintActor(userId, role);
 
   return {
     ...actor,
+    profileId: typeof context === "string" ? actor.profileId : context.profileId,
+    estateId: typeof context === "string" ? actor.estateId : context.estateId,
     role
   };
 }
 
-async function listSosIncidentRows() {
+async function listSosIncidentRows(scope: AppwriteEstateScope = {}) {
   const config = getAppwriteServerConfig();
   if (!config.configured) {
     throw new Error(`Appwrite server configuration is missing: ${config.missing.join(", ")}`);
   }
 
-  return (await listAppwriteTableRows<SosIncidentRow>(APPWRITE_TABLE_SECURITY_INCIDENTS))
+  return (await listAppwriteTableRows<SosIncidentRow>(APPWRITE_TABLE_SECURITY_INCIDENTS, scope))
     .filter((row) => (row.incidentType ?? "").toLowerCase() === "sos");
 }
 

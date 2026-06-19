@@ -7,7 +7,7 @@ import {
   getAppwriteServerConfig,
   safeAppwriteId
 } from "@/lib/appwrite/server";
-import { listAppwriteTableRows } from "@/lib/appwrite/residents";
+import { listAppwriteTableRows, type AppwriteEstateScope } from "@/lib/appwrite/residents";
 import { resolveResidentComplaintSession } from "@/lib/appwrite/complaints";
 
 type Relationship = HouseholdMember["relationship"];
@@ -53,12 +53,12 @@ export type AdminHouseholdFilters = {
   hasEstateAccess?: string;
 };
 
-export async function resolveHouseholdSession(userId: string) {
-  return resolveResidentComplaintSession(userId);
+export async function resolveHouseholdSession(input: Parameters<typeof resolveResidentComplaintSession>[0]) {
+  return resolveResidentComplaintSession(input);
 }
 
 export async function listResidentHouseholdMembers(session: Awaited<ReturnType<typeof resolveHouseholdSession>>) {
-  return (await listHouseholdRows())
+  return (await listHouseholdRows({ estateId: session.estateId }))
     .map(mapHouseholdRow)
     .filter((member) => member.residentId === session.resident.id)
     .filter((member) => member.status === "active")
@@ -95,7 +95,7 @@ export async function updateHouseholdMember(
   session: Awaited<ReturnType<typeof resolveHouseholdSession>>
 ) {
   const existing = await getHouseholdRow(memberId);
-  assertOwnHouseholdMember(existing, session.resident.id);
+  assertOwnHouseholdMember(existing, session);
   const now = new Date().toISOString();
   const row = await appwriteUpsertRow<HouseholdRow>(APPWRITE_TABLE_HOUSEHOLD_MEMBERS, memberId, {
     estateId: existing.estateId ?? session.estateId,
@@ -123,16 +123,15 @@ export async function deleteHouseholdMember(memberId: string, session: Awaited<R
   return updateHouseholdMember(memberId, { status: "inactive" }, session);
 }
 
-export async function listAdminHouseholdMembers(filters: AdminHouseholdFilters = {}) {
+export async function listAdminHouseholdMembers(filters: AdminHouseholdFilters = {}, scope: AppwriteEstateScope = {}) {
   const residentId = filters.residentId?.trim();
   const unitCode = filters.unitCode?.trim().toLowerCase();
   const hasEstateAccess = filters.hasEstateAccess === undefined || filters.hasEstateAccess === ""
     ? null
     : filters.hasEstateAccess === "true";
 
-  return (await listHouseholdRows())
+  return (await listHouseholdRows(scope))
     .map(mapHouseholdRow)
-    .filter((member) => member.estateId === APPWRITE_LBSVIEW_ESTATE_ID)
     .filter((member) => !residentId || member.residentId === residentId)
     .filter((member) => !unitCode || member.unitCode.toLowerCase() === unitCode)
     .filter((member) => hasEstateAccess === null || member.hasEstateAccess === hasEstateAccess)
@@ -146,13 +145,13 @@ export class ForbiddenHouseholdError extends Error {
   }
 }
 
-async function listHouseholdRows() {
+async function listHouseholdRows(scope: AppwriteEstateScope = {}) {
   const config = getAppwriteServerConfig();
   if (!config.configured) {
     throw new Error(`Appwrite server configuration is missing: ${config.missing.join(", ")}`);
   }
 
-  return listAppwriteTableRows<HouseholdRow>(APPWRITE_TABLE_HOUSEHOLD_MEMBERS);
+  return listAppwriteTableRows<HouseholdRow>(APPWRITE_TABLE_HOUSEHOLD_MEMBERS, scope);
 }
 
 async function getHouseholdRow(memberId: string) {
@@ -167,8 +166,8 @@ async function getHouseholdRow(memberId: string) {
   );
 }
 
-function assertOwnHouseholdMember(row: HouseholdRow, residentId: string) {
-  if (row.residentId !== residentId) {
+function assertOwnHouseholdMember(row: HouseholdRow, session: Awaited<ReturnType<typeof resolveHouseholdSession>>) {
+  if (row.estateId !== session.estateId || row.residentId !== session.resident.id) {
     throw new ForbiddenHouseholdError();
   }
 }

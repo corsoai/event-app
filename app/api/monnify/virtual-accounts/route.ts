@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { listAppwriteResidentAccounting } from "@/lib/appwrite/accounting";
 import { assignMonnifyVirtualAccount, getVirtualAccountForResident } from "@/lib/appwrite/virtual-accounts";
 import { AppwriteRestError, appwriteRequest } from "@/lib/appwrite/server";
+import { resolveSessionContext, SessionContextError, type SessionContext } from "@/lib/appwrite/session-context";
 import { normalizePhoneNumber } from "@/lib/utils";
 
 type AppwriteUser = {
@@ -12,14 +13,10 @@ type AppwriteUser = {
   prefs?: Record<string, unknown>;
 };
 
-const adminRoles = new Set(["estate_admin", "super_admin", "admin"]);
+const adminRoles = ["estate_admin", "super_admin"] as const;
+const allowedRoles = ["resident", "estate_admin", "super_admin"] as const;
 
 export async function POST(request: NextRequest) {
-  const role = request.cookies.get("corso_role")?.value ?? "";
-  if (!adminRoles.has(role)) {
-    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
-  }
-
   const body = await request.json().catch(() => null) as { residentId?: string } | null;
   const residentId = body?.residentId?.trim() ?? "";
   if (!residentId) {
@@ -27,41 +24,42 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const account = await assignMonnifyVirtualAccount(residentId);
+    const context = await resolveSessionContext(request, { allowedRoles: adminRoles });
+    const account = await assignMonnifyVirtualAccount(residentId, estateScopeFor(context));
     return NextResponse.json({ account });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to assign virtual account.";
-    const status = error instanceof AppwriteRestError ? error.status : 400;
+    const status = error instanceof SessionContextError
+      ? error.status
+      : error instanceof AppwriteRestError ? error.status : 400;
     return NextResponse.json({ error: message }, { status });
   }
 }
 
 export async function GET(request: NextRequest) {
-  const role = request.cookies.get("corso_role")?.value ?? "";
-  const userId = request.cookies.get("corso_appwrite_user")?.value ?? "";
-
   try {
-    const residentId = adminRoles.has(role)
-      ? request.nextUrl.searchParams.get("residentId")?.trim() ?? ""
-      : role === "resident" && userId
-        ? await residentIdFromSession(userId)
-        : "";
+    const context = await resolveSessionContext(request, { allowedRoles });
+    const residentId = context.role === "resident"
+      ? await residentIdFromSession(context)
+      : request.nextUrl.searchParams.get("residentId")?.trim() ?? "";
 
     if (!residentId) {
       return NextResponse.json({ error: "Resident access is required." }, { status: 403 });
     }
 
-    const account = await getVirtualAccountForResident(residentId);
+    const account = await getVirtualAccountForResident(residentId, estateScopeFor(context));
     return NextResponse.json({ account });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to load virtual account.";
-    const status = error instanceof AppwriteRestError ? error.status : 400;
+    const status = error instanceof SessionContextError
+      ? error.status
+      : error instanceof AppwriteRestError ? error.status : 400;
     return NextResponse.json({ error: message }, { status });
   }
 }
 
-async function residentIdFromSession(userId: string) {
-  const user = await appwriteRequest<AppwriteUser>(`/users/${encodeURIComponent(userId)}`);
+async function residentIdFromSession(context: SessionContext) {
+  const user = await appwriteRequest<AppwriteUser>(`/users/${encodeURIComponent(context.userId)}`);
   const prefs = user.prefs ?? {};
   const accounting = await listAppwriteResidentAccounting(
     {
@@ -69,8 +67,14 @@ async function residentIdFromSession(userId: string) {
       phone: typeof prefs.phone === "string" ? prefs.phone : normalizePhoneNumber(user.phone ?? ""),
       fullName: typeof prefs.fullName === "string" ? prefs.fullName : user.name
     },
-    { bypassCache: false }
+    { estateId: context.estateId, bypassCache: false }
   );
 
   return accounting.resident?.id ?? "";
+}
+
+function estateScopeFor(context: SessionContext) {
+  return context.role === "super_admin"
+    ? { includeAllEstates: true }
+    : { estateId: context.estateId };
 }

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AppwriteRestError } from "@/lib/appwrite/server";
+import { resolveSessionContext, SessionContextError } from "@/lib/appwrite/session-context";
 import {
   ForbiddenComplaintError,
   getResidentComplaint,
@@ -11,15 +12,10 @@ type RouteContext = {
 };
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  const role = request.cookies.get("corso_role")?.value ?? "";
-  const userId = request.cookies.get("corso_appwrite_user")?.value ?? "";
-  if (role !== "resident" || !userId) {
-    return NextResponse.json({ error: "Resident access is required." }, { status: 403 });
-  }
-
   try {
     const { id } = await context.params;
-    const session = await resolveResidentComplaintSession(userId);
+    const sessionContext = await resolveSessionContext(request, { allowedRoles: ["resident"] });
+    const session = await resolveResidentComplaintSession(sessionContext);
     const complaint = await getResidentComplaint(id, session);
 
     return NextResponse.json({ complaint });
@@ -29,7 +25,11 @@ export async function GET(request: NextRequest, context: RouteContext) {
     }
 
     const message = error instanceof Error ? error.message : "Unable to load complaint.";
-    const status = error instanceof AppwriteRestError ? error.status : 400;
+    const status = error instanceof SessionContextError
+      ? error.status
+      : error instanceof AppwriteRestError
+        ? error.status
+        : 400;
 
     return NextResponse.json({ error: message }, { status });
   }

@@ -129,7 +129,7 @@ export async function readAppwriteAccessRequestForCurrentUser(identifier: string
 }
 
 export async function readAppwriteAdminAccessRequests() {
-  const response = await fetch(`/api/admin/access-requests?t=${Date.now()}`, { cache: "no-store" });
+  const response = await fetch(`/api/appwrite/admin/access-requests?t=${Date.now()}`, { cache: "no-store" });
   const payload = await response.json().catch(() => ({})) as {
     requests?: ApiAccessRequest[];
     error?: string;
@@ -143,7 +143,7 @@ export async function readAppwriteAdminAccessRequests() {
 }
 
 export async function reviewAppwriteAccessRequest(requestId: string, action: "approve" | "reject") {
-  const response = await fetch("/api/admin/access-requests", {
+  const response = await fetch("/api/appwrite/admin/access-requests", {
     method: "PATCH",
     cache: "no-store",
     headers: {
@@ -348,7 +348,7 @@ async function readSosResponse(response: Response, fallbackMessage: string) {
 }
 
 export async function updateAppwriteResident(residentId: string, input: ResidentUpdateInput) {
-  const response = await fetch("/api/admin/residents", {
+  const response = await fetch("/api/appwrite/admin/residents", {
     method: "PATCH",
     headers: {
       "Content-Type": "application/json"

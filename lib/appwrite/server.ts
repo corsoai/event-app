@@ -15,6 +15,7 @@ type AppwriteRequestOptions = {
   body?: Record<string, unknown>;
   allowNotFound?: boolean;
   requireApiKey?: boolean;
+  sessionSecret?: string;
 };
 
 type AppwriteServerConfig = {
@@ -317,6 +318,7 @@ export async function appwriteRequest<T>(path: string, options: AppwriteRequestO
       "Content-Type": "application/json",
       "X-Appwrite-Project": config.projectId,
       ...(options.requireApiKey === false ? {} : { "X-Appwrite-Key": apiKey }),
+      ...(options.sessionSecret ? { "X-Appwrite-Session": options.sessionSecret } : {}),
       "X-Appwrite-Response-Format": "1.9.5"
     },
     body: options.body ? JSON.stringify(options.body) : undefined,

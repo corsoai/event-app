@@ -1,4 +1,6 @@
 import type { AppwriteComplaint, Resident, UserRole } from "@/lib/types";
+import type { AppwriteEstateScope } from "@/lib/appwrite/residents";
+import type { SessionContext } from "@/lib/appwrite/session-context";
 import {
   APPWRITE_TABLE_AUDIT_LOGS,
   APPWRITE_TABLE_COMPLAINTS,
@@ -85,6 +87,7 @@ type ComplaintActor = {
   profileId: string;
   fullName: string;
   estateId: string;
+  role: UserRole;
 };
 
 type ResidentComplaintSession = ComplaintActor & {
@@ -93,15 +96,17 @@ type ResidentComplaintSession = ComplaintActor & {
   propertyCode: string;
 };
 
-export async function listAdminComplaints(filters: ComplaintFilters = {}) {
+type VerifiedResidentContext = Pick<SessionContext, "userId" | "profileId" | "estateId">;
+type VerifiedAdminContext = Pick<SessionContext, "userId" | "profileId" | "role" | "estateId">;
+
+export async function listAdminComplaints(filters: ComplaintFilters = {}, scope: AppwriteEstateScope = {}) {
   const status = filters.status ? normalizeStatus(filters.status) : null;
   const priority = filters.priority ? normalizePriority(filters.priority) : null;
   const category = filters.category ? normalizeCategory(filters.category) : null;
   const search = filters.search?.trim().toLowerCase() ?? "";
 
-  return (await listComplaintRows())
+  return (await listComplaintRows(scope))
     .map(mapComplaintRow)
-    .filter((complaint) => complaint.estateId === APPWRITE_LBSVIEW_ESTATE_ID)
     .filter((complaint) => !status || complaint.status === status)
     .filter((complaint) => !priority || complaint.priority === priority)
     .filter((complaint) => !category || complaint.category === category)
@@ -113,8 +118,10 @@ export async function listAdminComplaints(filters: ComplaintFilters = {}) {
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
 }
 
-export async function getAdminComplaint(complaintId: string) {
-  return mapComplaintRow(await getComplaintRow(complaintId));
+export async function getAdminComplaint(complaintId: string, scope: AppwriteEstateScope = {}) {
+  const complaint = mapComplaintRow(await getComplaintRow(complaintId));
+  assertComplaintScope(complaint, scope);
+  return complaint;
 }
 
 export async function updateComplaint(complaintId: string, input: ComplaintUpdateInput, actor: ComplaintActor) {
@@ -124,6 +131,7 @@ export async function updateComplaint(complaintId: string, input: ComplaintUpdat
   }
 
   const existing = await getComplaintRow(id);
+  assertActorCanAccessComplaint(actor, existing);
   const now = new Date().toISOString();
   const nextStatus = input.status === undefined ? normalizeStatus(existing.status ?? "open") : normalizeStatus(input.status);
   const row = await appwriteUpsertRow<AppwriteComplaintRow>(APPWRITE_TABLE_COMPLAINTS, id, {
@@ -147,7 +155,9 @@ export async function updateComplaint(complaintId: string, input: ComplaintUpdat
   return complaint;
 }
 
-export async function resolveComplaintActor(userId: string, role: string): Promise<ComplaintActor> {
+export async function resolveComplaintActor(input: string | VerifiedAdminContext, role?: string): Promise<ComplaintActor> {
+  const userId = typeof input === "string" ? input : input.userId;
+  const verifiedRole = (typeof input === "string" ? role : input.role) as UserRole | undefined;
   if (!userId) {
     throw new Error("Authenticated Appwrite user is required.");
   }
@@ -158,20 +168,23 @@ export async function resolveComplaintActor(userId: string, role: string): Promi
   return {
     profileId: profile?.$id ?? userId,
     fullName: profile?.fullName ?? stringPref(prefs.fullName) ?? user.name ?? user.email ?? "Estate admin",
-    estateId: role === "super_admin"
+    estateId: typeof input === "string"
       ? (profile?.estateId || stringPref(prefs.estateId) || APPWRITE_LBSVIEW_ESTATE_ID)
-      : (profile?.estateId || stringPref(prefs.estateId) || APPWRITE_LBSVIEW_ESTATE_ID)
+      : input.estateId,
+    role: verifiedRole ?? profile?.role ?? "resident"
   };
 }
 
-export async function resolveResidentComplaintSession(userId: string): Promise<ResidentComplaintSession> {
+export async function resolveResidentComplaintSession(input: string | VerifiedResidentContext): Promise<ResidentComplaintSession> {
+  const userId = typeof input === "string" ? input : input.userId;
+  const scopedEstateId = typeof input === "string" ? undefined : input.estateId;
   if (!userId) {
     throw new Error("Authenticated Appwrite user is required.");
   }
 
   const [{ user, profile }, directory] = await Promise.all([
     resolveUserAndProfile(userId),
-    listAppwriteResidentDirectory({ ensureSchema: false })
+    listAppwriteResidentDirectory({ ensureSchema: false, estateId: scopedEstateId })
   ]);
   const prefs = user.prefs ?? {};
   const identity = {
@@ -189,9 +202,10 @@ export async function resolveResidentComplaintSession(userId: string): Promise<R
   const property = directory.properties.find((item) => item.id === (resident.propertyId ?? unit?.propertyId));
 
   return {
-    profileId: profile?.$id ?? userId,
+    profileId: typeof input === "string" ? profile?.$id ?? userId : input.profileId,
     fullName: identity.fullName || resident.name,
-    estateId: resident.estateId || APPWRITE_LBSVIEW_ESTATE_ID,
+    estateId: scopedEstateId || resident.estateId || APPWRITE_LBSVIEW_ESTATE_ID,
+    role: "resident",
     resident,
     unitCode: unit?.unitCode ?? resident.houseNumber,
     propertyCode: property?.propertyCode ?? resident.propertyId ?? ""
@@ -199,7 +213,7 @@ export async function resolveResidentComplaintSession(userId: string): Promise<R
 }
 
 export async function listResidentComplaints(session: ResidentComplaintSession) {
-  return (await listComplaintRows())
+  return (await listComplaintRows({ estateId: session.estateId }))
     .map(mapComplaintRow)
     .filter((complaint) => complaint.residentId === session.resident.id)
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
@@ -237,7 +251,7 @@ export async function createResidentComplaint(input: ComplaintCreateInput, sessi
 
 export async function getResidentComplaint(complaintId: string, session: ResidentComplaintSession) {
   const complaint = mapComplaintRow(await getComplaintRow(complaintId));
-  if (complaint.residentId !== session.resident.id) {
+  if (complaint.estateId !== session.estateId || complaint.residentId !== session.resident.id) {
     throw new ForbiddenComplaintError();
   }
 
@@ -263,13 +277,13 @@ async function resolveUserAndProfile(userId: string) {
   };
 }
 
-async function listComplaintRows() {
+async function listComplaintRows(scope: AppwriteEstateScope = {}) {
   const config = getAppwriteServerConfig();
   if (!config.configured) {
     throw new Error(`Appwrite server configuration is missing: ${config.missing.join(", ")}`);
   }
 
-  return listAppwriteTableRows<AppwriteComplaintRow>(APPWRITE_TABLE_COMPLAINTS);
+  return listAppwriteTableRows<AppwriteComplaintRow>(APPWRITE_TABLE_COMPLAINTS, scope);
 }
 
 async function getComplaintRow(complaintId: string) {
@@ -282,6 +296,19 @@ async function getComplaintRow(complaintId: string) {
     `/tablesdb/${config.databaseId}/tables/${APPWRITE_TABLE_COMPLAINTS}/rows/${encodeURIComponent(complaintId)}`,
     { method: "GET" }
   );
+}
+
+function assertComplaintScope(complaint: AppwriteComplaint, scope: AppwriteEstateScope) {
+  if (scope.estateId && !scope.includeAllEstates && complaint.estateId !== scope.estateId) {
+    throw new ForbiddenComplaintError();
+  }
+}
+
+function assertActorCanAccessComplaint(actor: ComplaintActor, row: AppwriteComplaintRow) {
+  const estateId = row.estateId ?? APPWRITE_LBSVIEW_ESTATE_ID;
+  if (actor.role !== "super_admin" && estateId !== actor.estateId) {
+    throw new ForbiddenComplaintError();
+  }
 }
 
 function mapComplaintRow(row: AppwriteComplaintRow): AppwriteComplaint {

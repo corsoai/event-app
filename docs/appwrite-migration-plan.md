@@ -46,6 +46,10 @@ The resident import endpoints are:
 
 Mutation endpoints require the existing admin or super-admin role cookie and a server-only `CORSO_APPWRITE_API_KEY` with Auth Users and TablesDB permissions.
 
+## Session Cookie Migration Safety Checklist
+
+- [ ] `corso_appwrite_user` must be fully removed - from the login route and every route that reads it - only after all routes use `resolveSessionContext()`. Until then it remains a live impersonation path on un-migrated routes.
+
 ## Property And Unit Fields
 
 `properties`

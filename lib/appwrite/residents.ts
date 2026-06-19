@@ -12,6 +12,11 @@ type AppwriteRowList<T> = {
   total?: number;
 };
 
+export type AppwriteEstateScope = {
+  estateId?: string | null;
+  includeAllEstates?: boolean;
+};
+
 type AppwritePropertyRow = {
   $id?: string;
   estateId?: string;
@@ -74,6 +79,8 @@ export type AppwriteResidentUpdateInput = {
   expectedMonthly?: number;
   onboardingStatus?: string;
   reviewReasons?: string;
+  estateId?: string | null;
+  includeAllEstates?: boolean;
 };
 
 export type AppwriteResidentDirectory = {
@@ -87,7 +94,9 @@ export type AppwriteResidentDirectory = {
   };
 };
 
-export async function listAppwriteResidentDirectory(options: { ensureSchema?: boolean } = {}): Promise<AppwriteResidentDirectory> {
+export async function listAppwriteResidentDirectory(
+  options: { ensureSchema?: boolean } & AppwriteEstateScope = {}
+): Promise<AppwriteResidentDirectory> {
   const config = getAppwriteServerConfig();
   if (!config.configured) {
     throw new Error(`Appwrite server configuration is missing: ${config.missing.join(", ")}`);
@@ -98,9 +107,9 @@ export async function listAppwriteResidentDirectory(options: { ensureSchema?: bo
   }
 
   const [propertyRows, unitRows, residentRows] = await Promise.all([
-    listAppwriteTableRows<AppwritePropertyRow>("properties"),
-    listAppwriteTableRows<AppwriteUnitRow>("units"),
-    listAppwriteTableRows<AppwriteResidentRow>("residents")
+    listAppwriteTableRows<AppwritePropertyRow>("properties", options),
+    listAppwriteTableRows<AppwriteUnitRow>("units", options),
+    listAppwriteTableRows<AppwriteResidentRow>("residents", options)
   ]);
 
   const properties = propertyRows.map(mapPropertyRow);
@@ -139,7 +148,8 @@ export async function updateAppwriteResident(input: AppwriteResidentUpdateInput)
     `/tablesdb/${config.databaseId}/tables/residents/rows/${encodeURIComponent(residentId)}`,
     { method: "GET" }
   );
-  const units = await listAppwriteTableRows<AppwriteUnitRow>("units");
+  assertEstateScope(existing.estateId, input);
+  const units = await listAppwriteTableRows<AppwriteUnitRow>("units", input);
   const selectedUnit = units.find((unit) => unit.$id === (input.unitId ?? existing.unitId));
   const now = new Date().toISOString();
 
@@ -168,16 +178,17 @@ export async function updateAppwriteResident(input: AppwriteResidentUpdateInput)
   return mapResidentRow(row, selectedUnit ? mapUnitRow(selectedUnit) : undefined);
 }
 
-export async function listAppwriteTableRows<T>(tableId: string) {
+export async function listAppwriteTableRows<T>(tableId: string, scope: AppwriteEstateScope = {}) {
   const config = getAppwriteServerConfig();
   const rows: T[] = [];
   let offset = 0;
   const limit = 100;
+  const estateId = scopedEstateId(scope);
 
   while (true) {
-    const payload = await listAppwriteRowsPage<T>(config.databaseId, tableId, limit, offset);
+    const payload = await listAppwriteRowsPage<T>(config.databaseId, tableId, limit, offset, estateId);
     const pageRows = payload.rows ?? payload.documents ?? [];
-    rows.push(...pageRows);
+    rows.push(...filterRowsByEstate(pageRows, estateId));
 
     const total = payload.total ?? rows.length;
     if (!pageRows.length || rows.length >= total || pageRows.length < limit) {
@@ -190,10 +201,21 @@ export async function listAppwriteTableRows<T>(tableId: string) {
   return rows;
 }
 
-async function listAppwriteRowsPage<T>(databaseId: string, tableId: string, limit: number, offset: number) {
+async function listAppwriteRowsPage<T>(
+  databaseId: string,
+  tableId: string,
+  limit: number,
+  offset: number,
+  estateId: string
+) {
   const query = new URLSearchParams();
-  query.append("queries[0]", JSON.stringify({ method: "limit", values: [limit] }));
-  query.append("queries[1]", JSON.stringify({ method: "offset", values: [offset] }));
+  let index = 0;
+  if (estateId) {
+    query.append(`queries[${index}]`, JSON.stringify({ method: "equal", attribute: "estateId", values: [estateId] }));
+    index += 1;
+  }
+  query.append(`queries[${index}]`, JSON.stringify({ method: "limit", values: [limit] }));
+  query.append(`queries[${index + 1}]`, JSON.stringify({ method: "offset", values: [offset] }));
 
   try {
     return await appwriteRequest<AppwriteRowList<T>>(
@@ -205,6 +227,29 @@ async function listAppwriteRowsPage<T>(databaseId: string, tableId: string, limi
     }
 
     throw error;
+  }
+}
+
+function scopedEstateId(scope: AppwriteEstateScope) {
+  if (scope.includeAllEstates) {
+    return "";
+  }
+
+  return typeof scope.estateId === "string" ? scope.estateId.trim() : "";
+}
+
+function filterRowsByEstate<T>(rows: T[], estateId: string) {
+  if (!estateId) {
+    return rows;
+  }
+
+  return rows.filter((row) => String((row as { estateId?: unknown }).estateId ?? "") === estateId);
+}
+
+function assertEstateScope(rowEstateId: string | undefined, scope: AppwriteEstateScope) {
+  const estateId = scopedEstateId(scope);
+  if (estateId && rowEstateId !== estateId) {
+    throw new Error("The selected resident does not belong to your estate.");
   }
 }
 

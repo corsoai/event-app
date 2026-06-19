@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AppwriteRestError } from "@/lib/appwrite/server";
+import { resolveSessionContext, SessionContextError } from "@/lib/appwrite/session-context";
 import {
   deleteHouseholdMember,
   ForbiddenHouseholdError,
@@ -13,12 +14,6 @@ type RouteContext = {
 };
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  const role = request.cookies.get("corso_role")?.value ?? "";
-  const userId = request.cookies.get("corso_appwrite_user")?.value ?? "";
-  if (role !== "resident" || !userId) {
-    return NextResponse.json({ error: "Resident access is required." }, { status: 403 });
-  }
-
   const body = await request.json().catch(() => null);
   if (!isRecord(body)) {
     return NextResponse.json({ error: "Invalid household member update request." }, { status: 400 });
@@ -26,7 +21,8 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 
   try {
     const { id } = await context.params;
-    const session = await resolveHouseholdSession(userId);
+    const sessionContext = await resolveSessionContext(request, { allowedRoles: ["resident"] });
+    const session = await resolveHouseholdSession(sessionContext);
     const member = await updateHouseholdMember(id, toHouseholdUpdateInput(body), session);
     return NextResponse.json({ member });
   } catch (error) {
@@ -35,15 +31,10 @@ export async function PATCH(request: NextRequest, context: RouteContext) {
 }
 
 export async function DELETE(request: NextRequest, context: RouteContext) {
-  const role = request.cookies.get("corso_role")?.value ?? "";
-  const userId = request.cookies.get("corso_appwrite_user")?.value ?? "";
-  if (role !== "resident" || !userId) {
-    return NextResponse.json({ error: "Resident access is required." }, { status: 403 });
-  }
-
   try {
     const { id } = await context.params;
-    const session = await resolveHouseholdSession(userId);
+    const sessionContext = await resolveSessionContext(request, { allowedRoles: ["resident"] });
+    const session = await resolveHouseholdSession(sessionContext);
     const member = await deleteHouseholdMember(id, session);
     return NextResponse.json({ member });
   } catch (error) {
@@ -74,6 +65,10 @@ function householdErrorResponse(error: unknown, fallback: string) {
   }
 
   const message = error instanceof Error ? error.message : fallback;
-  const status = error instanceof AppwriteRestError ? error.status : 400;
+  const status = error instanceof SessionContextError
+    ? error.status
+    : error instanceof AppwriteRestError
+      ? error.status
+      : 400;
   return NextResponse.json({ error: message }, { status });
 }

@@ -1,8 +1,20 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { appwriteOnboardingTableIds } from "@/lib/appwrite/schema";
 import { appwriteRequest, getAppwriteServerConfig } from "@/lib/appwrite/server";
+import { resolveSessionContext, SessionContextError } from "@/lib/appwrite/session-context";
 
-export async function GET() {
+export async function GET(request: NextRequest) {
+  try {
+    await resolveSessionContext(request, {
+      allowedRoles: ["super_admin"],
+      requireEstate: false
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Super admin access is required.";
+    const status = error instanceof SessionContextError ? error.status : 403;
+    return NextResponse.json({ error: message }, { status });
+  }
+
   const config = getAppwriteServerConfig();
   const tableIds = await getLiveTableIds();
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AppwriteRestError } from "@/lib/appwrite/server";
+import { resolveSessionContext, SessionContextError, type SessionContext } from "@/lib/appwrite/session-context";
 import {
   createKnowledgeArticle,
   listAdminKnowledgeArticles,
@@ -7,20 +8,16 @@ import {
   type KnowledgeInput
 } from "@/lib/appwrite/knowledge-base";
 
-const adminRoles = new Set(["estate_admin", "super_admin"]);
+const adminRoles = ["estate_admin", "super_admin"] as const;
 
 export async function GET(request: NextRequest) {
-  const role = request.cookies.get("corso_role")?.value ?? "";
-  if (!adminRoles.has(role)) {
-    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
-  }
-
   try {
+    const context = await resolveSessionContext(request, { allowedRoles: adminRoles });
     const articles = await listAdminKnowledgeArticles({
       category: request.nextUrl.searchParams.get("category") ?? undefined,
       isPublished: request.nextUrl.searchParams.get("isPublished") ?? undefined,
       search: request.nextUrl.searchParams.get("search") ?? undefined
-    });
+    }, estateScopeFor(context));
     return NextResponse.json({ articles });
   } catch (error) {
     return errorResponse(error, "Unable to load knowledge base articles.");
@@ -28,19 +25,17 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const role = request.cookies.get("corso_role")?.value ?? "";
-  const userId = request.cookies.get("corso_appwrite_user")?.value ?? "";
-  if (!adminRoles.has(role) || !userId) {
-    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
-  }
-
   const body = await request.json().catch(() => null);
   if (!isRecord(body)) {
     return NextResponse.json({ error: "Invalid article request." }, { status: 400 });
   }
 
   try {
-    const actor = await resolveKnowledgeActor(userId, role);
+    const context = await resolveSessionContext(request, { allowedRoles: adminRoles });
+    const actor = {
+      ...await resolveKnowledgeActor(context),
+      estateId: writableEstateId(context, body)
+    };
     const article = await createKnowledgeArticle(toKnowledgeInput(body), actor);
     return NextResponse.json({ article });
   } catch (error) {
@@ -66,6 +61,29 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function errorResponse(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : fallback;
-  const status = error instanceof AppwriteRestError ? error.status : 400;
+  const status = error instanceof SessionContextError
+    ? error.status
+    : error instanceof AppwriteRestError
+      ? error.status
+      : 400;
   return NextResponse.json({ error: message }, { status });
+}
+
+function estateScopeFor(context: SessionContext) {
+  return context.role === "super_admin"
+    ? { includeAllEstates: true }
+    : { estateId: context.estateId };
+}
+
+function writableEstateId(context: SessionContext, body: Record<string, unknown>) {
+  if (context.role !== "super_admin") {
+    return context.estateId;
+  }
+
+  const estateId = String(body.estateId ?? "").trim();
+  if (!estateId) {
+    throw new Error("Super admin knowledge-base writes require an estateId.");
+  }
+
+  return estateId;
 }

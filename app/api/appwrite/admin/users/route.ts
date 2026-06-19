@@ -7,19 +7,19 @@ import {
   listAppwriteManagedUsers,
   updateAppwriteManagedUser
 } from "@/lib/appwrite/users";
+import { resolveSessionContext, SessionContextError, type SessionContext } from "@/lib/appwrite/session-context";
 
-const adminRoles = new Set(["estate_admin", "super_admin"]);
+const adminRoles = ["estate_admin", "super_admin"] as const;
 const superAdminRoles: UserRole[] = ["super_admin", "estate_admin", "cso", "security_guard", "resident", "vendor"];
 const estateAdminRoles: UserRole[] = ["cso", "security_guard", "resident", "vendor"];
 
 export async function GET(request: NextRequest) {
-  const adminRole = request.cookies.get("corso_role")?.value ?? "";
-  if (!adminRoles.has(adminRole)) {
-    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
-  }
-
   try {
-    const users = await listAppwriteManagedUsers(adminRole === "super_admin" ? "super-admin" : "admin");
+    const context = await resolveSessionContext(request, { allowedRoles: adminRoles });
+    const users = await listAppwriteManagedUsers(
+      context.role === "super_admin" ? "super-admin" : "admin",
+      estateScopeFor(context)
+    );
     return NextResponse.json({ users });
   } catch (error) {
     return errorResponse(error, "Unable to load Appwrite users.");
@@ -27,30 +27,26 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const adminRole = request.cookies.get("corso_role")?.value ?? "";
-  if (!adminRoles.has(adminRole)) {
-    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
-  }
-
   const body = await request.json().catch(() => null);
   if (!body) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const role = String(body.role ?? "resident") as UserRole;
-  const allowedRoles = adminRole === "super_admin" ? superAdminRoles : estateAdminRoles;
-  if (!allowedRoles.includes(role)) {
-    return NextResponse.json({ error: "You are not allowed to create this role." }, { status: 403 });
-  }
-
   try {
+    const context = await resolveSessionContext(request, { allowedRoles: adminRoles });
+    const role = String(body.role ?? "resident") as UserRole;
+    const allowedRoles = context.role === "super_admin" ? superAdminRoles : estateAdminRoles;
+    if (!allowedRoles.includes(role)) {
+      return NextResponse.json({ error: "You are not allowed to create this role." }, { status: 403 });
+    }
+
     const result = await createAppwriteManagedUser({
       fullName: String(body.fullName ?? ""),
       email: String(body.email ?? ""),
       phone: String(body.phone ?? ""),
       password: String(body.password ?? ""),
       role,
-      estateId: String(body.estateId ?? ""),
+      estateId: writableEstateIdFor(context, body, role),
       houseNumber: String(body.houseNumber ?? "")
     });
 
@@ -61,33 +57,29 @@ export async function POST(request: NextRequest) {
 }
 
 export async function PATCH(request: NextRequest) {
-  const adminRole = request.cookies.get("corso_role")?.value ?? "";
-  if (!adminRoles.has(adminRole)) {
-    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
-  }
-
   const body = await request.json().catch(() => null);
   if (!body) {
     return NextResponse.json({ error: "Invalid request body." }, { status: 400 });
   }
 
-  const role = body.role ? String(body.role) as UserRole : undefined;
-  const allowedRoles = adminRole === "super_admin" ? superAdminRoles : estateAdminRoles;
-  if (role && !allowedRoles.includes(role)) {
-    return NextResponse.json({ error: "You are not allowed to assign this role." }, { status: 403 });
-  }
-
   try {
+    const context = await resolveSessionContext(request, { allowedRoles: adminRoles });
+    const role = body.role ? String(body.role) as UserRole : undefined;
+    const allowedRoles = context.role === "super_admin" ? superAdminRoles : estateAdminRoles;
+    if (role && !allowedRoles.includes(role)) {
+      return NextResponse.json({ error: "You are not allowed to assign this role." }, { status: 403 });
+    }
+
     const result = await updateAppwriteManagedUser({
       profileId: String(body.profileId ?? ""),
       action: String(body.action ?? "update"),
       fullName: body.fullName === undefined ? undefined : String(body.fullName),
       phone: body.phone === undefined ? undefined : String(body.phone),
       role,
-      estateId: body.estateId === undefined ? undefined : String(body.estateId),
+      estateId: patchEstateIdFor(context, body, role),
       houseNumber: body.houseNumber === undefined ? undefined : String(body.houseNumber),
       active: body.active === undefined ? undefined : Boolean(body.active)
-    });
+    }, estateScopeFor(context));
 
     return NextResponse.json(result);
   } catch (error) {
@@ -96,25 +88,69 @@ export async function PATCH(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const adminRole = request.cookies.get("corso_role")?.value ?? "";
-  if (!adminRoles.has(adminRole)) {
-    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
-  }
-
   const { searchParams } = new URL(request.url);
   const profileId = searchParams.get("profileId") ?? "";
 
   try {
-    const result = await deleteAppwriteManagedUser(profileId);
+    const context = await resolveSessionContext(request, { allowedRoles: adminRoles });
+    const result = await deleteAppwriteManagedUser(profileId, estateScopeFor(context));
     return NextResponse.json(result);
   } catch (error) {
     return errorResponse(error, "Unable to delete Appwrite user.");
   }
 }
 
+function estateScopeFor(context: SessionContext) {
+  return context.role === "super_admin"
+    ? { includeAllEstates: true }
+    : { estateId: context.estateId };
+}
+
+function writableEstateIdFor(context: SessionContext, body: { estateId?: unknown }, targetRole?: UserRole) {
+  if (targetRole === "super_admin") {
+    return "platform";
+  }
+
+  if (context.role !== "super_admin") {
+    return context.estateId;
+  }
+
+  const estateId = String(body.estateId ?? "").trim();
+  if (!estateId) {
+    throw new Error("Super admin user writes require an estateId.");
+  }
+
+  return estateId;
+}
+
+function patchEstateIdFor(context: SessionContext, body: { estateId?: unknown }, targetRole?: UserRole) {
+  if (targetRole === "super_admin") {
+    return "platform";
+  }
+
+  if (context.role !== "super_admin") {
+    return context.estateId;
+  }
+
+  if (body.estateId === undefined) {
+    return undefined;
+  }
+
+  const estateId = String(body.estateId ?? "").trim();
+  if (!estateId) {
+    throw new Error("Super admin user writes require an estateId when changing estate assignment.");
+  }
+
+  return estateId;
+}
+
 function errorResponse(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : fallback;
-  const status = error instanceof AppwriteRestError ? error.status : 400;
+  const status = error instanceof SessionContextError
+    ? error.status
+    : error instanceof AppwriteRestError
+      ? error.status
+      : 400;
 
   return NextResponse.json({ error: message }, { status });
 }

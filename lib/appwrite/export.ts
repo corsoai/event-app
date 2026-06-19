@@ -1,12 +1,12 @@
 import { appwriteOnboardingTables } from "@/lib/appwrite/schema";
-import { listAppwriteResidentDirectory, listAppwriteTableRows } from "@/lib/appwrite/residents";
+import { listAppwriteResidentDirectory, listAppwriteTableRows, type AppwriteEstateScope } from "@/lib/appwrite/residents";
 
 type AppwriteGenericRow = Record<string, unknown> & {
   $id?: string;
 };
 
-export async function buildResidentsCsvExport() {
-  const directory = await listAppwriteResidentDirectory();
+export async function buildResidentsCsvExport(scope: AppwriteEstateScope = {}) {
+  const directory = await listAppwriteResidentDirectory(scope);
   const unitById = new Map(directory.units.map((unit) => [unit.id, unit]));
   const propertyById = new Map(directory.properties.map((property) => [property.id, property]));
   const rows = directory.residents.map((resident) => {
@@ -39,13 +39,13 @@ export async function buildResidentsCsvExport() {
   return toCsv(rows);
 }
 
-export async function buildAllTablesCsvExport() {
+export async function buildAllTablesCsvExport(scope: AppwriteEstateScope = {}) {
   const schemaKeys = appwriteOnboardingTables.flatMap((table) => table.columns.map((column) => column.key));
   const orderedKeys = unique(["tableId", "rowId", "createdAt", "updatedAt", "estateId", ...schemaKeys]);
   const rows: AppwriteGenericRow[] = [];
 
   for (const table of appwriteOnboardingTables) {
-    const tableRows = await listAppwriteTableRows<AppwriteGenericRow>(table.tableId);
+    const tableRows = await listAppwriteTableRows<AppwriteGenericRow>(table.tableId, scope);
     for (const row of tableRows) {
       rows.push({
         tableId: table.tableId,

@@ -11,7 +11,8 @@ import {
   getAppwriteServerConfig,
   safeAppwriteId
 } from "@/lib/appwrite/server";
-import { listAppwriteTableRows } from "@/lib/appwrite/residents";
+import { listAppwriteTableRows, type AppwriteEstateScope } from "@/lib/appwrite/residents";
+import type { SessionContext } from "@/lib/appwrite/session-context";
 
 type KnowledgeCategory = AppwriteKnowledgeBaseArticle["category"];
 type KnowledgeTargetRole = AppwriteKnowledgeBaseArticle["targetRole"];
@@ -52,7 +53,10 @@ type KnowledgeActor = {
   profileId: string;
   fullName: string;
   estateId: string;
+  role: UserRole;
 };
+
+type VerifiedKnowledgeContext = Pick<SessionContext, "userId" | "profileId" | "role" | "estateId">;
 
 export type KnowledgeFilters = {
   category?: string;
@@ -72,7 +76,9 @@ export type KnowledgeInput = {
 
 export type KnowledgeUpdateInput = Partial<KnowledgeInput>;
 
-export async function resolveKnowledgeActor(userId: string, role: string): Promise<KnowledgeActor> {
+export async function resolveKnowledgeActor(input: string | VerifiedKnowledgeContext, role?: string): Promise<KnowledgeActor> {
+  const userId = typeof input === "string" ? input : input.userId;
+  const verifiedRole = (typeof input === "string" ? role : input.role) as UserRole | undefined;
   const [user, profiles] = await Promise.all([
     appwriteRequest<AppwriteUser>(`/users/${encodeURIComponent(userId)}`),
     listAppwriteTableRows<ProfileRow>(APPWRITE_TABLE_PROFILES)
@@ -81,24 +87,24 @@ export async function resolveKnowledgeActor(userId: string, role: string): Promi
   const prefs = user.prefs ?? {};
 
   return {
-    profileId: profile?.$id ?? userId,
+    profileId: typeof input === "string" ? profile?.$id ?? userId : input.profileId,
     fullName: profile?.fullName ?? stringPref(prefs.fullName) ?? user.name ?? user.email ?? "Estate admin",
-    estateId: role === "super_admin"
+    estateId: typeof input === "string"
       ? (profile?.estateId || stringPref(prefs.estateId) || APPWRITE_LBSVIEW_ESTATE_ID)
-      : (profile?.estateId || stringPref(prefs.estateId) || APPWRITE_LBSVIEW_ESTATE_ID)
+      : input.estateId,
+    role: verifiedRole ?? profile?.role ?? "resident"
   };
 }
 
-export async function listAdminKnowledgeArticles(filters: KnowledgeFilters = {}) {
+export async function listAdminKnowledgeArticles(filters: KnowledgeFilters = {}, scope: AppwriteEstateScope = {}) {
   const category = filters.category ? normalizeCategory(filters.category) : null;
   const published = filters.isPublished === undefined || filters.isPublished === ""
     ? null
     : filters.isPublished === "true";
   const search = filters.search?.trim().toLowerCase() ?? "";
 
-  return (await listKnowledgeRows())
+  return (await listKnowledgeRows(scope))
     .map(mapKnowledgeRow)
-    .filter((article) => article.estateId === APPWRITE_LBSVIEW_ESTATE_ID)
     .filter((article) => !category || article.category === category)
     .filter((article) => published === null || article.isPublished === published)
     .filter((article) => {
@@ -133,6 +139,7 @@ export async function createKnowledgeArticle(input: KnowledgeInput, actor: Knowl
 
 export async function updateKnowledgeArticle(articleId: string, input: KnowledgeUpdateInput, actor: KnowledgeActor) {
   const existing = await getKnowledgeRow(articleId);
+  assertActorCanAccessKnowledge(actor, existing);
   const now = new Date().toISOString();
   const row = await appwriteUpsertRow<KnowledgeRow>(APPWRITE_TABLE_KNOWLEDGE_BASE, articleId, {
     estateId: existing.estateId ?? actor.estateId,
@@ -156,6 +163,7 @@ export async function updateKnowledgeArticle(articleId: string, input: Knowledge
 
 export async function softDeleteKnowledgeArticle(articleId: string, actor: KnowledgeActor) {
   const existing = await getKnowledgeRow(articleId);
+  assertActorCanAccessKnowledge(actor, existing);
   const now = new Date().toISOString();
   const deletedTags = appendTag(existing.tags ?? "", "deleted");
   const row = await appwriteUpsertRow<KnowledgeRow>(APPWRITE_TABLE_KNOWLEDGE_BASE, articleId, {
@@ -180,14 +188,14 @@ export async function softDeleteKnowledgeArticle(articleId: string, actor: Knowl
 
 export async function listAudienceKnowledgeArticles(
   audience: "resident" | "security",
-  filters: { category?: string; search?: string } = {}
+  filters: { category?: string; search?: string } = {},
+  scope: AppwriteEstateScope = {}
 ) {
   const category = filters.category ? normalizeCategory(filters.category) : null;
   const search = filters.search?.trim().toLowerCase() ?? "";
 
-  return (await listKnowledgeRows())
+  return (await listKnowledgeRows(scope))
     .map(mapKnowledgeRow)
-    .filter((article) => article.estateId === APPWRITE_LBSVIEW_ESTATE_ID)
     .filter((article) => article.isPublished)
     .filter((article) => article.targetRole === "all" || article.targetRole === audience)
     .filter((article) => !category || article.category === category)
@@ -218,13 +226,13 @@ export function incrementKnowledgeViewCounts(articles: AppwriteKnowledgeBaseArti
   }
 }
 
-async function listKnowledgeRows() {
+async function listKnowledgeRows(scope: AppwriteEstateScope = {}) {
   const config = getAppwriteServerConfig();
   if (!config.configured) {
     throw new Error(`Appwrite server configuration is missing: ${config.missing.join(", ")}`);
   }
 
-  return listAppwriteTableRows<KnowledgeRow>(APPWRITE_TABLE_KNOWLEDGE_BASE);
+  return listAppwriteTableRows<KnowledgeRow>(APPWRITE_TABLE_KNOWLEDGE_BASE, scope);
 }
 
 async function getKnowledgeRow(articleId: string) {
@@ -237,6 +245,13 @@ async function getKnowledgeRow(articleId: string) {
     `/tablesdb/${config.databaseId}/tables/${APPWRITE_TABLE_KNOWLEDGE_BASE}/rows/${encodeURIComponent(articleId)}`,
     { method: "GET" }
   );
+}
+
+function assertActorCanAccessKnowledge(actor: KnowledgeActor, row: KnowledgeRow) {
+  const estateId = row.estateId ?? APPWRITE_LBSVIEW_ESTATE_ID;
+  if (actor.role !== "super_admin" && estateId !== actor.estateId) {
+    throw new Error("You are not allowed to manage this knowledge base article.");
+  }
 }
 
 function mapKnowledgeRow(row: KnowledgeRow): AppwriteKnowledgeBaseArticle {

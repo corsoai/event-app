@@ -2,12 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { AppwriteRestError, setupAppwriteOnboardingSchema } from "@/lib/appwrite/server";
 import { seedLbsviewSubscriptionRates } from "@/lib/appwrite/subscription-rates";
 
-const adminRoles = new Set(["estate_admin", "super_admin"]);
-
 export async function POST(request: NextRequest) {
-  const role = request.cookies.get("corso_role")?.value ?? "";
-  if (!adminRoles.has(role)) {
-    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
+  if (!hasValidSetupSecret(request)) {
+    return NextResponse.json({ error: "Setup access is forbidden." }, { status: 403 });
   }
 
   try {
@@ -39,4 +36,10 @@ export async function POST(request: NextRequest) {
 
 function appwriteErrorMessage(error: unknown) {
   return error instanceof Error ? error.message : "Appwrite schema setup failed.";
+}
+
+function hasValidSetupSecret(request: NextRequest) {
+  const expected = process.env.CORSO_SETUP_SECRET?.trim() ?? "";
+  const provided = request.headers.get("x-corso-setup-secret")?.trim() ?? "";
+  return Boolean(expected && provided && provided === expected);
 }

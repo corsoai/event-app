@@ -5,22 +5,20 @@ import {
   type LbsviewOnboardingPreviewRow
 } from "@/lib/appwrite/onboarding-import";
 import { AppwriteRestError, getAppwriteServerConfig, setupAppwriteOnboardingSchema } from "@/lib/appwrite/server";
+import { resolveSessionContext, SessionContextError, type SessionContext } from "@/lib/appwrite/session-context";
 
-const adminRoles = new Set(["estate_admin", "super_admin"]);
+const adminRoles = ["estate_admin", "super_admin"] as const;
 
 type ImportRequest = {
   dryRun?: boolean;
   offset?: number;
   limit?: number;
+  estateId?: string;
+  estateName?: string;
   rows?: LbsviewOnboardingPreviewRow[];
 };
 
 export async function POST(request: NextRequest) {
-  const role = request.cookies.get("corso_role")?.value ?? "";
-  if (!adminRoles.has(role)) {
-    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
-  }
-
   const body = await request.json().catch(() => null) as ImportRequest | LbsviewOnboardingPreviewRow[] | null;
   const rows = Array.isArray(body)
     ? body
@@ -33,6 +31,16 @@ export async function POST(request: NextRequest) {
   const requestBody = Array.isArray(body) ? null : body;
   const offset = typeof requestBody?.offset === "number" ? requestBody.offset : 0;
   const limit = typeof requestBody?.limit === "number" ? requestBody.limit : undefined;
+  let target: ReturnType<typeof importTargetFor>;
+  try {
+    const context = await resolveSessionContext(request, { allowedRoles: adminRoles });
+    target = importTargetFor(context, requestBody);
+  } catch (error) {
+    return NextResponse.json(
+      { error: appwriteErrorMessage(error) },
+      { status: error instanceof SessionContextError ? error.status : 403 }
+    );
+  }
 
   if (Array.isArray(body) || requestBody?.dryRun !== false) {
     return NextResponse.json({
@@ -70,7 +78,9 @@ export async function POST(request: NextRequest) {
 
     const result = await importOnboardingPreviewRows(rows, {
       offset,
-      limit
+      limit,
+      estateId: target.estateId,
+      estateName: target.estateName
     });
     return NextResponse.json({
       ...result,
@@ -87,9 +97,22 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { error: appwriteErrorMessage(error) },
-      { status: error instanceof AppwriteRestError ? error.status : 500 }
+      { status: error instanceof SessionContextError ? error.status : error instanceof AppwriteRestError ? error.status : 500 }
     );
   }
+}
+
+function importTargetFor(context: SessionContext, body: ImportRequest | null) {
+  if (context.role !== "super_admin") {
+    return { estateId: context.estateId, estateName: body?.estateName };
+  }
+
+  const estateId = String(body?.estateId ?? "").trim();
+  if (!estateId) {
+    throw new Error("Super admin imports require an estateId.");
+  }
+
+  return { estateId, estateName: body?.estateName };
 }
 
 function appwriteErrorMessage(error: unknown) {

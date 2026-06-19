@@ -76,6 +76,8 @@ type ImportPlan = {
 type ImportOptions = {
   offset?: number;
   limit?: number;
+  estateId?: string;
+  estateName?: string;
 };
 
 export function summarizeOnboardingPreview(rows: LbsviewOnboardingPreviewRow[]): AppwriteImportSummary {
@@ -90,10 +92,12 @@ export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreview
   const nextOffset = offset + chunkRows.length < plan.rows.length ? offset + chunkRows.length : null;
   const now = new Date().toISOString();
   const today = now.slice(0, 10);
+  const estateId = targetEstateId(options.estateId);
+  const estateName = targetEstateName(estateId, options.estateName);
 
-  await appwriteUpsertRow("estates", APPWRITE_LBSVIEW_ESTATE_ID, {
-    name: "LBS View Estate",
-    address: "LBS View Estate, Lagos",
+  await appwriteUpsertRow("estates", estateId, {
+    name: estateName,
+    address: `${estateName}, Lagos`,
     contactEmail: "admin@lbsviewestate.example",
     contactPhone: "+234 801 111 2040",
     gateName: "Main Gate A",
@@ -108,7 +112,7 @@ export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreview
   for (const row of properties) {
     const property = row.source;
     await appwriteUpsertRow("properties", row.propertyId, {
-      estateId: APPWRITE_LBSVIEW_ESTATE_ID,
+      estateId,
       propertyCode: row.propertyCode,
       name: property.propertyName || row.propertyCode,
       description: property.legacyProperty || property.propertyName || "",
@@ -131,7 +135,7 @@ export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreview
   for (const row of units) {
     const source = row.source;
     await appwriteUpsertRow("units", row.unitId, {
-      estateId: APPWRITE_LBSVIEW_ESTATE_ID,
+      estateId,
       propertyId: row.propertyId,
       unitCode: row.unitCode,
       label: row.unitCode,
@@ -148,7 +152,7 @@ export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreview
     const source = row.source;
     const status = normalizedStatus(source.residentStatus);
     await appwriteUpsertRow("residents", row.residentId, {
-      estateId: APPWRITE_LBSVIEW_ESTATE_ID,
+      estateId,
       propertyId: row.propertyId,
       unitId: row.unitId,
       fullName: source.fullName || `Legacy resident row ${source.sourceRow}`,
@@ -168,7 +172,7 @@ export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreview
     });
 
     await appwriteUpsertRow("resident_unit_history", historyIdFor(row.residentId, row.unitId), {
-      estateId: APPWRITE_LBSVIEW_ESTATE_ID,
+      estateId,
       residentId: row.residentId,
       propertyId: row.propertyId,
       unitId: row.unitId,
@@ -188,7 +192,7 @@ export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreview
       const paidAmount = amountPaid;
 
       await appwriteUpsertRow("bills", row.openingBillId, {
-        estateId: APPWRITE_LBSVIEW_ESTATE_ID,
+        estateId,
         propertyId: row.propertyId,
         unitId: row.unitId,
         residentId: row.residentId,
@@ -205,7 +209,7 @@ export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreview
 
     if (row.legacyPaymentId) {
       await appwriteUpsertRow("payments", row.legacyPaymentId, {
-        estateId: APPWRITE_LBSVIEW_ESTATE_ID,
+        estateId,
         propertyId: row.propertyId,
         unitId: row.unitId,
         residentId: row.residentId,
@@ -228,11 +232,11 @@ export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreview
 
   if (nextOffset === null) {
     await appwriteUpsertRow("audit_logs", safeAppwriteId("audit", `legacy-import-${now}`), {
-      estateId: APPWRITE_LBSVIEW_ESTATE_ID,
+      estateId,
       actor: "Estate admin",
       action: "imported legacy resident preview",
       entityType: "system",
-      entityId: APPWRITE_LBSVIEW_ESTATE_ID,
+      entityId: estateId,
       metadata: JSON.stringify(plan.summary),
       createdAt: now,
       updatedAt: now
@@ -250,6 +254,20 @@ export async function importOnboardingPreviewRows(rows: LbsviewOnboardingPreview
       done: nextOffset === null
     }
   };
+}
+
+function targetEstateId(estateId: string | undefined) {
+  const value = String(estateId ?? "").trim();
+  return value || APPWRITE_LBSVIEW_ESTATE_ID;
+}
+
+function targetEstateName(estateId: string, estateName: string | undefined) {
+  const value = String(estateName ?? "").trim();
+  if (value) {
+    return value;
+  }
+
+  return estateId === APPWRITE_LBSVIEW_ESTATE_ID ? "LBS View Estate" : estateId;
 }
 
 function buildImportPlan(rows: LbsviewOnboardingPreviewRow[]): ImportPlan {

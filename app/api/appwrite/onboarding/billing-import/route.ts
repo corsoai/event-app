@@ -5,22 +5,19 @@ import {
 } from "@/lib/appwrite/billing-import";
 import type { LbsviewOnboardingPreviewRow } from "@/lib/appwrite/onboarding-import";
 import { AppwriteRestError, getAppwriteServerConfig } from "@/lib/appwrite/server";
+import { resolveSessionContext, SessionContextError, type SessionContext } from "@/lib/appwrite/session-context";
 
-const adminRoles = new Set(["estate_admin", "super_admin"]);
+const adminRoles = ["estate_admin", "super_admin"] as const;
 
 type BillingImportRequest = {
   dryRun?: boolean;
   offset?: number;
   limit?: number;
+  estateId?: string;
   rows?: LbsviewOnboardingPreviewRow[];
 };
 
 export async function POST(request: NextRequest) {
-  const role = request.cookies.get("corso_role")?.value ?? "";
-  if (!adminRoles.has(role)) {
-    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
-  }
-
   const body = await request.json().catch(() => null) as BillingImportRequest | LbsviewOnboardingPreviewRow[] | null;
   const rows = Array.isArray(body)
     ? body
@@ -41,8 +38,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const requestBody = Array.isArray(body) ? null : body;
+    const context = await resolveSessionContext(request, { allowedRoles: adminRoles });
+    const scope = importScopeFor(context, requestBody);
     if (Array.isArray(body) || requestBody?.dryRun !== false) {
-      const result = await previewBillingImportRows(rows);
+      const result = await previewBillingImportRows(rows, scope);
       return NextResponse.json(result);
     }
 
@@ -54,6 +53,7 @@ export async function POST(request: NextRequest) {
     }
 
     const result = await importBillingPreviewRows(rows, {
+      ...scope,
       offset: typeof requestBody.offset === "number" ? requestBody.offset : 0,
       limit: requestBody.limit
     });
@@ -61,7 +61,20 @@ export async function POST(request: NextRequest) {
   } catch (error) {
     return NextResponse.json(
       { error: error instanceof Error ? error.message : "Appwrite billing import failed." },
-      { status: error instanceof AppwriteRestError ? error.status : 500 }
+      { status: error instanceof SessionContextError ? error.status : error instanceof AppwriteRestError ? error.status : 500 }
     );
   }
+}
+
+function importScopeFor(context: SessionContext, body: BillingImportRequest | null) {
+  if (context.role !== "super_admin") {
+    return { estateId: context.estateId };
+  }
+
+  const estateId = String(body?.estateId ?? "").trim();
+  if (!estateId) {
+    throw new Error("Super admin billing imports require an estateId.");
+  }
+
+  return { estateId };
 }

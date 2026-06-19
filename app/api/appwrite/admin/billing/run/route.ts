@@ -1,34 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
-import { APPWRITE_LBSVIEW_ESTATE_ID } from "@/lib/appwrite/server";
+import { AppwriteRestError } from "@/lib/appwrite/server";
 import { listMonthlyBillingRuns, runMonthlyBilling } from "@/lib/appwrite/billing-engine";
+import { resolveSessionContext, SessionContextError, type SessionContext } from "@/lib/appwrite/session-context";
 
-const adminRoles = new Set(["estate_admin", "super_admin"]);
+const adminRoles = ["estate_admin", "super_admin"] as const;
 
 export async function GET(request: NextRequest) {
-  const role = request.cookies.get("corso_role")?.value ?? "";
-  if (!adminRoles.has(role)) {
-    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
-  }
-
   try {
-    const runs = await listMonthlyBillingRuns(APPWRITE_LBSVIEW_ESTATE_ID);
+    const context = await resolveSessionContext(request, { allowedRoles: adminRoles });
+    const runs = await listMonthlyBillingRuns(estateScopeFor(context));
     return NextResponse.json({ runs });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load billing runs.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return adminRouteError(error, "Unable to load billing runs.");
   }
 }
 
 export async function POST(request: NextRequest) {
-  const role = request.cookies.get("corso_role")?.value ?? "";
-  const userId = request.cookies.get("corso_appwrite_user")?.value ?? "system";
-  if (!adminRoles.has(role)) {
-    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
-  }
-
   const body = await request.json().catch(() => null) as {
     billingMonth?: string;
     dryRun?: boolean;
+    estateId?: string;
   } | null;
   const billingMonth = String(body?.billingMonth ?? "");
   const dryRun = Boolean(body?.dryRun);
@@ -38,23 +29,54 @@ export async function POST(request: NextRequest) {
   }
 
   try {
-    const runs = await listMonthlyBillingRuns(APPWRITE_LBSVIEW_ESTATE_ID);
+    const context = await resolveSessionContext(request, { allowedRoles: adminRoles });
+    const estateId = writableEstateId(context, body);
+    const runs = await listMonthlyBillingRuns(estateId);
     const alreadyCompleted = runs.some((run) => run.billingMonth === billingMonth && run.status === "completed");
     if (alreadyCompleted && !dryRun) {
       return NextResponse.json({ error: "Billing already run for this month. Use dryRun to preview." }, { status: 409 });
     }
 
     const result = await runMonthlyBilling({
-      estateId: APPWRITE_LBSVIEW_ESTATE_ID,
+      estateId,
       billingMonth,
-      runBy: userId,
-      runByName: role === "super_admin" ? "Super admin" : "Estate admin",
+      runBy: context.profileId,
+      runByName: context.role === "super_admin" ? "Super admin" : "Estate admin",
       dryRun
     });
 
     return NextResponse.json(result);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to run monthly billing.";
-    return NextResponse.json({ error: message }, { status: 400 });
+    return adminRouteError(error, "Unable to run monthly billing.");
   }
+}
+
+function estateScopeFor(context: SessionContext) {
+  return context.role === "super_admin"
+    ? { includeAllEstates: true }
+    : { estateId: context.estateId };
+}
+
+function writableEstateId(context: SessionContext, body: { estateId?: string } | null) {
+  if (context.role !== "super_admin") {
+    return context.estateId;
+  }
+
+  const estateId = String(body?.estateId ?? "").trim();
+  if (!estateId) {
+    throw new Error("Super admin billing runs require an estateId.");
+  }
+
+  return estateId;
+}
+
+function adminRouteError(error: unknown, fallbackMessage: string) {
+  const message = error instanceof Error ? error.message : fallbackMessage;
+  const status = error instanceof SessionContextError
+    ? error.status
+    : error instanceof AppwriteRestError
+      ? error.status
+      : 400;
+
+  return NextResponse.json({ error: message }, { status });
 }

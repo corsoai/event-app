@@ -1,8 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { appwriteOnboardingTableIds } from "@/lib/appwrite/schema";
 import { appwriteRequest, AppwriteRestError, getAppwriteServerConfig } from "@/lib/appwrite/server";
+import { listAppwriteTableRows } from "@/lib/appwrite/residents";
+import { resolveSessionContext, SessionContextError, type SessionContext } from "@/lib/appwrite/session-context";
 
-const adminRoles = new Set(["estate_admin", "super_admin"]);
+const adminRoles = ["estate_admin", "super_admin"] as const;
 
 type HealthStatus = "ok" | "warn" | "fail";
 
@@ -12,19 +14,19 @@ type HealthCheck = {
   message: string;
 };
 
-type AppwriteRowList = {
-  rows?: unknown[];
-  documents?: unknown[];
-  total?: number;
-};
-
 export async function GET(request: NextRequest) {
-  const adminRole = request.cookies.get("corso_role")?.value ?? "";
-  if (!adminRoles.has(adminRole)) {
-    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
+  let context: SessionContext;
+  try {
+    context = await resolveSessionContext(request, { allowedRoles: adminRoles });
+  } catch (error) {
+    return NextResponse.json(
+      { error: error instanceof Error ? error.message : "Admin access is required." },
+      { status: error instanceof SessionContextError ? error.status : 403 }
+    );
   }
 
   const config = getAppwriteServerConfig();
+  const estateScope = estateScopeFor(context);
   const checks: HealthCheck[] = [
     {
       name: "Server configuration",
@@ -88,14 +90,8 @@ export async function GET(request: NextRequest) {
             return [tableId, 0] as const;
           }
 
-          const query = new URLSearchParams();
-          query.append("queries[0]", JSON.stringify({ method: "limit", values: [1] }));
-          const payload = await appwriteRequest<AppwriteRowList>(
-            `/tablesdb/${config.databaseId}/tables/${tableId}/rows?${query.toString()}`
-          ).catch(() => null);
-
-          const rows = payload?.rows ?? payload?.documents ?? [];
-          return [tableId, payload?.total ?? rows.length] as const;
+          const rows = await listAppwriteTableRows<Record<string, unknown>>(tableId, estateScope).catch(() => []);
+          return [tableId, rows.length] as const;
         })
       );
       rowCounts = Object.fromEntries(countResults);
@@ -142,6 +138,12 @@ export async function GET(request: NextRequest) {
     },
     rowCounts
   });
+}
+
+function estateScopeFor(context: SessionContext) {
+  return context.role === "super_admin"
+    ? { includeAllEstates: true }
+    : { estateId: context.estateId };
 }
 
 function describeAppwriteError(error: Error, fallback: string) {

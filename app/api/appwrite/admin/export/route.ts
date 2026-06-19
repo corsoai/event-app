@@ -1,21 +1,19 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AppwriteRestError } from "@/lib/appwrite/server";
 import { buildAllTablesCsvExport, buildResidentsCsvExport, csvFilename } from "@/lib/appwrite/export";
+import { resolveSessionContext, SessionContextError, type SessionContext } from "@/lib/appwrite/session-context";
 
-const adminRoles = new Set(["estate_admin", "super_admin"]);
+const adminRoles = ["estate_admin", "super_admin"] as const;
 
 export async function GET(request: NextRequest) {
-  const adminRole = request.cookies.get("corso_role")?.value ?? "";
-  if (!adminRoles.has(adminRole)) {
-    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
-  }
-
   const scope = request.nextUrl.searchParams.get("scope") === "all" ? "all" : "residents";
 
   try {
+    const context = await resolveSessionContext(request, { allowedRoles: adminRoles });
+    const estateScope = estateScopeFor(context);
     const csv = scope === "all"
-      ? await buildAllTablesCsvExport()
-      : await buildResidentsCsvExport();
+      ? await buildAllTablesCsvExport(estateScope)
+      : await buildResidentsCsvExport(estateScope);
 
     return new NextResponse(csv, {
       headers: {
@@ -26,8 +24,18 @@ export async function GET(request: NextRequest) {
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "Unable to export Appwrite data.";
-    const status = error instanceof AppwriteRestError ? error.status : 400;
+    const status = error instanceof SessionContextError
+      ? error.status
+      : error instanceof AppwriteRestError
+        ? error.status
+        : 400;
 
     return NextResponse.json({ error: message }, { status });
   }
+}
+
+function estateScopeFor(context: SessionContext) {
+  return context.role === "super_admin"
+    ? { includeAllEstates: true }
+    : { estateId: context.estateId };
 }

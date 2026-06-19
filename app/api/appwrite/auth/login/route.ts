@@ -49,6 +49,13 @@ function loginResponse(user: Awaited<ReturnType<typeof loginWithAppwrite>>) {
     secure: process.env.NODE_ENV === "production",
     httpOnly: true
   });
+  response.cookies.set("corso_appwrite_session", user.appwriteSessionSecret, {
+    path: "/",
+    maxAge: 60 * 60 * 24 * 7,
+    sameSite: "lax",
+    secure: process.env.NODE_ENV === "production",
+    httpOnly: true
+  });
 
   return response;
 }

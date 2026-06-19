@@ -1,6 +1,6 @@
 import type { AuditLog, Bill, Payment, PaymentChannel, Resident } from "@/lib/types";
 import { APPWRITE_LBSVIEW_ESTATE_ID, appwriteRequest, appwriteUpsertRow, getAppwriteServerConfig, safeAppwriteId, setupAppwriteOnboardingSchema } from "@/lib/appwrite/server";
-import { listAppwriteResidentDirectory, listAppwriteTableRows, type AppwriteResidentDirectory } from "@/lib/appwrite/residents";
+import { listAppwriteResidentDirectory, listAppwriteTableRows, type AppwriteEstateScope, type AppwriteResidentDirectory } from "@/lib/appwrite/residents";
 import { allocatePayment, type AllocationResult } from "@/lib/appwrite/payment-allocation";
 import { normalizePhoneNumber } from "@/lib/utils";
 
@@ -117,6 +117,8 @@ export type AppwritePaymentInput = {
   reference: string;
   channel: PaymentChannel;
   date?: string;
+  estateId?: string | null;
+  includeAllEstates?: boolean;
 };
 
 export type AppwritePaymentResult = {
@@ -131,6 +133,8 @@ export type AppwriteBillInput = {
   amount: number;
   dueDate: string;
   category?: string;
+  estateId?: string | null;
+  includeAllEstates?: boolean;
 };
 
 export type AppwriteResidentAccountingIdentity = {
@@ -140,11 +144,14 @@ export type AppwriteResidentAccountingIdentity = {
 };
 
 const ACCOUNTING_CACHE_MS = 30_000;
-let accountingCache: { data: AppwriteAccountingData; expiresAt: number } | null = null;
-let summaryCache: { data: AppwriteAccountingSummary; expiresAt: number } | null = null;
+let accountingCache: { key: string; data: AppwriteAccountingData; expiresAt: number } | null = null;
+let summaryCache: { key: string; data: AppwriteAccountingSummary; expiresAt: number } | null = null;
 
-export async function listAppwriteAccounting(options: { bypassCache?: boolean; ensureSchema?: boolean } = {}) {
-  if (!options.bypassCache && accountingCache && accountingCache.expiresAt > Date.now()) {
+export async function listAppwriteAccounting(
+  options: { bypassCache?: boolean; ensureSchema?: boolean } & AppwriteEstateScope = {}
+) {
+  const scope = accountingScope(options);
+  if (!options.bypassCache && accountingCache?.key === scope.cacheKey && accountingCache.expiresAt > Date.now()) {
     return accountingCache.data;
   }
 
@@ -153,10 +160,10 @@ export async function listAppwriteAccounting(options: { bypassCache?: boolean; e
   }
 
   const [directory, billRows, paymentRows, auditRows] = await Promise.all([
-    listAppwriteResidentDirectory({ ensureSchema: false }),
-    listAppwriteTableRows<AppwriteBillRow>("bills"),
-    listAppwriteTableRows<AppwritePaymentRow>("payments"),
-    listAppwriteTableRows<AppwriteAuditRow>("audit_logs")
+    listAppwriteResidentDirectory({ ensureSchema: false, ...scope }),
+    listAppwriteTableRows<AppwriteBillRow>("bills", scope),
+    listAppwriteTableRows<AppwritePaymentRow>("payments", scope),
+    listAppwriteTableRows<AppwriteAuditRow>("audit_logs", scope)
   ]);
 
   const residentsById = new Map(directory.residents.map((resident) => [resident.id, resident]));
@@ -178,13 +185,13 @@ export async function listAppwriteAccounting(options: { bypassCache?: boolean; e
     }
   };
 
-  accountingCache = { data, expiresAt: Date.now() + ACCOUNTING_CACHE_MS };
+  accountingCache = { key: scope.cacheKey, data, expiresAt: Date.now() + ACCOUNTING_CACHE_MS };
   return data;
 }
 
 export async function listAppwriteResidentAccounting(
   identity: AppwriteResidentAccountingIdentity,
-  options: { bypassCache?: boolean; ensureSchema?: boolean } = {}
+  options: ({ bypassCache?: boolean; ensureSchema?: boolean } & AppwriteEstateScope) = {}
 ): Promise<AppwriteAccountingData & {
   matchedResidentId: string | null;
   resident: Resident | null;
@@ -247,8 +254,11 @@ export async function listAppwriteResidentAccounting(
   };
 }
 
-export async function getAppwriteAccountingSummary(options: { bypassCache?: boolean; ensureSchema?: boolean } = {}): Promise<AppwriteAccountingSummary> {
-  if (!options.bypassCache && summaryCache && summaryCache.expiresAt > Date.now()) {
+export async function getAppwriteAccountingSummary(
+  options: { bypassCache?: boolean; ensureSchema?: boolean } & AppwriteEstateScope = {}
+): Promise<AppwriteAccountingSummary> {
+  const scope = accountingScope(options);
+  if (!options.bypassCache && summaryCache?.key === scope.cacheKey && summaryCache.expiresAt > Date.now()) {
     return summaryCache.data;
   }
 
@@ -257,9 +267,9 @@ export async function getAppwriteAccountingSummary(options: { bypassCache?: bool
   }
 
   const [residentRows, billRows, paymentRows] = await Promise.all([
-    listAppwriteTableRows<AppwriteAccountingResidentRow>("residents"),
-    listAppwriteTableRows<AppwriteBillRow>("bills"),
-    listAppwriteTableRows<AppwritePaymentRow>("payments")
+    listAppwriteTableRows<AppwriteAccountingResidentRow>("residents", scope),
+    listAppwriteTableRows<AppwriteBillRow>("bills", scope),
+    listAppwriteTableRows<AppwritePaymentRow>("payments", scope)
   ]);
   const payments = paymentRows.map(mapPaymentRow);
   const bills = normalizeBillsWithPayments(billRows.map((row) => mapBillRow(row)), payments);
@@ -315,7 +325,7 @@ export async function getAppwriteAccountingSummary(options: { bypassCache?: bool
     generatedAt: new Date().toISOString()
   };
 
-  summaryCache = { data, expiresAt: Date.now() + ACCOUNTING_CACHE_MS };
+  summaryCache = { key: scope.cacheKey, data, expiresAt: Date.now() + ACCOUNTING_CACHE_MS };
   return data;
 }
 
@@ -334,8 +344,9 @@ export async function recordAppwriteAdminPayment(input: AppwritePaymentInput): P
     { method: "GET" }
   );
   const resident = billRow.residentId
-    ? (await listAppwriteResidentDirectory({ ensureSchema: false })).residents.find((item) => item.id === billRow.residentId)
+    ? (await listAppwriteResidentDirectory({ ensureSchema: false, estateId: input.estateId, includeAllEstates: input.includeAllEstates })).residents.find((item) => item.id === billRow.residentId)
     : undefined;
+  assertEstateScope(billRow.estateId ?? resident?.estateId, input, "The selected bill does not belong to your estate.");
   if (!resident && !billRow.residentId) {
     throw new Error("The selected bill is not linked to a resident.");
   }
@@ -383,7 +394,11 @@ export async function createAppwriteBill(input: AppwriteBillInput) {
     throw new Error("Resident, title, amount, and due date are required.");
   }
 
-  const directory = await listAppwriteResidentDirectory({ ensureSchema: false });
+  const directory = await listAppwriteResidentDirectory({
+    ensureSchema: false,
+    estateId: input.estateId,
+    includeAllEstates: input.includeAllEstates
+  });
   const resident = directory.residents.find((item) => item.id === residentId);
   if (!resident) {
     throw new Error("The selected resident was not found in Appwrite.");
@@ -430,6 +445,24 @@ export async function createAppwriteBill(input: AppwriteBillInput) {
 export function clearAppwriteAccountingCache() {
   accountingCache = null;
   summaryCache = null;
+}
+
+function accountingScope(scope: AppwriteEstateScope) {
+  if (scope.includeAllEstates) {
+    return { includeAllEstates: true, estateId: null, cacheKey: "all-estates" };
+  }
+
+  const estateId = typeof scope.estateId === "string" ? scope.estateId.trim() : "";
+  return estateId
+    ? { includeAllEstates: false, estateId, cacheKey: `estate:${estateId}` }
+    : { includeAllEstates: true, estateId: null, cacheKey: "all-estates" };
+}
+
+function assertEstateScope(rowEstateId: string | undefined, scope: AppwriteEstateScope, message: string) {
+  const estateId = scope.includeAllEstates ? "" : String(scope.estateId ?? "").trim();
+  if (estateId && rowEstateId !== estateId) {
+    throw new Error(message);
+  }
 }
 
 function normalizeBillsWithPayments(bills: Bill[], payments: Payment[]) {

@@ -4,7 +4,7 @@ import {
   appwriteUpsertRow,
   safeAppwriteId
 } from "@/lib/appwrite/server";
-import { listAppwriteTableRows } from "@/lib/appwrite/residents";
+import { listAppwriteTableRows, type AppwriteEstateScope } from "@/lib/appwrite/residents";
 
 type AppwriteCheckpointRow = {
   $id?: string;
@@ -86,6 +86,8 @@ export type PatrolCreateInput = {
   qrToken: string;
   guardId: string;
   guardName: string;
+  estateId?: string | null;
+  includeAllEstates?: boolean;
   deviceLatitude?: number;
   deviceLongitude?: number;
   scannedAt?: string;
@@ -103,24 +105,28 @@ export type CheckpointCreateInput = {
   longitude?: number;
   allowedRadius?: number;
   status?: GuardCheckpoint["status"];
+  estateId?: string | null;
+  includeAllEstates?: boolean;
 };
 
 export type CheckpointRenameInput = {
   checkpointId: string;
   checkpointName: string;
+  estateId?: string | null;
+  includeAllEstates?: boolean;
 };
 
-export async function listGuardCheckpoints() {
-  const rows = await listAppwriteTableRows<AppwriteCheckpointRow>("guard_checkpoints");
+export async function listGuardCheckpoints(scope: AppwriteEstateScope = {}) {
+  const rows = await listAppwriteTableRows<AppwriteCheckpointRow>("guard_checkpoints", scope);
 
   return rows
     .map(mapCheckpointRow)
     .sort((left, right) => (left.sortOrder ?? 0) - (right.sortOrder ?? 0) || left.checkpointCode.localeCompare(right.checkpointCode));
 }
 
-export async function findGuardCheckpointByToken(qrToken: string) {
+export async function findGuardCheckpointByToken(qrToken: string, scope: AppwriteEstateScope = {}) {
   const normalizedToken = normalizeCheckpointToken(qrToken);
-  const checkpoints = await listGuardCheckpoints();
+  const checkpoints = await listGuardCheckpoints(scope);
 
   return checkpoints.find((checkpoint) => normalizeCheckpointToken(checkpoint.qrToken) === normalizedToken) ?? null;
 }
@@ -139,8 +145,9 @@ export async function createGuardCheckpoint(input: CheckpointCreateInput) {
   }
 
   const rowId = safeAppwriteId("checkpoint", qrToken);
+  const estateId = input.includeAllEstates ? APPWRITE_LBSVIEW_ESTATE_ID : input.estateId ?? APPWRITE_LBSVIEW_ESTATE_ID;
   const payload = {
-    estateId: APPWRITE_LBSVIEW_ESTATE_ID,
+    estateId,
     checkpointId: rowId,
     checkpointCode,
     checkpointName,
@@ -167,7 +174,7 @@ export async function renameGuardCheckpoint(input: CheckpointRenameInput) {
     throw new Error("Checkpoint ID and new name are required.");
   }
 
-  const checkpoints = await listGuardCheckpoints();
+  const checkpoints = await listGuardCheckpoints(input);
   const checkpoint = checkpoints.find((item) => item.id === input.checkpointId || item.checkpointId === input.checkpointId);
   if (!checkpoint) {
     throw new Error("Checkpoint was not found.");
@@ -193,8 +200,8 @@ export async function renameGuardCheckpoint(input: CheckpointRenameInput) {
   return mapCheckpointRow(row);
 }
 
-export async function listGuardPatrolEvents(limit = 100) {
-  const rows = await listAppwriteTableRows<AppwritePatrolRow>("guard_patrol_events");
+export async function listGuardPatrolEvents(limit = 100, scope: AppwriteEstateScope = {}) {
+  const rows = await listAppwriteTableRows<AppwritePatrolRow>("guard_patrol_events", scope);
 
   return rows
     .map(mapPatrolRow)
@@ -204,7 +211,7 @@ export async function listGuardPatrolEvents(limit = 100) {
 
 export async function createGuardPatrolEvent(input: PatrolCreateInput) {
   const qrToken = ensureCheckpointQrToken(input.qrToken);
-  const checkpoint = await findGuardCheckpointByToken(qrToken);
+  const checkpoint = await findGuardCheckpointByToken(qrToken, input);
   const scannedAt = input.scannedAt || new Date().toISOString();
   const guardId = input.guardId.trim() || "unknown-guard";
   const guardName = input.guardName.trim() || "Security Guard";
@@ -225,7 +232,7 @@ export async function createGuardPatrolEvent(input: PatrolCreateInput) {
   const rowId = safeAppwriteId("patrol", `${guardId}:${qrToken}:${scannedAt}`);
 
   const row = await appwriteUpsertRow<AppwritePatrolRow>("guard_patrol_events", rowId, {
-    estateId: APPWRITE_LBSVIEW_ESTATE_ID,
+    estateId: checkpoint?.estateId ?? input.estateId ?? APPWRITE_LBSVIEW_ESTATE_ID,
     checkpointId: checkpoint?.id ?? safeAppwriteId("missing", qrToken),
     checkpointCode: checkpoint?.checkpointCode ?? qrToken,
     checkpointName: checkpoint?.checkpointName ?? "Unknown checkpoint",
@@ -257,8 +264,8 @@ export async function createGuardPatrolEvent(input: PatrolCreateInput) {
   return mapPatrolRow(row);
 }
 
-export async function listSecurityIncidents(limit = 100) {
-  const rows = await listAppwriteTableRows<AppwriteSecurityIncidentRow>("security_incidents");
+export async function listSecurityIncidents(limit = 100, scope: AppwriteEstateScope = {}) {
+  const rows = await listAppwriteTableRows<AppwriteSecurityIncidentRow>("security_incidents", scope);
 
   return rows
     .map(mapSecurityIncidentRow)
@@ -266,8 +273,8 @@ export async function listSecurityIncidents(limit = 100) {
     .slice(0, limit);
 }
 
-export async function listCsoReviews(limit = 100) {
-  const rows = await listAppwriteTableRows<AppwriteCsoReviewRow>("cso_reviews");
+export async function listCsoReviews(limit = 100, scope: AppwriteEstateScope = {}) {
+  const rows = await listAppwriteTableRows<AppwriteCsoReviewRow>("cso_reviews", scope);
 
   return rows
     .map(mapCsoReviewRow)

@@ -12,7 +12,7 @@ import {
   safeAppwriteId,
   setupAppwriteOnboardingSchema
 } from "@/lib/appwrite/server";
-import { listAppwriteTableRows } from "@/lib/appwrite/residents";
+import { listAppwriteTableRows, type AppwriteEstateScope } from "@/lib/appwrite/residents";
 import { createReservedAccount } from "@/lib/monnify/client";
 
 export type VirtualAccountRow = {
@@ -77,11 +77,11 @@ export type VirtualAccountDetails = {
 
 let virtualAccountSchemaReady = false;
 
-export async function getVirtualAccountForResident(residentId: string) {
+export async function getVirtualAccountForResident(residentId: string, scope: AppwriteEstateScope = {}) {
   await ensureVirtualAccountSchema();
-  const rows = await listAppwriteTableRows<VirtualAccountRow>(APPWRITE_TABLE_RESIDENT_VIRTUAL_ACCOUNTS);
+  const rows = await listAppwriteTableRows<VirtualAccountRow>(APPWRITE_TABLE_RESIDENT_VIRTUAL_ACCOUNTS, scope);
   const row = rows.find((item) => item.residentId === residentId && item.provider === "monnify" && item.status !== "inactive");
-  return row ? enrichVirtualAccount(row) : null;
+  return row ? enrichVirtualAccount(row, scope) : null;
 }
 
 export async function findVirtualAccountByAccountNumber(accountNumber: string) {
@@ -106,15 +106,15 @@ export async function findResidentIdByEmail(email: string) {
   return rows.find((row) => row.email?.trim().toLowerCase() === normalized)?.$id ?? "";
 }
 
-export async function assignMonnifyVirtualAccount(residentId: string) {
+export async function assignMonnifyVirtualAccount(residentId: string, scope: AppwriteEstateScope = {}) {
   await ensureVirtualAccountSchema();
-  const existing = await getVirtualAccountForResident(residentId);
+  const existing = await getVirtualAccountForResident(residentId, scope);
   if (existing) {
     return existing;
   }
 
-  const resident = await getResidentRow(residentId);
-  const identity = await resolveResidentIdentity(resident);
+  const resident = await getResidentRow(residentId, scope);
+  const identity = await resolveResidentIdentity(resident, scope);
   const unitCode = identity.unitCode || resident.unitId || residentId;
   const accountReference = `LBSV-${unitCode.replace(/[^a-zA-Z0-9-]/g, "").toUpperCase()}`;
   const reservedAccount = await createReservedAccount({
@@ -149,21 +149,23 @@ export async function assignMonnifyVirtualAccount(residentId: string) {
     updatedAt: now
   });
 
-  return enrichVirtualAccount(row);
+  return enrichVirtualAccount(row, scope);
 }
 
-async function getResidentRow(residentId: string) {
+async function getResidentRow(residentId: string, scope: AppwriteEstateScope = {}) {
   const config = getAppwriteServerConfig();
-  return appwriteRequest<ResidentRow>(
+  const row = await appwriteRequest<ResidentRow>(
     `/tablesdb/${config.databaseId}/tables/${APPWRITE_TABLE_RESIDENTS}/rows/${encodeURIComponent(residentId)}`,
     { method: "GET" }
   );
+  assertEstateScope(row.estateId, scope, "The selected resident does not belong to your estate.");
+  return row;
 }
 
-async function resolveResidentIdentity(resident: ResidentRow) {
+async function resolveResidentIdentity(resident: ResidentRow, scope: AppwriteEstateScope = {}) {
   const [units, properties] = await Promise.all([
-    listAppwriteTableRows<UnitRow>(APPWRITE_TABLE_UNITS),
-    listAppwriteTableRows<PropertyRow>(APPWRITE_TABLE_PROPERTIES)
+    listAppwriteTableRows<UnitRow>(APPWRITE_TABLE_UNITS, scope),
+    listAppwriteTableRows<PropertyRow>(APPWRITE_TABLE_PROPERTIES, scope)
   ]);
   const unit = units.find((item) => item.$id === resident.unitId || item.currentResidentId === resident.$id);
   const property = properties.find((item) => item.$id === (resident.propertyId ?? unit?.propertyId));
@@ -176,8 +178,8 @@ async function resolveResidentIdentity(resident: ResidentRow) {
   };
 }
 
-async function enrichVirtualAccount(row: VirtualAccountRow): Promise<VirtualAccountDetails> {
-  const identity = await resolveVirtualAccountIdentity(row);
+async function enrichVirtualAccount(row: VirtualAccountRow, scope: AppwriteEstateScope = {}): Promise<VirtualAccountDetails> {
+  const identity = await resolveVirtualAccountIdentity(row, scope);
   return {
     id: row.$id ?? "",
     residentId: row.residentId ?? "",
@@ -196,10 +198,10 @@ async function enrichVirtualAccount(row: VirtualAccountRow): Promise<VirtualAcco
   };
 }
 
-async function resolveVirtualAccountIdentity(row: VirtualAccountRow) {
+async function resolveVirtualAccountIdentity(row: VirtualAccountRow, scope: AppwriteEstateScope = {}) {
   const [units, properties] = await Promise.all([
-    listAppwriteTableRows<UnitRow>(APPWRITE_TABLE_UNITS),
-    listAppwriteTableRows<PropertyRow>(APPWRITE_TABLE_PROPERTIES)
+    listAppwriteTableRows<UnitRow>(APPWRITE_TABLE_UNITS, scope),
+    listAppwriteTableRows<PropertyRow>(APPWRITE_TABLE_PROPERTIES, scope)
   ]);
   const unit = units.find((item) => item.$id === row.unitId || item.currentResidentId === row.residentId);
   const property = properties.find((item) => item.$id === (row.propertyId ?? unit?.propertyId));
@@ -222,4 +224,15 @@ async function ensureVirtualAccountSchema() {
 function customerEmail(resident: ResidentRow) {
   const email = resident.email?.trim() ?? "";
   return email.includes("@") ? email : "payments@corso.ng";
+}
+
+function assertEstateScope(rowEstateId: string | undefined, scope: AppwriteEstateScope, message: string) {
+  if (scope.includeAllEstates) {
+    return;
+  }
+
+  const estateId = String(scope.estateId ?? "").trim();
+  if (estateId && rowEstateId !== estateId) {
+    throw new Error(message);
+  }
 }

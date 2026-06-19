@@ -3,7 +3,7 @@ import {
   appwriteUpsertRow,
   safeAppwriteId
 } from "@/lib/appwrite/server";
-import { listAppwriteTableRows } from "@/lib/appwrite/residents";
+import { listAppwriteTableRows, type AppwriteEstateScope } from "@/lib/appwrite/residents";
 import type { LbsviewOnboardingPreviewRow } from "@/lib/appwrite/onboarding-import";
 
 type AppwriteResidentRow = {
@@ -74,10 +74,13 @@ type BillingPlan = {
 type BillingImportOptions = {
   offset?: number;
   limit?: number;
-};
+} & AppwriteEstateScope;
 
-export async function previewBillingImportRows(rows: LbsviewOnboardingPreviewRow[]): Promise<AppwriteBillingImportResult> {
-  const plan = await buildBillingPlan(rows);
+export async function previewBillingImportRows(
+  rows: LbsviewOnboardingPreviewRow[],
+  scope: AppwriteEstateScope = {}
+): Promise<AppwriteBillingImportResult> {
+  const plan = await buildBillingPlan(rows, scope);
   return {
     dryRun: true,
     imported: false,
@@ -86,13 +89,14 @@ export async function previewBillingImportRows(rows: LbsviewOnboardingPreviewRow
 }
 
 export async function importBillingPreviewRows(rows: LbsviewOnboardingPreviewRow[], options: BillingImportOptions = {}): Promise<AppwriteBillingImportResult> {
-  const plan = await buildBillingPlan(rows);
+  const plan = await buildBillingPlan(rows, options);
   const offset = Math.max(0, Math.min(Math.floor(options.offset ?? 0), plan.rows.length));
   const limit = Math.max(1, Math.floor(options.limit ?? (plan.rows.length || 1)));
   const chunkRows = plan.rows.slice(offset, offset + limit);
   const nextOffset = offset + chunkRows.length < plan.rows.length ? offset + chunkRows.length : null;
   const now = new Date().toISOString();
   const today = now.slice(0, 10);
+  const auditEstateId = importEstateId(options, plan);
 
   for (const row of chunkRows) {
     const source = row.source;
@@ -167,11 +171,11 @@ export async function importBillingPreviewRows(rows: LbsviewOnboardingPreviewRow
 
   if (nextOffset === null) {
     await appwriteUpsertRow("audit_logs", safeAppwriteId("audit", `legacy-billing-import-${now}`), {
-      estateId: APPWRITE_LBSVIEW_ESTATE_ID,
+      estateId: auditEstateId,
       actor: "Estate admin",
       action: "imported legacy billing fields",
       entityType: "system",
-      entityId: APPWRITE_LBSVIEW_ESTATE_ID,
+      entityId: auditEstateId,
       metadata: JSON.stringify(plan.summary),
       createdAt: now,
       updatedAt: now
@@ -191,8 +195,8 @@ export async function importBillingPreviewRows(rows: LbsviewOnboardingPreviewRow
   };
 }
 
-async function buildBillingPlan(rows: LbsviewOnboardingPreviewRow[]): Promise<BillingPlan> {
-  const residents = await listAppwriteTableRows<AppwriteResidentRow>("residents");
+async function buildBillingPlan(rows: LbsviewOnboardingPreviewRow[], scope: AppwriteEstateScope): Promise<BillingPlan> {
+  const residents = await listAppwriteTableRows<AppwriteResidentRow>("residents", scope);
   const residentLookup = buildResidentLookup(residents);
   const skippedReasonCounts = new Map<string, number>();
   const planRows: BillingPlanRow[] = [];
@@ -225,6 +229,15 @@ async function buildBillingPlan(rows: LbsviewOnboardingPreviewRow[]): Promise<Bi
     rows: planRows,
     summary: summarizeBillingPlan(rows, planRows, skippedReasonCounts)
   };
+}
+
+function importEstateId(options: BillingImportOptions, plan: BillingPlan) {
+  const scopedEstate = String(options.estateId ?? "").trim();
+  if (scopedEstate) {
+    return scopedEstate;
+  }
+
+  return plan.rows[0]?.resident.estateId ?? APPWRITE_LBSVIEW_ESTATE_ID;
 }
 
 function buildResidentLookup(residents: AppwriteResidentRow[]) {

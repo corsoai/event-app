@@ -18,7 +18,7 @@ import {
   safeAppwriteId,
   setupAppwriteOnboardingSchema
 } from "@/lib/appwrite/server";
-import { listAppwriteTableRows } from "@/lib/appwrite/residents";
+import { listAppwriteTableRows, type AppwriteEstateScope } from "@/lib/appwrite/residents";
 
 const roleLabels: Record<UserRole, string> = {
   super_admin: "Super Admin",
@@ -74,13 +74,9 @@ type AppwriteUser = {
 };
 
 type AppwriteSession = {
+  $id?: string;
   userId: string;
-};
-
-type AppwriteRowList<T> = {
-  rows?: T[];
-  documents?: T[];
-  total?: number;
+  secret?: string;
 };
 
 type AppwriteUserList = {
@@ -172,21 +168,22 @@ const defaultAppwriteUsers: AppwriteManagedUserInput[] = [
   }
 ];
 
-export async function listAppwriteManagedUsers(scope: "admin" | "super-admin"): Promise<ManagedAppwriteUser[]> {
+export async function listAppwriteManagedUsers(
+  scope: "admin" | "super-admin",
+  estateScope: AppwriteEstateScope = {}
+): Promise<ManagedAppwriteUser[]> {
   const config = getAppwriteServerConfig();
   if (!config.configured) {
     throw new Error(`Appwrite server configuration is missing: ${config.missing.join(", ")}`);
   }
 
   await setupAppwriteOnboardingSchema();
-  const payload = await appwriteRequest<AppwriteRowList<AppwriteProfileRow>>(
-    `/tablesdb/${config.databaseId}/tables/profiles/rows`
-  );
+  const profileRows = await listAppwriteTableRows<AppwriteProfileRow>("profiles", estateScope);
   const allowedRoles = scope === "super-admin"
     ? new Set<UserRole>(["super_admin", "estate_admin", "cso", "security_guard", "resident", "vendor"])
     : new Set<UserRole>(["cso", "security_guard", "resident", "vendor"]);
 
-  return (payload.rows ?? payload.documents ?? [])
+  return profileRows
     .filter((row) => row.role && allowedRoles.has(row.role))
     .map(profileRowToManagedUser)
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt));
@@ -428,8 +425,11 @@ async function ensureAppwriteDefaultUser(input: AppwriteManagedUserInput) {
   };
 }
 
-export async function updateAppwriteManagedUser(input: AppwriteManagedUserUpdateInput) {
-  const target = await getProfileRow(input.profileId);
+export async function updateAppwriteManagedUser(
+  input: AppwriteManagedUserUpdateInput,
+  scope: AppwriteEstateScope = {}
+) {
+  const target = await getProfileRow(input.profileId, scope);
   const userId = target.userId;
   if (!userId) {
     throw new Error("This profile is missing an Appwrite Auth user ID.");
@@ -538,8 +538,8 @@ export async function updateAppwriteManagedUser(input: AppwriteManagedUserUpdate
   };
 }
 
-export async function deleteAppwriteManagedUser(profileId: string) {
-  const target = await getProfileRow(profileId);
+export async function deleteAppwriteManagedUser(profileId: string, scope: AppwriteEstateScope = {}) {
+  const target = await getProfileRow(profileId, scope);
   if (target.userId) {
     await appwriteRequest<null>(`/users/${encodeURIComponent(target.userId)}`, {
       method: "DELETE"
@@ -563,6 +563,9 @@ export async function loginWithAppwrite(identifier: string, password: string) {
       password
     }
   });
+  if (!session.secret) {
+    throw new Error("Appwrite did not return a session secret for this login.");
+  }
   const user = await getAuthUser(session.userId);
   const prefs = user.prefs ?? {};
   const role = isUserRole(prefs.role) ? prefs.role : "resident";
@@ -580,7 +583,8 @@ export async function loginWithAppwrite(identifier: string, password: string) {
     name: fullName,
     role,
     estate,
-    appwriteUserId: user.$id
+    appwriteUserId: user.$id,
+    appwriteSessionSecret: session.secret
   };
 }
 
@@ -654,7 +658,7 @@ async function getAuthUser(userId: string) {
   return appwriteRequest<AppwriteUser>(`/users/${encodeURIComponent(userId)}`);
 }
 
-async function getProfileRow(profileId: string) {
+async function getProfileRow(profileId: string, scope: AppwriteEstateScope = {}) {
   const config = getAppwriteServerConfig();
   if (!config.configured) {
     throw new Error(`Appwrite server configuration is missing: ${config.missing.join(", ")}`);
@@ -667,6 +671,7 @@ async function getProfileRow(profileId: string) {
     throw new Error("User profile was not found.");
   }
 
+  assertEstateScope(row.estateId, scope, "The selected user profile does not belong to your estate.");
   return row;
 }
 
@@ -754,6 +759,7 @@ async function findExistingResidentForLogin(
     fullName: string;
     email: string;
     phone: string;
+    estateId: string;
     unitCode: string;
   },
   unitId: string
@@ -761,7 +767,7 @@ async function findExistingResidentForLogin(
   const normalizedPhone = normalizePhoneNumber(input.phone);
   const normalizedEmail = input.email.trim().toLowerCase();
   const normalizedFullName = normalizeName(input.fullName);
-  const residents = await listAppwriteTableRows<AppwriteResidentRow>("residents");
+  const residents = await listAppwriteTableRows<AppwriteResidentRow>("residents", { estateId: input.estateId });
 
   return residents.find((resident) => {
     const sameUnit = resident.unitId === unitId;
@@ -780,6 +786,17 @@ async function findExistingResidentForLogin(
 
 function canonicalEstateId(estateId: string) {
   return estateId === APPWRITE_LBSVIEW_ESTATE_ID || estateId === "platform" ? estateId : APPWRITE_LBSVIEW_ESTATE_ID;
+}
+
+function assertEstateScope(rowEstateId: string | undefined, scope: AppwriteEstateScope, message: string) {
+  if (scope.includeAllEstates) {
+    return;
+  }
+
+  const estateId = String(scope.estateId ?? "").trim();
+  if (estateId && rowEstateId !== estateId) {
+    throw new Error(message);
+  }
 }
 
 function normalizeUnitCode(value: string) {

@@ -1,33 +1,22 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AppwriteRestError } from "@/lib/appwrite/server";
 import { listAppwriteResidentDirectory, updateAppwriteResident } from "@/lib/appwrite/residents";
+import { resolveSessionContext, SessionContextError, type SessionContext } from "@/lib/appwrite/session-context";
 import type { Resident } from "@/lib/types";
 
-const adminRoles = new Set(["estate_admin", "super_admin"]);
+const adminRoles = ["estate_admin", "super_admin"] as const;
 
 export async function GET(request: NextRequest) {
-  const adminRole = request.cookies.get("corso_role")?.value ?? "";
-  if (!adminRoles.has(adminRole)) {
-    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
-  }
-
   try {
-    const directory = await listAppwriteResidentDirectory();
+    const context = await resolveSessionContext(request, { allowedRoles: adminRoles });
+    const directory = await listAppwriteResidentDirectory(estateScopeFor(context));
     return NextResponse.json(directory);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load Appwrite residents.";
-    const status = error instanceof AppwriteRestError ? error.status : 400;
-
-    return NextResponse.json({ error: message }, { status });
+    return adminRouteError(error, "Unable to load Appwrite residents.");
   }
 }
 
 export async function PATCH(request: NextRequest) {
-  const adminRole = request.cookies.get("corso_role")?.value ?? "";
-  if (!adminRoles.has(adminRole)) {
-    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
-  }
-
   const body = await request.json().catch(() => null) as Partial<Resident> & {
     residentId?: string;
     name?: string;
@@ -37,9 +26,11 @@ export async function PATCH(request: NextRequest) {
   }
 
   try {
+    const context = await resolveSessionContext(request, { allowedRoles: adminRoles });
     const resident = await updateAppwriteResident({
       residentId: String(body.residentId ?? body.id ?? ""),
       name: String(body.name ?? ""),
+      ...estateScopeFor(context),
       propertyId: body.propertyId,
       unitId: body.unitId,
       phone: body.phone,
@@ -57,9 +48,23 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ resident });
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to update Appwrite resident.";
-    const status = error instanceof AppwriteRestError ? error.status : 400;
-
-    return NextResponse.json({ error: message }, { status });
+    return adminRouteError(error, "Unable to update Appwrite resident.");
   }
+}
+
+function estateScopeFor(context: SessionContext) {
+  return context.role === "super_admin"
+    ? { includeAllEstates: true }
+    : { estateId: context.estateId };
+}
+
+function adminRouteError(error: unknown, fallbackMessage: string) {
+  const message = error instanceof Error ? error.message : fallbackMessage;
+  const status = error instanceof SessionContextError
+    ? error.status
+    : error instanceof AppwriteRestError
+      ? error.status
+      : 400;
+
+  return NextResponse.json({ error: message }, { status });
 }

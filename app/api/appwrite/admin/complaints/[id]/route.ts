@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AppwriteRestError } from "@/lib/appwrite/server";
+import { resolveSessionContext, SessionContextError, type SessionContext } from "@/lib/appwrite/session-context";
 import {
   getAdminComplaint,
   resolveComplaintActor,
@@ -7,21 +8,17 @@ import {
   type ComplaintUpdateInput
 } from "@/lib/appwrite/complaints";
 
-const adminRoles = new Set(["estate_admin", "super_admin"]);
+const adminRoles = ["estate_admin", "super_admin"] as const;
 
 type RouteContext = {
   params: Promise<{ id: string }>;
 };
 
 export async function GET(request: NextRequest, context: RouteContext) {
-  const role = request.cookies.get("corso_role")?.value ?? "";
-  if (!adminRoles.has(role)) {
-    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
-  }
-
   try {
+    const session = await resolveSessionContext(request, { allowedRoles: adminRoles });
     const { id } = await context.params;
-    const complaint = await getAdminComplaint(id);
+    const complaint = await getAdminComplaint(id, estateScopeFor(session));
 
     return NextResponse.json({ complaint });
   } catch (error) {
@@ -30,20 +27,15 @@ export async function GET(request: NextRequest, context: RouteContext) {
 }
 
 export async function PATCH(request: NextRequest, context: RouteContext) {
-  const role = request.cookies.get("corso_role")?.value ?? "";
-  const userId = request.cookies.get("corso_appwrite_user")?.value ?? "";
-  if (!adminRoles.has(role) || !userId) {
-    return NextResponse.json({ error: "Admin access is required." }, { status: 403 });
-  }
-
   const body = await request.json().catch(() => null);
   if (!isRecord(body)) {
     return NextResponse.json({ error: "Invalid complaint update request." }, { status: 400 });
   }
 
   try {
+    const session = await resolveSessionContext(request, { allowedRoles: adminRoles });
     const { id } = await context.params;
-    const actor = await resolveComplaintActor(userId, role);
+    const actor = await resolveComplaintActor(session);
     const complaint = await updateComplaint(id, toComplaintUpdateInput(body), actor);
 
     return NextResponse.json({ complaint });
@@ -69,7 +61,17 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function errorResponse(error: unknown, fallback: string) {
   const message = error instanceof Error ? error.message : fallback;
-  const status = error instanceof AppwriteRestError ? error.status : 400;
+  const status = error instanceof SessionContextError
+    ? error.status
+    : error instanceof AppwriteRestError
+      ? error.status
+      : 400;
 
   return NextResponse.json({ error: message }, { status });
+}
+
+function estateScopeFor(context: SessionContext) {
+  return context.role === "super_admin"
+    ? { includeAllEstates: true }
+    : { estateId: context.estateId };
 }

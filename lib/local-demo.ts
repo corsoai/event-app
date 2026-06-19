@@ -5,6 +5,10 @@ export function isLocalDemoEnabled() {
     return false;
   }
 
+  if (process.env.NODE_ENV !== "development") {
+    return false;
+  }
+
   const hostname = window.location.hostname.toLowerCase();
   const isLocalHost = hostname === "localhost" || hostname === "127.0.0.1" || hostname === "::1";
 

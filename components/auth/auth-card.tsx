@@ -234,7 +234,9 @@ export function AuthCard({ mode }: { mode: Mode }) {
         return;
       }
 
-      const demoUser = demoUsers.find((user) => user.email.toLowerCase() === email.toLowerCase());
+      const demoUser = localDemoEnabled
+        ? demoUsers.find((user) => user.email.toLowerCase() === email.toLowerCase())
+        : undefined;
       if (appwriteLoginPreferred) {
         setLoginProgress("Signing in...");
         const appwriteResult = await signInWithAppwrite(email, password);

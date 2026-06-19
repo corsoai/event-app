@@ -9,7 +9,7 @@ import {
   safeAppwriteId,
   setupAppwriteOnboardingSchema
 } from "@/lib/appwrite/server";
-import { listAppwriteTableRows } from "@/lib/appwrite/residents";
+import { listAppwriteTableRows, type AppwriteEstateScope } from "@/lib/appwrite/residents";
 
 export type AppwriteAccessRequestStatus = "pending" | "approved" | "rejected";
 
@@ -167,13 +167,13 @@ export async function submitAppwriteAccessRequest(input: {
 
 export async function listAppwriteAccessRequests(options: { adminRole?: string; estateId?: string | null } = {}) {
   await setupAppwriteOnboardingSchema();
-  const requests = await listAppwriteTableRows<AppwriteAccessRequestRow>("access_requests");
+  const scope = accessRequestScope(options);
+  const requests = await listAppwriteTableRows<AppwriteAccessRequestRow>("access_requests", scope);
   const estates = await listAppwriteTableRows<AppwriteEstateRow>("estates").catch(() => []);
   const estateNames = new Map(estates.map((estate) => [estate.$id ?? "", estate.name ?? DEFAULT_ESTATE_NAME]));
 
   return requests
     .filter((request) => request.status === "pending")
-    .filter((request) => options.adminRole === "super_admin" || !options.estateId || request.estateId === options.estateId)
     .map((request) => mapAccessRequestRow(request, estateNames.get(request.estateId ?? "")))
     .sort((left, right) => right.requested_at.localeCompare(left.requested_at));
 }
@@ -185,7 +185,8 @@ export async function reviewAppwriteAccessRequest(input: {
   adminRole: string;
   adminEstateId?: string | null;
 }) {
-  const row = (await listAppwriteTableRows<AppwriteAccessRequestRow>("access_requests"))
+  const scope = accessRequestScope({ adminRole: input.adminRole, estateId: input.adminEstateId });
+  const row = (await listAppwriteTableRows<AppwriteAccessRequestRow>("access_requests", scope))
     .find((request) => request.$id === input.requestId);
 
   if (!row || row.status !== "pending") {
@@ -238,6 +239,12 @@ export async function reviewAppwriteAccessRequest(input: {
     message: `${row.fullName ?? "Resident"}'s access request has been approved.`,
     requests: await listAppwriteAccessRequests({ adminRole: input.adminRole, estateId: input.adminEstateId })
   };
+}
+
+function accessRequestScope(options: { adminRole?: string; estateId?: string | null }): AppwriteEstateScope {
+  return options.adminRole === "super_admin"
+    ? { includeAllEstates: true }
+    : { estateId: options.estateId ?? "" };
 }
 
 export async function readAppwriteAccessRequestStatus(identifier: string) {

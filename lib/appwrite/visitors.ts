@@ -1,5 +1,6 @@
 import { randomInt } from "crypto";
 import type { Resident, UserRole, Visitor } from "@/lib/types";
+import type { SessionContext } from "@/lib/appwrite/session-context";
 import { getVisitorExpiresAtIso, getVisitorWindowState, VISITOR_CODE_VALIDITY_HOURS } from "@/lib/visitor-window";
 import { DEFAULT_ESTATE_NAME, normalizePhoneNumber } from "@/lib/utils";
 import {
@@ -10,7 +11,7 @@ import {
   safeAppwriteId,
   setupAppwriteOnboardingSchema
 } from "@/lib/appwrite/server";
-import { listAppwriteTableRows } from "@/lib/appwrite/residents";
+import { listAppwriteTableRows, type AppwriteEstateScope } from "@/lib/appwrite/residents";
 
 type AppwriteProfileRow = {
   $id?: string;
@@ -103,14 +104,16 @@ export type AppwriteVisitorView = {
 };
 
 const verifierRoles = new Set<UserRole>(["security_guard", "estate_admin", "super_admin"]);
+type VerifiedVisitorContext = Pick<SessionContext, "userId" | "profileId" | "role" | "estateId">;
+type VisitorSessionInput = string | VerifiedVisitorContext;
 
-export async function createAppwriteResidentVisitor(appwriteUserId: string, input: VisitorCreateInput) {
-  const profile = await requireProfile(appwriteUserId, "resident");
-  const visitorName = input.visitorName.trim();
-  const visitDate = input.visitDate.trim();
-  const arrivalTime = input.arrivalTime.trim();
-  const purpose = input.purpose.trim();
-  const count = Number(input.count);
+export async function createAppwriteResidentVisitor(input: VisitorSessionInput, visitorInput: VisitorCreateInput) {
+  const profile = await requireProfile(input, "resident");
+  const visitorName = visitorInput.visitorName.trim();
+  const visitDate = visitorInput.visitDate.trim();
+  const arrivalTime = visitorInput.arrivalTime.trim();
+  const purpose = visitorInput.purpose.trim();
+  const count = Number(visitorInput.count);
 
   if (!visitorName || !visitDate || !arrivalTime || !purpose) {
     throw new Error("Visitor name, visit date, arrival time, and purpose are required.");
@@ -121,12 +124,12 @@ export async function createAppwriteResidentVisitor(appwriteUserId: string, inpu
 
   const resident = await findOrCreateResidentForProfile(profile);
   const createdAt = new Date().toISOString();
-  const code = await makeUniqueAccessCode(profile.estateId ?? resident.estateId, input.code);
+  const code = await makeUniqueAccessCode(profile.estateId ?? resident.estateId, visitorInput.code);
   const visitor = await appwriteUpsertRow<AppwriteVisitorRow>("visitors", safeAppwriteId("vis", `${resident.id}:${code}`), {
     estateId: profile.estateId ?? resident.estateId,
     residentId: resident.id,
     visitorName,
-    phone: input.phone.trim(),
+    phone: visitorInput.phone.trim(),
     visitDate,
     arrivalTime,
     purpose,
@@ -141,67 +144,72 @@ export async function createAppwriteResidentVisitor(appwriteUserId: string, inpu
   return mapVisitorRow(visitor);
 }
 
-export async function listAppwriteResidentVisitors(appwriteUserId: string) {
-  const profile = await requireProfile(appwriteUserId, "resident");
+export async function listAppwriteResidentVisitors(input: VisitorSessionInput) {
+  const profile = await requireProfile(input, "resident");
   const resident = await findOrCreateResidentForProfile(profile);
-  const rows = await listAppwriteTableRows<AppwriteVisitorRow>("visitors");
+  const scope = estateScopeForProfile(profile);
+  const rows = await listAppwriteTableRows<AppwriteVisitorRow>("visitors", scope);
 
   return buildVisitorViews(
     rows
       .filter((visitor) => visitor.residentId === resident.id)
-      .sort(sortVisitorRowsDescending)
+      .sort(sortVisitorRowsDescending),
+    scope
   );
 }
 
-export async function listAppwriteAdminVisitors(appwriteUserId: string) {
-  const profile = await requireProfile(appwriteUserId);
+export async function listAppwriteAdminVisitors(input: VisitorSessionInput) {
+  const profile = await requireProfile(input);
   if (!["estate_admin", "super_admin", "cso"].includes(profile.role ?? "resident")) {
     throw new Error("This account cannot view estate visitor logs.");
   }
 
-  const rows = await listAppwriteTableRows<AppwriteVisitorRow>("visitors");
+  const scope = estateScopeForProfile(profile);
+  const rows = await listAppwriteTableRows<AppwriteVisitorRow>("visitors", scope);
   return buildVisitorViews(
     rows
-      .filter((visitor) => profile.role === "super_admin" || visitor.estateId === profile.estateId)
-      .sort(sortVisitorRowsDescending)
+      .sort(sortVisitorRowsDescending),
+    scope
   );
 }
 
-export async function listAppwriteExpectedVisitors(appwriteUserId: string) {
-  const profile = await requireProfile(appwriteUserId);
+export async function listAppwriteExpectedVisitors(input: VisitorSessionInput) {
+  const profile = await requireProfile(input);
   if (!verifierRoles.has(profile.role ?? "resident")) {
     throw new Error("This account cannot view expected visitors.");
   }
 
   const today = new Date().toISOString().slice(0, 10);
-  const rows = await listAppwriteTableRows<AppwriteVisitorRow>("visitors");
+  const scope = estateScopeForProfile(profile);
+  const rows = await listAppwriteTableRows<AppwriteVisitorRow>("visitors", scope);
   return buildVisitorViews(
     rows
       .filter((visitor) =>
-        (profile.role === "super_admin" || visitor.estateId === profile.estateId) &&
         visitor.visitDate === today &&
         (visitor.status === "pending" || visitor.status === "verified" || visitor.status === "checked-in")
       )
-      .sort(sortVisitorRowsDescending)
+      .sort(sortVisitorRowsDescending),
+    scope
   );
 }
 
-export async function listAppwriteSecurityVisitorHistory(appwriteUserId: string) {
-  const profile = await requireProfile(appwriteUserId);
+export async function listAppwriteSecurityVisitorHistory(input: VisitorSessionInput) {
+  const profile = await requireProfile(input);
   if (!verifierRoles.has(profile.role ?? "resident")) {
     throw new Error("This account cannot view visitor movement history.");
   }
 
-  const rows = await listAppwriteTableRows<AppwriteVisitorRow>("visitors");
+  const scope = estateScopeForProfile(profile);
+  const rows = await listAppwriteTableRows<AppwriteVisitorRow>("visitors", scope);
   return buildVisitorViews(
     rows
-      .filter((visitor) => profile.role === "super_admin" || visitor.estateId === profile.estateId)
-      .sort(sortVisitorRowsDescending)
+      .sort(sortVisitorRowsDescending),
+    scope
   );
 }
 
-export async function findAppwriteVisitorByCode(appwriteUserId: string, code: string) {
-  const profile = await requireProfile(appwriteUserId);
+export async function findAppwriteVisitorByCode(input: VisitorSessionInput, code: string) {
+  const profile = await requireProfile(input);
   if (!verifierRoles.has(profile.role ?? "resident")) {
     throw new Error("This account cannot verify visitor codes.");
   }
@@ -211,7 +219,8 @@ export async function findAppwriteVisitorByCode(appwriteUserId: string, code: st
     throw new Error("Enter a valid 6-digit visitor code.");
   }
 
-  const rows = await listVisitorRowsByCode(targetCode);
+  const scope = estateScopeForProfile(profile);
+  const rows = await listVisitorRowsByCode(targetCode, scope);
   const row = rows.find((visitor) =>
     visitor.code === targetCode &&
     (profile.role === "super_admin" || visitor.estateId === profile.estateId)
@@ -231,15 +240,20 @@ export async function findAppwriteVisitorByCode(appwriteUserId: string, code: st
 
   return {
     visitor,
-    resident: await findResidentView(visitor.residentId)
+    resident: await findResidentView(visitor.residentId, scope)
   };
 }
 
-async function listVisitorRowsByCode(code: string) {
+async function listVisitorRowsByCode(code: string, scope: AppwriteEstateScope = {}) {
   const config = getAppwriteServerConfig();
   const query = new URLSearchParams();
   query.append("queries[0]", JSON.stringify({ method: "equal", attribute: "code", values: [code] }));
-  query.append("queries[1]", JSON.stringify({ method: "limit", values: [5] }));
+  let index = 1;
+  if (scope.estateId && !scope.includeAllEstates) {
+    query.append(`queries[${index}]`, JSON.stringify({ method: "equal", attribute: "estateId", values: [scope.estateId] }));
+    index += 1;
+  }
+  query.append(`queries[${index}]`, JSON.stringify({ method: "limit", values: [5] }));
 
   try {
     const payload = await appwriteRequest<AppwriteRowList<AppwriteVisitorRow>>(
@@ -248,7 +262,7 @@ async function listVisitorRowsByCode(code: string) {
     return payload.rows ?? payload.documents ?? [];
   } catch (error) {
     if (error instanceof Error && error.message.toLowerCase().includes("invalid query")) {
-      const rows = await listAppwriteTableRows<AppwriteVisitorRow>("visitors");
+      const rows = await listAppwriteTableRows<AppwriteVisitorRow>("visitors", scope);
       return rows.filter((visitor) => visitor.code === code);
     }
 
@@ -267,8 +281,8 @@ async function getVisitorRowById(visitorId: string) {
   );
 }
 
-export async function updateAppwriteVisitorStatus(appwriteUserId: string, visitorId: string, status: Visitor["status"]) {
-  const profile = await requireProfile(appwriteUserId);
+export async function updateAppwriteVisitorStatus(input: VisitorSessionInput, visitorId: string, status: Visitor["status"]) {
+  const profile = await requireProfile(input);
   if (!verifierRoles.has(profile.role ?? "resident")) {
     throw new Error("This account cannot update visitor codes.");
   }
@@ -292,7 +306,8 @@ export async function updateAppwriteVisitorStatus(appwriteUserId: string, visito
   return updated;
 }
 
-async function requireProfile(appwriteUserId: string, expectedRole?: UserRole) {
+async function requireProfile(input: VisitorSessionInput, expectedRole?: UserRole) {
+  const appwriteUserId = typeof input === "string" ? input : input.userId;
   if (!appwriteUserId) {
     throw new Error("Your login session has expired. Sign in again.");
   }
@@ -305,11 +320,17 @@ async function requireProfile(appwriteUserId: string, expectedRole?: UserRole) {
   if (profile.status === "inactive") {
     throw new Error("This account is suspended.");
   }
-  if (expectedRole && profile.role !== expectedRole) {
+  const verifiedRole = typeof input === "string" ? profile.role : input.role;
+  if (expectedRole && verifiedRole !== expectedRole) {
     throw new Error(`Only ${expectedRole.replaceAll("_", " ")} accounts can perform this action.`);
   }
 
-  return profile;
+  return {
+    ...profile,
+    $id: typeof input === "string" ? profile.$id : input.profileId,
+    role: verifiedRole,
+    estateId: typeof input === "string" ? profile.estateId : input.estateId
+  };
 }
 
 async function findProfileByUserId(appwriteUserId: string) {
@@ -333,7 +354,8 @@ async function findProfileByUserId(appwriteUserId: string) {
 }
 
 async function findOrCreateResidentForProfile(profile: AppwriteProfileRow): Promise<Resident> {
-  const residents = await listAppwriteTableRows<AppwriteResidentRow>("residents");
+  const estateId = profile.estateId ?? APPWRITE_LBSVIEW_ESTATE_ID;
+  const residents = await listAppwriteTableRows<AppwriteResidentRow>("residents", { estateId });
   const normalizedPhone = normalizePhoneNumber(profile.phone ?? "");
   const normalizedEmail = String(profile.email ?? "").trim().toLowerCase();
   const existing = residents.find((resident) =>
@@ -347,7 +369,7 @@ async function findOrCreateResidentForProfile(profile: AppwriteProfileRow): Prom
 
   const now = new Date().toISOString();
   const created = await appwriteUpsertRow<AppwriteResidentRow>("residents", safeAppwriteId("res", `${profile.userId}:${profile.email}:${profile.phone}`), {
-    estateId: profile.estateId ?? APPWRITE_LBSVIEW_ESTATE_ID,
+    estateId,
     fullName: profile.fullName ?? "Resident",
     phone: profile.phone ?? "",
     email: profile.email ?? "",
@@ -505,15 +527,15 @@ async function listVisitorLogsForVisitor(visitorId: string) {
   }
 }
 
-async function findResidentView(residentId: string) {
-  const row = (await listAppwriteTableRows<AppwriteResidentRow>("residents")).find((resident) => resident.$id === residentId);
+async function findResidentView(residentId: string, scope: AppwriteEstateScope = {}) {
+  const row = (await listAppwriteTableRows<AppwriteResidentRow>("residents", scope)).find((resident) => resident.$id === residentId);
   return row ? mapResidentRow(row) : null;
 }
 
-async function buildVisitorViews(rows: AppwriteVisitorRow[]): Promise<AppwriteVisitorView[]> {
+async function buildVisitorViews(rows: AppwriteVisitorRow[], scope: AppwriteEstateScope = {}): Promise<AppwriteVisitorView[]> {
   const [residentRows, unitRows] = await Promise.all([
-    listAppwriteTableRows<AppwriteResidentRow>("residents"),
-    listAppwriteTableRows<AppwriteUnitRow>("units")
+    listAppwriteTableRows<AppwriteResidentRow>("residents", scope),
+    listAppwriteTableRows<AppwriteUnitRow>("units", scope)
   ]);
   const residentsById = new Map(residentRows.map((resident) => [resident.$id ?? "", resident]));
   const unitsById = new Map(unitRows.map((unit) => [unit.$id ?? "", unit]));
@@ -531,6 +553,12 @@ async function buildVisitorViews(rows: AppwriteVisitorRow[]): Promise<AppwriteVi
       unitCode: unitRow?.unitCode ?? resident?.houseNumber ?? "Unit pending"
     };
   });
+}
+
+function estateScopeForProfile(profile: AppwriteProfileRow): AppwriteEstateScope {
+  return profile.role === "super_admin"
+    ? { includeAllEstates: true }
+    : { estateId: profile.estateId ?? APPWRITE_LBSVIEW_ESTATE_ID };
 }
 
 function sortVisitorRowsDescending(left: AppwriteVisitorRow, right: AppwriteVisitorRow) {
