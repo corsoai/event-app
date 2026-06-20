@@ -2586,6 +2586,8 @@ function AppwriteOnboardingPanel() {
   const [message, setMessage] = useState("");
   const [busy, setBusy] = useState<"" | "status" | "setup" | "dry-run" | "import" | "billing-dry-run" | "billing-import">("");
   const ready = Boolean(status?.configured);
+  const missingKeys = status?.missing ?? [];
+  const tableIds = status?.tableIds ?? [];
   const hasRows = rows.length > 0;
   const importChunkSize = 12;
 
@@ -2599,10 +2601,22 @@ function AppwriteOnboardingPanel() {
 
     try {
       const response = await fetch("/api/appwrite/onboarding/status", { cache: "no-store" });
-      const payload = await response.json() as AppwriteOnboardingStatus;
-      setStatus(payload);
-    } catch {
-      setMessage("Corso status could not be checked.");
+      const payload = await response.json().catch(() => null) as (Partial<AppwriteOnboardingStatus> & { error?: string }) | null;
+      if (!response.ok) {
+        throw new Error(payload?.error ?? "Corso status could not be checked.");
+      }
+      setStatus({
+        configured: Boolean(payload?.configured),
+        missing: Array.isArray(payload?.missing) ? payload.missing : [],
+        endpoint: String(payload?.endpoint ?? ""),
+        projectId: String(payload?.projectId ?? ""),
+        databaseId: String(payload?.databaseId ?? APPWRITE_ONBOARDING_DATABASE_ID),
+        apiKeyConfigured: Boolean(payload?.apiKeyConfigured),
+        tableIds: Array.isArray(payload?.tableIds) ? payload.tableIds : []
+      });
+    } catch (error) {
+      setStatus(null);
+      setMessage(error instanceof Error ? error.message : "Corso status could not be checked.");
     } finally {
       setBusy("");
     }
@@ -2836,8 +2850,8 @@ function AppwriteOnboardingPanel() {
           <div className="mt-4 grid gap-2 text-xs text-slate-400">
             <p><span className="text-slate-500">Project:</span> {status?.projectId || "Not set"}</p>
             <p><span className="text-slate-500">Endpoint:</span> {status?.endpoint || "Not checked"}</p>
-            <p><span className="text-slate-500">Missing:</span> {status?.missing.length ? status.missing.join(", ") : "None"}</p>
-            <p><span className="text-slate-500">Tables:</span> {status?.tableIds.length ?? 0}</p>
+            <p><span className="text-slate-500">Missing:</span> {missingKeys.length ? missingKeys.join(", ") : "None"}</p>
+            <p><span className="text-slate-500">Tables:</span> {tableIds.length}</p>
           </div>
           <div className="mt-4 flex flex-wrap gap-2">
             <Button type="button" className="min-h-9 px-3 py-1 text-xs" disabled={!ready || busy === "setup"} onClick={() => void setupSchema()}>
