@@ -157,7 +157,7 @@ if (!stanley) {
 }
 const stanleyAuth = await ensureAuthUser({
   fullName: "Stanley Agbonifo",
-  email: "stanley@nevosys.com",
+  email: "07033992255@corso.ng",
   phone: "07033992255",
   password: "Admin247#",
   role: "resident",

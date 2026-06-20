@@ -153,10 +153,11 @@ The importer writes only approved rows. Rows flagged for review, unknown propert
 
 All default accounts use `Admin247#`.
 
-- Super Admin: `super@corso.test`
-- Estate Admin: `admin@lbsview.test`
-- Resident: `resident@lbsview.test`
-- Security Guard: `security@lbsview.test`
+- Super Admin: `super@corso.ng`
+- Estate Admin: `admin@corso.ng`
+- Resident: `resident@corso.ng`
+- Security Guard: `security@corso.ng`
+- CSO: `cso@corso.ng`
 
 ## Local Account Approval Demo
 
@@ -167,7 +168,7 @@ Approval flow:
 1. Resident opens `/signup`.
 2. Resident enters name, phone number, password, role, and estate.
 3. Resident submits the access request.
-4. Estate admin logs in with `admin@lbsview.test / Admin247#`.
+4. Estate admin logs in with `admin@corso.ng / Admin247#`.
 5. Admin opens `/admin/residents`.
 6. Admin approves the pending access request.
 7. The resident can now log in with the phone number and password they submitted.

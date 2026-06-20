@@ -21,31 +21,31 @@ export const roleHome: Record<UserRole, string> = {
 
 export const demoUsers = [
   {
-    email: "super@corso.test",
+    email: "super@corso.ng",
     password: DEMO_PASSWORD,
     role: "super_admin" as UserRole,
     name: "Corso Platform Admin"
   },
   {
-    email: "admin@lbsview.test",
+    email: "admin@corso.ng",
     password: DEMO_PASSWORD,
     role: "estate_admin" as UserRole,
     name: "LBS View Estate Manager"
   },
   {
-    email: "resident@lbsview.test",
+    email: "resident@corso.ng",
     password: DEMO_PASSWORD,
     role: "resident" as UserRole,
     name: "Resident User"
   },
   {
-    email: "security@lbsview.test",
+    email: "security@corso.ng",
     password: DEMO_PASSWORD,
     role: "security_guard" as UserRole,
     name: "Gate Officer Musa"
   },
   {
-    email: "cso@lbsview.test",
+    email: "cso@corso.ng",
     password: DEMO_PASSWORD,
     role: "cso" as UserRole,
     name: "LBS View CSO"

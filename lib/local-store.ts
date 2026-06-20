@@ -1440,7 +1440,7 @@ export function getCurrentResident(state: LocalEstateState) {
   if (!session || session.role !== "resident") {
     return state.residents[0] ?? makeResidentProfile({
       fullName: "Resident User",
-      email: "resident@lbsview.test",
+      email: "resident@corso.ng",
       phone: "Not provided",
       estate: "LBS View Estate",
       residentId: "res-local-demo"

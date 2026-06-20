@@ -146,7 +146,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
       setEmail("");
       setPassword("");
       setMessageTone("error");
-      setMessage("Old estate demo emails are disabled. Use a phone number or an @lbsview.test email instead.");
+      setMessage("Old estate demo emails are disabled. Use a phone number or an @corso.ng email instead.");
       setLoading(false);
       return;
     }

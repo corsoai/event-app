@@ -54,7 +54,7 @@ async function main() {
     await page.getByRole("button", { name: "Sign in" }).click();
     await page.getByText("waiting for estate admin approval").waitFor({ timeout: 10000 });
 
-    await login(page, "admin@lbsview.test", "/admin");
+    await login(page, "admin@corso.ng", "/admin");
     await page.goto(`${baseUrl}/admin/users`);
     await page.getByText(residentPhoneDisplay, { exact: true }).waitFor({ timeout: 10000 });
     await page.locator("tr", { hasText: residentPhoneDisplay }).getByRole("button", { name: "Approve" }).click();

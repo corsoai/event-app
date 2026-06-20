@@ -123,7 +123,7 @@ type AppwriteResidentRow = {
 const defaultAppwriteUsers: AppwriteManagedUserInput[] = [
   {
     fullName: "Corso Platform Admin",
-    email: "super@corso.test",
+    email: "super@corso.ng",
     phone: "2348000000001",
     password: DEMO_PASSWORD,
     role: "super_admin",
@@ -132,7 +132,7 @@ const defaultAppwriteUsers: AppwriteManagedUserInput[] = [
   },
   {
     fullName: "LBS View Estate Manager",
-    email: "admin@lbsview.test",
+    email: "admin@corso.ng",
     phone: "2348011112040",
     password: DEMO_PASSWORD,
     role: "estate_admin",
@@ -141,7 +141,7 @@ const defaultAppwriteUsers: AppwriteManagedUserInput[] = [
   },
   {
     fullName: "Resident User",
-    email: "resident@lbsview.test",
+    email: "resident@corso.ng",
     phone: "2348039204412",
     password: DEMO_PASSWORD,
     role: "resident",
@@ -150,7 +150,7 @@ const defaultAppwriteUsers: AppwriteManagedUserInput[] = [
   },
   {
     fullName: "Gate Officer Musa",
-    email: "security@lbsview.test",
+    email: "security@corso.ng",
     phone: "2348060001122",
     password: DEMO_PASSWORD,
     role: "security_guard",
@@ -159,7 +159,7 @@ const defaultAppwriteUsers: AppwriteManagedUserInput[] = [
   },
   {
     fullName: "LBS View CSO",
-    email: "cso@lbsview.test",
+    email: "cso@corso.ng",
     phone: "2348060001123",
     password: DEMO_PASSWORD,
     role: "cso",

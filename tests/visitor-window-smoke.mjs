@@ -46,7 +46,7 @@ async function main() {
       document.cookie = "corso_role=; Max-Age=0; path=/";
     });
 
-    await login(page, "resident@lbsview.test", "/resident");
+    await login(page, "resident@corso.ng", "/resident");
     const future = lagosDateTime(60);
 
     await page.goto(`${baseUrl}/resident/invite-visitor`);
@@ -58,7 +58,7 @@ async function main() {
     await page.getByText("Visitor invitation saved locally").waitFor({ timeout: 10000 });
     const visitorCode = (await page.locator("p.font-mono.text-xl").textContent())?.trim() ?? "";
 
-    await login(page, "security@lbsview.test", "/security");
+    await login(page, "security@corso.ng", "/security");
     await page.goto(`${baseUrl}/security/verify-visitor`);
     await page.getByLabel("Access code").fill(visitorCode);
     await page.getByRole("button", { name: "Search code" }).click();

@@ -46,7 +46,7 @@ async function main() {
       document.cookie = "corso_role=; Max-Age=0; path=/";
     });
 
-    await login(page, "resident@lbsview.test", "/resident");
+    await login(page, "resident@corso.ng", "/resident");
 
     await page.goto(`${baseUrl}/resident/invite-visitor`);
     const visitWindow = currentLagosDateTime();
@@ -71,7 +71,7 @@ async function main() {
     await page.getByRole("button", { name: "Submit complaint" }).click();
     await page.getByText("saved locally for admin review").waitFor({ timeout: 10000 });
 
-    await login(page, "security@lbsview.test", "/security");
+    await login(page, "security@corso.ng", "/security");
     await page.goto(`${baseUrl}/security/verify-visitor`);
     await page.getByLabel("Access code").fill(visitorCode);
     await page.getByText("Local Test Visitor").waitFor({ timeout: 10000 });
@@ -82,7 +82,7 @@ async function main() {
     await page.goto(`${baseUrl}/security/logs`);
     await page.getByText(visitorCode).waitFor({ timeout: 10000 });
 
-    await login(page, "admin@lbsview.test", "/admin");
+    await login(page, "admin@corso.ng", "/admin");
     await page.goto(`${baseUrl}/admin/payments`);
     await page.getByText("LOCAL-TEST-001").waitFor({ timeout: 10000 });
     const paymentRow = page.locator("tr", { hasText: "LOCAL-TEST-001" });

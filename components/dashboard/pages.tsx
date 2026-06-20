@@ -5302,7 +5302,7 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Full name"><Input name="fullName" placeholder="Full name" required /></Field>
             <Field label="Phone"><Input name="phone" placeholder="+234 801 000 0000" required /></Field>
-            <Field label="Email"><Input name="email" type="email" placeholder="Optional login email, e.g. guard@lbsview.test" /></Field>
+            <Field label="Email"><Input name="email" type="email" placeholder="Optional login email, e.g. guard@corso.ng" /></Field>
             <Field label="Role">
               <Select value={role} onChange={(event) => setRole(event.target.value as UserRole)}>
                 {allowedRoles.map((item) => (
@@ -5342,7 +5342,7 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
             <span>
               Send setup email to this user
               <span className="mt-1 block text-xs leading-5 text-slate-500">
-                Optional. For test emails like @lbsview.test, keep this off and give the temporary password privately.
+                Optional. For internal emails like @corso.ng, keep this off and give the temporary password privately.
               </span>
             </span>
           </label>
