@@ -624,9 +624,8 @@ function sessionSecretFromSetCookie(header: string | null, projectId: string) {
     const encoded = match[1];
     try {
       const decoded = decodeURIComponent(encoded);
-      const parsed = JSON.parse(Buffer.from(decoded, "base64").toString("utf8")) as { secret?: unknown };
-      if (typeof parsed.secret === "string" && parsed.secret.trim()) {
-        return parsed.secret.trim();
+      if (decoded.trim()) {
+        return decoded.trim();
       }
     } catch {
       // Try the next matching cookie value.
