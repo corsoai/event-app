@@ -35,21 +35,22 @@ export async function POST(request: NextRequest) {
 }
 
 function loginResponse(user: Awaited<ReturnType<typeof loginWithAppwrite>>) {
-  const response = NextResponse.json({ user });
+  const { appwriteSessionSecret, appwriteUserId, ...publicUser } = user;
+  const response = NextResponse.json({ user: publicUser });
   response.cookies.set("corso_role", user.role, {
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production"
   });
-  response.cookies.set("corso_appwrite_user", user.appwriteUserId, {
+  response.cookies.set("corso_appwrite_user", appwriteUserId, {
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
     sameSite: "lax",
     secure: process.env.NODE_ENV === "production",
     httpOnly: true
   });
-  response.cookies.set("corso_appwrite_session", user.appwriteSessionSecret, {
+  response.cookies.set("corso_appwrite_session", appwriteSessionSecret, {
     path: "/",
     maxAge: 60 * 60 * 24 * 7,
     sameSite: "lax",
