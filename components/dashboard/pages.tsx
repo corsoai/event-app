@@ -923,6 +923,43 @@ function useAdminAccountingState(state: LocalEstateState) {
   };
 }
 
+function useAdminAccountingSummaryOnly() {
+  const [summary, setSummary] = useState<AppwriteAccountingSummary | null>(null);
+  const [loadingSummary, setLoadingSummary] = useState(true);
+
+  useEffect(() => {
+    let active = true;
+
+    async function loadSummary() {
+      setLoadingSummary(true);
+
+      try {
+        const response = await fetch("/api/appwrite/admin/accounting/summary?refresh=1", { cache: "no-store" });
+        const payload = await response.json().catch(() => null) as (AppwriteAccountingSummary & { error?: string }) | null;
+
+        if (!active) return;
+        setSummary(response.ok && payload ? payload : null);
+      } catch {
+        if (active) {
+          setSummary(null);
+        }
+      } finally {
+        if (active) {
+          setLoadingSummary(false);
+        }
+      }
+    }
+
+    void loadSummary();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return { summary, loadingSummary };
+}
+
 function filenameFromContentDisposition(value: string | null) {
   const match = value?.match(/filename="?([^"]+)"?/i);
   return match?.[1];
@@ -4669,6 +4706,8 @@ export function SettingsPage() {
 export function SuperAdminDashboard() {
   const { state } = useLocalEstateStore();
   const { visitorViews, loadingVisitors } = useLiveVisitorViews(readAppwriteAdminVisitors);
+  const { summary, loadingSummary } = useAdminAccountingSummaryOnly();
+  const platformResidents = summary?.residentsCount ?? state.residents.length;
 
   return (
     <>
@@ -4679,7 +4718,7 @@ export function SuperAdminDashboard() {
       </PageHeader>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Managed estates" value={String(state.estates.length)} helper="Platform communities" icon={<Building2 className="h-5 w-5" />} />
-        <StatCard label="Platform residents" value={String(state.residents.length)} helper="Seed resident records" icon={<Users className="h-5 w-5" />} />
+        <StatCard label="Platform residents" value={loadingSummary ? "..." : String(platformResidents)} helper="Live Appwrite resident records" icon={<Users className="h-5 w-5" />} />
         <StatCard label="Visitor events" value={loadingVisitors ? "..." : String(visitorViews.length)} helper="Across estates today" icon={<DoorOpen className="h-5 w-5" />} />
         <StatCard label="Open tickets" value={String(state.complaints.filter((item) => item.status !== "resolved").length)} helper="Needs estate admin action" icon={<ClipboardList className="h-5 w-5" />} />
       </div>

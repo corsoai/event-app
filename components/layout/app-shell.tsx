@@ -161,13 +161,23 @@ export function AppShell({
     window.localStorage.setItem(THEME_STORAGE_KEY, theme);
   }, [theme, themeLoaded]);
 
-  function logout() {
+  async function logout() {
+    try {
+      await fetch("/api/appwrite/auth/logout", {
+        method: "POST",
+        cache: "no-store"
+      });
+    } catch {
+      // Continue with local cleanup even if the network request fails.
+    }
+
     localStorage.removeItem("corso_user");
     Object.keys(sessionStorage)
       .filter((key) => key.startsWith(RESIDENT_ACCOUNTING_CACHE_PREFIX))
       .forEach((key) => sessionStorage.removeItem(key));
     document.cookie = "corso_role=; Max-Age=0; path=/";
     router.push("/login");
+    router.refresh();
   }
 
   return (
