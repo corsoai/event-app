@@ -12,7 +12,7 @@ export async function GET(request: NextRequest) {
     const directory = await listAppwriteResidentDirectory(estateScopeFor(context));
     return NextResponse.json(directory);
   } catch (error) {
-    return adminRouteError(error, "Unable to load Appwrite residents.");
+    return adminRouteError(error, "Unable to load resident records.");
   }
 }
 
@@ -48,7 +48,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json({ resident });
   } catch (error) {
-    return adminRouteError(error, "Unable to update Appwrite resident.");
+    return adminRouteError(error, "Unable to update resident record.");
   }
 }
 

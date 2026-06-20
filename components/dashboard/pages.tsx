@@ -223,6 +223,47 @@ type AppwriteAccountingDirectory = AppwriteResidentDirectory & {
   };
 };
 
+function normalizeAppwriteResidentDirectory(payload: Partial<AppwriteResidentDirectory> | null | undefined): AppwriteResidentDirectory {
+  const properties = Array.isArray(payload?.properties) ? payload.properties : [];
+  const units = Array.isArray(payload?.units) ? payload.units : [];
+  const residents = Array.isArray(payload?.residents) ? payload.residents : [];
+  const total = payload?.total as Partial<AppwriteResidentDirectory["total"]> | undefined;
+
+  return {
+    properties,
+    units,
+    residents,
+    total: {
+      properties: Number(total?.properties ?? properties.length),
+      units: Number(total?.units ?? units.length),
+      residents: Number(total?.residents ?? residents.length)
+    }
+  };
+}
+
+function normalizeAppwriteAccountingDirectory(payload: Partial<AppwriteAccountingDirectory> | null | undefined): AppwriteAccountingDirectory {
+  const directory = normalizeAppwriteResidentDirectory(payload);
+  const bills = Array.isArray(payload?.bills) ? payload.bills : [];
+  const payments = Array.isArray(payload?.payments) ? payload.payments : [];
+  const auditLogs = Array.isArray(payload?.auditLogs) ? payload.auditLogs : [];
+  const total = payload?.total as Partial<AppwriteAccountingDirectory["total"]> | undefined;
+
+  return {
+    ...directory,
+    bills,
+    payments,
+    auditLogs,
+    matchedResidentId: payload?.matchedResidentId ?? null,
+    resident: payload?.resident ?? null,
+    summary: payload?.summary ?? null,
+    total: {
+      ...directory.total,
+      bills: Number(total?.bills ?? bills.length),
+      payments: Number(total?.payments ?? payments.length)
+    }
+  };
+}
+
 type ResidentAccountingSummary = {
   totalBilled: number;
   totalPaid: number;
@@ -638,7 +679,7 @@ function LiveVisitorCards({
     <Card className="mb-6">
       <CardHeader
         title={title}
-        description={loading ? "Loading live Appwrite visitor records..." : `${visitorViews.length} live visitor record${visitorViews.length === 1 ? "" : "s"} found.`}
+        description={loading ? "Loading live visitor records..." : `${visitorViews.length} live visitor record${visitorViews.length === 1 ? "" : "s"} found.`}
       />
       {error ? (
         <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm font-semibold text-danger">
@@ -738,7 +779,7 @@ function readCachedResidentAccounting() {
       return null;
     }
 
-    return cached.data;
+    return normalizeAppwriteAccountingDirectory(cached.data);
   } catch {
     return null;
   }
@@ -785,10 +826,11 @@ function useResidentAccountingState(state: LocalEstateState) {
         throw new Error(payload?.error ?? "Unable to load your account.");
       }
 
-      setAccounting(payload);
-      writeCachedResidentAccounting(payload);
-      setAccountingStatus(payload.residents.length
-        ? `Loaded ${payload.bills.length} bills and ${payload.payments.length} payments from your account.`
+      const normalized = normalizeAppwriteAccountingDirectory(payload);
+      setAccounting(normalized);
+      writeCachedResidentAccounting(normalized);
+      setAccountingStatus(normalized.residents.length
+        ? `Loaded ${normalized.bills.length} bills and ${normalized.payments.length} payments from your account.`
         : "No resident accounting record matched this login yet.");
     } catch (error) {
       setAccounting(null);
@@ -866,7 +908,7 @@ function useAdminAccountingState(state: LocalEstateState) {
       const summaryResponse = await fetch(`/api/appwrite/admin/accounting/summary${refreshQuery}`, { cache: "no-store" });
       const summaryPayload = await summaryResponse.json().catch(() => null) as (AppwriteAccountingSummary & { error?: string }) | null;
       if (!summaryResponse.ok || !summaryPayload) {
-        throw new Error(summaryPayload?.error ?? "Unable to load Appwrite accounting summary.");
+        throw new Error(summaryPayload?.error ?? "Unable to load accounting summary.");
       }
 
       setSummary(summaryPayload);
@@ -881,14 +923,15 @@ function useAdminAccountingState(state: LocalEstateState) {
         const response = await fetch(`/api/appwrite/admin/accounting${refreshQuery}`, { cache: "no-store" });
         const payload = await response.json().catch(() => null) as (AppwriteAccountingDirectory & { error?: string }) | null;
         if (!response.ok || !payload) {
-          throw new Error(payload?.error ?? "Unable to load Appwrite accounting.");
+          throw new Error(payload?.error ?? "Unable to load accounting.");
         }
 
-        setAccounting(payload);
-        adminAccountingSessionCache = payload;
+        const normalized = normalizeAppwriteAccountingDirectory(payload);
+        setAccounting(normalized);
+        adminAccountingSessionCache = normalized;
         adminAccountingSessionUpdatedAt = Date.now();
         setLastUpdated(adminAccountingSessionUpdatedAt);
-        setAccountingStatus(`Loaded ${payload.bills.length} bills and ${payload.payments.length} payments from Appwrite TablesDB.`);
+        setAccountingStatus(`Loaded ${normalized.bills.length} bills and ${normalized.payments.length} payments from Corso records.`);
       } catch (detailError) {
         setAccounting(null);
         setAccountingStatus(detailError instanceof Error
@@ -1382,14 +1425,14 @@ export function AdminDashboard() {
         </Link>
       </PageHeader>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
-        <StatCard label="Total residents" value={loadingAccounting ? "..." : String(totalResidents)} helper="Live Appwrite resident records" icon={<Users className="h-5 w-5" />} />
-        <StatCard label="Visitors today" value={loadingVisitors ? "..." : String(todaysVisitorViews.length)} helper="Live Appwrite records for today" icon={<QrCode className="h-5 w-5" />} />
+        <StatCard label="Total residents" value={loadingAccounting ? "..." : String(totalResidents)} helper="Live resident records" icon={<Users className="h-5 w-5" />} />
+        <StatCard label="Visitors today" value={loadingVisitors ? "..." : String(todaysVisitorViews.length)} helper="Live visitor records for today" icon={<QrCode className="h-5 w-5" />} />
         <StatCard label="Open complaints" value={String(openComplaints)} helper="Needs admin action" icon={<ClipboardList className="h-5 w-5" />} />
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
         <DataTable
           title="Visitor access log"
-          description={visitorError || "Five most recent live Appwrite visitor records for today."}
+          description={visitorError || "Five most recent live visitor records for today."}
           headers={["Visitor", "Resident", "Date", "Code", "Status"]}
           rows={visitorAccessRows}
         />
@@ -1466,7 +1509,7 @@ export function ResidentsAdminPage() {
   const [residentMessage, setResidentMessage] = useState("");
   const [onboardingMessage, setOnboardingMessage] = useState("");
   const [appwriteDirectory, setAppwriteDirectory] = useState<AppwriteResidentDirectory | null>(null);
-  const [appwriteDirectoryStatus, setAppwriteDirectoryStatus] = useState("Loading Appwrite residents...");
+  const [appwriteDirectoryStatus, setAppwriteDirectoryStatus] = useState("Loading resident records...");
   const [loadingAppwriteDirectory, setLoadingAppwriteDirectory] = useState(false);
   const [exportingScope, setExportingScope] = useState<"" | "residents" | "all">("");
   const [selectedResidentId, setSelectedResidentId] = useState("");
@@ -1493,25 +1536,26 @@ export function ResidentsAdminPage() {
 
   async function refreshAppwriteResidentDirectory() {
     setLoadingAppwriteDirectory(true);
-    setAppwriteDirectoryStatus("Loading Appwrite residents...");
+    setAppwriteDirectoryStatus("Loading resident records...");
 
     try {
       const response = await fetch("/api/appwrite/admin/residents", { cache: "no-store" });
       const payload = await response.json().catch(() => null) as (AppwriteResidentDirectory & { error?: string }) | null;
 
       if (!response.ok) {
-        throw new Error(payload?.error ?? "Unable to load Appwrite residents.");
+        throw new Error(payload?.error ?? "Unable to load resident records.");
       }
 
-      setAppwriteDirectory(payload);
+      const normalized = normalizeAppwriteResidentDirectory(payload);
+      setAppwriteDirectory(normalized);
       setAppwriteDirectoryStatus(
-        payload?.residents.length
-          ? `Loaded ${payload.residents.length} imported residents from Appwrite TablesDB.`
-          : "Appwrite is connected, but no imported residents were found."
+        normalized.residents.length
+          ? `Loaded ${normalized.residents.length} resident records from Corso.`
+          : "Corso is connected, but no resident records were found."
       );
     } catch (error) {
       setAppwriteDirectory(null);
-      setAppwriteDirectoryStatus(error instanceof Error ? error.message : "Unable to load Appwrite residents.");
+      setAppwriteDirectoryStatus(error instanceof Error ? error.message : "Unable to load resident records.");
     } finally {
       setLoadingAppwriteDirectory(false);
     }
@@ -1533,13 +1577,13 @@ export function ResidentsAdminPage() {
       const link = document.createElement("a");
       link.href = url;
       link.download = filenameFromContentDisposition(response.headers.get("content-disposition")) ?? (
-        scope === "residents" ? "corso-residents.csv" : "corso-appwrite-all-data.csv"
+        scope === "residents" ? "corso-residents.csv" : "corso-all-data.csv"
       );
       document.body.appendChild(link);
       link.click();
       link.remove();
       window.URL.revokeObjectURL(url);
-      setResidentMessage(scope === "residents" ? "Residents CSV download started." : "Full Appwrite CSV download started.");
+      setResidentMessage(scope === "residents" ? "Residents CSV download started." : "Full Corso CSV download started.");
     } catch (error) {
       setResidentMessage(error instanceof Error ? error.message : "CSV export failed.");
     } finally {
@@ -1702,7 +1746,7 @@ export function ResidentsAdminPage() {
     });
     const payload = await response.json().catch(() => null) as { resident?: Resident; error?: string } | null;
     if (!response.ok || !payload?.resident) {
-      throw new Error(payload?.error ?? "Appwrite resident could not be updated.");
+      throw new Error(payload?.error ?? "Resident record could not be updated.");
     }
 
     return payload.resident;
@@ -2558,7 +2602,7 @@ function AppwriteOnboardingPanel() {
       const payload = await response.json() as AppwriteOnboardingStatus;
       setStatus(payload);
     } catch {
-      setMessage("Appwrite status could not be checked.");
+      setMessage("Corso status could not be checked.");
     } finally {
       setBusy("");
     }
@@ -2572,13 +2616,13 @@ function AppwriteOnboardingPanel() {
       const response = await fetch("/api/appwrite/onboarding/setup", { method: "POST" });
       const payload = await response.json() as { error?: string };
       if (!response.ok) {
-        throw new Error(payload.error ?? "Appwrite schema setup failed.");
+        throw new Error(payload.error ?? "Corso database setup failed.");
       }
 
-      setMessage("Appwrite database and tables are ready.");
+      setMessage("Corso database and records are ready.");
       await refreshStatus();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Appwrite schema setup failed.");
+      setMessage(error instanceof Error ? error.message : "Corso database setup failed.");
     } finally {
       setBusy("");
     }
@@ -2766,8 +2810,8 @@ function AppwriteOnboardingPanel() {
   return (
     <Card>
       <CardHeader
-        title="Appwrite import"
-        description="Create the live TablesDB schema, then import approved Excel-preview rows."
+        title="Corso import"
+        description="Create the live Corso data schema, then import approved Excel-preview rows."
         action={
           <Button type="button" variant="secondary" className="min-h-9 px-3 py-1 text-xs" disabled={busy === "status"} onClick={() => void refreshStatus()}>
             <RefreshCw className="h-3.5 w-3.5" />
@@ -2783,7 +2827,7 @@ function AppwriteOnboardingPanel() {
                 <Database className="h-5 w-5" />
               </span>
               <div>
-                <p className="text-sm font-semibold text-white">TablesDB</p>
+                <p className="text-sm font-semibold text-white">Corso data</p>
                 <p className="text-xs text-slate-400">{status?.databaseId ?? "lbsview_estate"}</p>
               </div>
             </div>
@@ -3233,7 +3277,7 @@ export function BillsAdminPage() {
       />
       <div className="mt-6">
         <BillsTable
-          title={loading ? "Loading Appwrite billing register" : "Current billing register"}
+          title={loading ? "Loading billing register" : "Current billing register"}
           rows={liveState.bills}
           state={liveState}
           admin
@@ -3474,7 +3518,7 @@ export function PaymentsAdminPage() {
           error?: string;
         } | null;
         if (!response.ok) {
-          throw new Error(payload?.error ?? "Unable to record Appwrite payment.");
+          throw new Error(payload?.error ?? "Unable to record payment.");
         }
         if (payload?.allocation && resident) {
           setPaymentConfirmation({
@@ -3682,7 +3726,7 @@ export function ComplaintsAdminPage() {
     <>
       <PageHeader title="Complaints" description={`${openCount} open complaints. Assign maintenance requests, update status, track priority, and keep resident history in one place.`} />
       <Card className="mb-6">
-        <CardHeader title="Complaint filters" description="Filter complaint records from Appwrite." />
+        <CardHeader title="Complaint filters" description="Filter complaint records from Corso." />
         <div className="grid gap-4 md:grid-cols-4">
           <Field label="Search">
             <Input
@@ -3824,7 +3868,7 @@ export function AnnouncementsAdminPage() {
 
       setMessage(editingAnnouncement
         ? "Announcement updated."
-        : "Announcement published to Appwrite.");
+        : "Announcement published to Corso.");
       setEditingAnnouncement(null);
       setAnnouncementForm(emptyAnnouncementForm());
       await refreshAnnouncements({ force: true });
@@ -4718,7 +4762,7 @@ export function SuperAdminDashboard() {
       </PageHeader>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Managed estates" value={String(state.estates.length)} helper="Platform communities" icon={<Building2 className="h-5 w-5" />} />
-        <StatCard label="Platform residents" value={loadingSummary ? "..." : String(platformResidents)} helper="Live Appwrite resident records" icon={<Users className="h-5 w-5" />} />
+        <StatCard label="Platform residents" value={loadingSummary ? "..." : String(platformResidents)} helper="Live resident records" icon={<Users className="h-5 w-5" />} />
         <StatCard label="Visitor events" value={loadingVisitors ? "..." : String(visitorViews.length)} helper="Across estates today" icon={<DoorOpen className="h-5 w-5" />} />
         <StatCard label="Open tickets" value={String(state.complaints.filter((item) => item.status !== "resolved").length)} helper="Needs estate admin action" icon={<ClipboardList className="h-5 w-5" />} />
       </div>
@@ -4974,7 +5018,7 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
     });
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.error ?? "Unable to update Appwrite user.");
+      throw new Error(data.error ?? "Unable to update user.");
     }
 
     return data;
@@ -4986,7 +5030,7 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
     });
     const data = await response.json();
     if (!response.ok) {
-      throw new Error(data.error ?? "Unable to delete Appwrite user.");
+      throw new Error(data.error ?? "Unable to delete user.");
     }
 
     return data;
@@ -5000,7 +5044,7 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
       const response = await fetch("/api/appwrite/admin/users", { cache: "no-store" });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error ?? "Unable to load Appwrite users.");
+        throw new Error(data.error ?? "Unable to load users.");
       }
 
       setUsers(data.users ?? []);
@@ -5040,7 +5084,7 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
       });
       const data = await response.json();
       if (!response.ok) {
-        throw new Error(data.error ?? "Unable to create Appwrite user.");
+        throw new Error(data.error ?? "Unable to create user.");
       }
 
       setMessage(data.message);
@@ -5578,7 +5622,7 @@ export function ResidentDashboard() {
           <div className="flex shrink-0 items-center gap-2">
             <button
               type="button"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg border border-line bg-white/80 text-slate-700 shadow-sm"
+              className="resident-top-action inline-flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm"
               onClick={() => void refreshAccounting({ bypassCache: true })}
               aria-label="Refresh account"
             >
@@ -5586,7 +5630,7 @@ export function ResidentDashboard() {
             </button>
             <Link
               href="/resident/invite-visitor"
-              className="inline-flex h-9 w-9 items-center justify-center rounded-lg bg-smart text-white shadow-sm"
+              className="resident-top-action inline-flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm"
               aria-label="Invite visitor"
             >
               <QrCode className="h-4 w-4" />
@@ -6218,7 +6262,7 @@ function ResidentHomeBillsSection({ bills }: { bills: Bill[] }) {
         {recentBills.length ? recentBills.map((bill, index) => (
           <ResidentBillListItem key={bill.id} bill={bill} className={index > 2 ? "hidden sm:block" : ""} />
         )) : (
-          <p className="rounded-lg border border-line bg-white/60 p-4 text-sm text-slate-500">No bills have been recorded for your account yet.</p>
+          <p className="resident-account-card resident-account-muted rounded-lg border p-4 text-sm">No bills have been recorded for your account yet.</p>
         )}
       </div>
     </Card>
@@ -6236,19 +6280,19 @@ function ResidentHomePaymentsSection({ payments, bills }: { payments: Payment[];
       <CardHeader title="My payments" description="Latest confirmed resident payment records." />
       <div className="grid gap-3">
         {recentPayments.length ? recentPayments.map((payment) => (
-          <div key={payment.id} className="rounded-lg border border-line/70 bg-white/70 p-4">
+          <div key={payment.id} className="resident-account-card rounded-lg border p-4">
             <div className="flex items-start justify-between gap-3">
               <div>
-                <p className="font-semibold text-white">{money(payment.amount)}</p>
-                <p className="mt-1 text-xs text-slate-500">{formatResidentDate(payment.date)} - {paymentChannelLabel(payment)}</p>
+                <p className="resident-account-title font-semibold">{money(payment.amount)}</p>
+                <p className="resident-account-muted mt-1 text-xs">{formatResidentDate(payment.date)} - {paymentChannelLabel(payment)}</p>
               </div>
               <StatusBadge status={payment.status} />
             </div>
-            <p className="mt-3 text-xs text-slate-500">Reference: <span className="font-mono text-slate-200">{payment.reference}</span></p>
-            <p className="mt-1 text-xs text-slate-500">Applied to: {billById.get(payment.billId) ?? "Resident account"}</p>
+            <p className="resident-account-muted mt-3 text-xs">Reference: <span className="resident-account-value font-mono">{payment.reference}</span></p>
+            <p className="resident-account-muted mt-1 text-xs">Applied to: {billById.get(payment.billId) ?? "Resident account"}</p>
           </div>
         )) : (
-          <p className="rounded-lg border border-line bg-white/60 p-4 text-sm text-slate-500">No payments recorded yet.</p>
+          <p className="resident-account-card resident-account-muted rounded-lg border p-4 text-sm">No payments recorded yet.</p>
         )}
       </div>
     </Card>
@@ -6260,18 +6304,18 @@ function ResidentBillListItem({ bill, className = "" }: { bill: Bill; className?
   const outstanding = Math.max(0, bill.amount - paid);
 
   return (
-    <div className={`rounded-lg border border-line/70 bg-white/70 p-4 ${className}`}>
+    <div className={`resident-account-card rounded-lg border p-4 ${className}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <p className="font-semibold text-white">{residentBillTitle(bill)}</p>
-          <p className="mt-1 text-xs text-slate-500">{residentBillPeriod(bill)}</p>
+          <p className="resident-account-title font-semibold">{residentBillTitle(bill)}</p>
+          <p className="resident-account-muted mt-1 text-xs">{residentBillPeriod(bill)}</p>
         </div>
         <StatusBadge status={residentBillStatusLabel(bill)} tone={residentBillStatusTone(bill)} />
       </div>
       <div className="mt-3 grid grid-cols-3 gap-2 text-xs">
-        <p><span className="block text-slate-500">Expected</span><span className="font-semibold text-slate-100">{money(bill.amount)}</span></p>
-        <p><span className="block text-slate-500">Paid</span><span className="font-semibold text-slate-100">{money(paid)}</span></p>
-        <p><span className="block text-slate-500">Outstanding</span><span className="font-semibold text-slate-100">{money(outstanding)}</span></p>
+        <p><span className="resident-account-label block">Expected</span><span className="resident-account-value font-semibold">{money(bill.amount)}</span></p>
+        <p><span className="resident-account-label block">Paid</span><span className="resident-account-value font-semibold">{money(paid)}</span></p>
+        <p><span className="resident-account-label block">Outstanding</span><span className="resident-account-value font-semibold">{money(outstanding)}</span></p>
       </div>
     </div>
   );
@@ -6299,19 +6343,19 @@ function ResidentBillsLiveTable({
           const outstanding = Math.max(0, bill.amount - paid);
 
           return (
-            <article key={bill.id} className="rounded-lg border border-line/70 bg-white/70 p-4">
+            <article key={bill.id} className="resident-account-card rounded-lg border p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0">
-                  <p className="font-semibold text-white">{residentBillTitle(bill)}</p>
+                  <p className="resident-account-title font-semibold">{residentBillTitle(bill)}</p>
                   {bill.category === "opening_balance" ? (
-                    <p className="mt-1 text-xs text-slate-500">Account history before system migration</p>
+                    <p className="resident-account-muted mt-1 text-xs">Account history before system migration</p>
                   ) : null}
                 </div>
                 <StatusBadge status={residentBillStatusLabel(bill)} tone={residentBillStatusTone(bill)} />
               </div>
-              <p className="mt-3 text-sm text-slate-300">{residentBillPeriod(bill)}</p>
-              <p className="mt-3 text-sm text-slate-300">Expected amount: <span className="font-semibold text-white">{money(bill.amount)}</span></p>
-              <p className="mt-2 text-sm text-slate-300">Paid: <span className="font-semibold text-white">{money(paid)}</span> - Outstanding: <span className="font-semibold text-white">{money(outstanding)}</span></p>
+              <p className="resident-account-muted mt-3 text-sm">{residentBillPeriod(bill)}</p>
+              <p className="resident-account-muted mt-3 text-sm">Expected amount: <span className="resident-account-value font-semibold">{money(bill.amount)}</span></p>
+              <p className="resident-account-muted mt-2 text-sm">Paid: <span className="resident-account-value font-semibold">{money(paid)}</span> - Outstanding: <span className="resident-account-value font-semibold">{money(outstanding)}</span></p>
               {outstanding > 0 && onPayBill ? (
                 <Button type="button" className="mt-4 min-h-11 w-full" onClick={() => onPayBill(bill)} disabled={payingBillId === bill.id}>
                   <CreditCard className="h-4 w-4" />
@@ -6321,7 +6365,7 @@ function ResidentBillsLiveTable({
             </article>
           );
         }) : (
-          <p className="rounded-lg border border-line bg-white/60 p-4 text-sm text-slate-500">No bills have been recorded for your account yet.</p>
+          <p className="resident-account-card resident-account-muted rounded-lg border p-4 text-sm">No bills have been recorded for your account yet.</p>
         )}
         {orderedBills.length > mobileLimit ? (
           <Button type="button" variant="secondary" className="min-h-11" onClick={() => setMobileLimit((current) => current + 6)}>
@@ -6329,12 +6373,12 @@ function ResidentBillsLiveTable({
           </Button>
         ) : null}
       </div>
-      <div className="hidden max-w-full overflow-x-auto overscroll-x-contain rounded-lg border border-line/70 bg-white/40 md:block">
+      <div className="resident-account-card hidden max-w-full overflow-x-auto overscroll-x-contain rounded-lg border md:block">
         <table className="w-full table-auto border-separate border-spacing-0 text-left text-sm">
           <thead>
             <tr>
               {["Bill", "Period / Due date", "Expected", "Paid", "Outstanding", "Status", "Action"].map((header) => (
-                <th key={header} className="border-b border-line/70 px-3 py-3 font-semibold text-slate-400">{header}</th>
+                <th key={header} className="border-b border-line/70 px-3 py-3 font-semibold resident-account-label">{header}</th>
               ))}
             </tr>
           </thead>
@@ -6346,13 +6390,13 @@ function ResidentBillsLiveTable({
               return (
                 <tr key={bill.id}>
                   <td className="border-b border-line/50 px-3 py-4 align-top">
-                    <p className="font-semibold text-white">{residentBillTitle(bill)}</p>
-                    {bill.category === "opening_balance" ? <p className="mt-1 text-xs text-slate-500">Account history before system migration</p> : null}
+                    <p className="resident-account-title font-semibold">{residentBillTitle(bill)}</p>
+                    {bill.category === "opening_balance" ? <p className="resident-account-muted mt-1 text-xs">Account history before system migration</p> : null}
                   </td>
-                  <td className="border-b border-line/50 px-3 py-4 align-top text-slate-200">{residentBillPeriod(bill)}</td>
-                  <td className="border-b border-line/50 px-3 py-4 align-top text-slate-200">{money(bill.amount)}</td>
-                  <td className="border-b border-line/50 px-3 py-4 align-top text-slate-200">{money(paid)}</td>
-                  <td className="border-b border-line/50 px-3 py-4 align-top text-slate-200">{money(outstanding)}</td>
+                  <td className="resident-account-value border-b border-line/50 px-3 py-4 align-top">{residentBillPeriod(bill)}</td>
+                  <td className="resident-account-value border-b border-line/50 px-3 py-4 align-top">{money(bill.amount)}</td>
+                  <td className="resident-account-value border-b border-line/50 px-3 py-4 align-top">{money(paid)}</td>
+                  <td className="resident-account-value border-b border-line/50 px-3 py-4 align-top">{money(outstanding)}</td>
                   <td className="border-b border-line/50 px-3 py-4 align-top"><StatusBadge status={residentBillStatusLabel(bill)} tone={residentBillStatusTone(bill)} /></td>
                   <td className="border-b border-line/50 px-3 py-4 align-top">
                     {outstanding > 0 && onPayBill ? (
@@ -6385,11 +6429,11 @@ function ResidentPaymentsLiveTable({ payments, bills }: { payments: Payment[]; b
         <>
           <div className="grid gap-3 md:hidden">
             {orderedPayments.map((payment) => (
-              <article key={payment.id} className="rounded-lg border border-line/70 bg-white/70 p-4">
+              <article key={payment.id} className="resident-account-card rounded-lg border p-4">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-semibold text-white">{money(payment.amount)}</p>
-                    <p className="mt-1 text-xs text-slate-500">{formatResidentDate(payment.date)}</p>
+                    <p className="resident-account-title font-semibold">{money(payment.amount)}</p>
+                    <p className="resident-account-muted mt-1 text-xs">{formatResidentDate(payment.date)}</p>
                   </div>
                   <StatusBadge status={payment.status} />
                 </div>
@@ -6401,24 +6445,24 @@ function ResidentPaymentsLiveTable({ payments, bills }: { payments: Payment[]; b
               </article>
             ))}
           </div>
-          <div className="hidden max-w-full overflow-x-auto overscroll-x-contain rounded-lg border border-line/70 bg-white/40 md:block">
+          <div className="resident-account-card hidden max-w-full overflow-x-auto overscroll-x-contain rounded-lg border md:block">
             <table className="w-full table-auto border-separate border-spacing-0 text-left text-sm">
               <thead>
                 <tr>
                   {["Date", "Amount", "Channel", "Reference", "Status", "Applied to"].map((header) => (
-                    <th key={header} className="border-b border-line/70 px-3 py-3 font-semibold text-slate-400">{header}</th>
+                    <th key={header} className="resident-account-label border-b border-line/70 px-3 py-3 font-semibold">{header}</th>
                   ))}
                 </tr>
               </thead>
               <tbody>
                 {orderedPayments.map((payment) => (
                   <tr key={payment.id}>
-                    <td className="border-b border-line/50 px-3 py-4 align-top text-slate-200">{formatResidentDate(payment.date)}</td>
-                    <td className="border-b border-line/50 px-3 py-4 align-top text-slate-200">{money(payment.amount)}</td>
-                    <td className="border-b border-line/50 px-3 py-4 align-top text-slate-200 capitalize">{paymentChannelLabel(payment)}</td>
+                    <td className="resident-account-value border-b border-line/50 px-3 py-4 align-top">{formatResidentDate(payment.date)}</td>
+                    <td className="resident-account-value border-b border-line/50 px-3 py-4 align-top">{money(payment.amount)}</td>
+                    <td className="resident-account-value border-b border-line/50 px-3 py-4 align-top capitalize">{paymentChannelLabel(payment)}</td>
                     <td className="border-b border-line/50 px-3 py-4 align-top font-mono text-smart">{payment.reference}</td>
                     <td className="border-b border-line/50 px-3 py-4 align-top"><StatusBadge status={payment.status} /></td>
-                    <td className="border-b border-line/50 px-3 py-4 align-top text-slate-200">{billById.get(payment.billId) ?? "Resident account"}</td>
+                    <td className="resident-account-value border-b border-line/50 px-3 py-4 align-top">{billById.get(payment.billId) ?? "Resident account"}</td>
                   </tr>
                 ))}
               </tbody>
@@ -6426,7 +6470,7 @@ function ResidentPaymentsLiveTable({ payments, bills }: { payments: Payment[]; b
           </div>
         </>
       ) : (
-        <p className="rounded-lg border border-line bg-white/60 p-4 text-sm text-slate-500">No payments recorded yet.</p>
+        <p className="resident-account-card resident-account-muted rounded-lg border p-4 text-sm">No payments recorded yet.</p>
       )}
     </Card>
   );
@@ -6435,8 +6479,8 @@ function ResidentPaymentsLiveTable({ payments, bills }: { payments: Payment[]; b
 function ResidentFact({ label, value, mono = false }: { label: string; value: string; mono?: boolean }) {
   return (
     <div className="grid grid-cols-[6.5rem_1fr] gap-3">
-      <dt className="text-slate-500">{label}</dt>
-      <dd className={`min-w-0 break-words text-slate-100 ${mono ? "font-mono text-xs" : ""}`}>{value}</dd>
+      <dt className="resident-account-label">{label}</dt>
+      <dd className={`resident-account-value min-w-0 break-words ${mono ? "font-mono text-xs" : ""}`}>{value}</dd>
     </div>
   );
 }
@@ -9159,7 +9203,7 @@ export function EntryLogsPage() {
       {visitorError ? <p className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{visitorError}</p> : null}
       <DataTable
         title={loadingVisitors ? "Loading gate movement logs" : "Gate movement logs"}
-        description="Live visitor movement from Appwrite visitor records."
+        description="Live visitor movement from Corso visitor records."
         headers={["Visitor", "Code", "Visit time", "Resident", "Unit", "Status"]}
         rows={movementRows}
       />
@@ -9358,7 +9402,7 @@ function BillComposer({
     const residentId = String(form.get("residentId") ?? residentsDirectory[0]?.id ?? "");
     const resident = residentsDirectory.find((item) => item.id === residentId);
     if (!resident) {
-      setMessage("Load Appwrite residents before creating a bill.");
+      setMessage("Load resident records before creating a bill.");
       return;
     }
 
@@ -9382,14 +9426,14 @@ function BillComposer({
       });
       const payload = await response.json().catch(() => null) as { bill?: Bill; error?: string } | null;
       if (!response.ok || !payload?.bill) {
-        throw new Error(payload?.error ?? "Bill could not be created in Appwrite.");
+        throw new Error(payload?.error ?? "Bill could not be created in Corso.");
       }
 
-      setMessage(`${payload.bill.title} saved to Appwrite.`);
+      setMessage(`${payload.bill.title} saved to Corso.`);
       formElement.reset();
       onCreated();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Bill could not be created in Appwrite.");
+      setMessage(error instanceof Error ? error.message : "Bill could not be created in Corso.");
     } finally {
       setSaving(false);
     }

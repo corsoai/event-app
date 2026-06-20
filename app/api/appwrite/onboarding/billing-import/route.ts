@@ -60,7 +60,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(result);
   } catch (error) {
     return NextResponse.json(
-      { error: error instanceof Error ? error.message : "Appwrite billing import failed." },
+      { error: error instanceof Error ? error.message : "Corso billing import failed." },
       { status: error instanceof SessionContextError ? error.status : error instanceof AppwriteRestError ? error.status : 500 }
     );
   }

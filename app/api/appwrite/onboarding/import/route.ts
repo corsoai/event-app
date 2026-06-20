@@ -116,5 +116,5 @@ function importTargetFor(context: SessionContext, body: ImportRequest | null) {
 }
 
 function appwriteErrorMessage(error: unknown) {
-  return error instanceof Error ? error.message : "Appwrite import failed.";
+  return error instanceof Error ? error.message : "Corso import failed.";
 }

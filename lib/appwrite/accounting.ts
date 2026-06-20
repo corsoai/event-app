@@ -403,7 +403,7 @@ export async function createAppwriteBill(input: AppwriteBillInput) {
   });
   const resident = directory.residents.find((item) => item.id === residentId);
   if (!resident) {
-    throw new Error("The selected resident was not found in Appwrite.");
+    throw new Error("The selected resident was not found in Corso.");
   }
 
   const now = new Date().toISOString();

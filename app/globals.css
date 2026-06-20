@@ -277,6 +277,56 @@ table td {
   color: #e2e8f0 !important;
 }
 
+.resident-account-card {
+  background-color: rgba(248, 251, 253, 0.94) !important;
+  border-color: rgba(148, 163, 184, 0.22) !important;
+  color: #1d2937 !important;
+}
+
+.resident-account-title,
+.resident-account-value {
+  color: #1d2937 !important;
+}
+
+.resident-account-muted {
+  color: #60758d !important;
+}
+
+.resident-account-label {
+  color: #6f8197 !important;
+}
+
+.resident-top-action {
+  background-color: rgba(248, 251, 253, 0.95) !important;
+  border-color: rgba(148, 163, 184, 0.3) !important;
+  color: #1d2937 !important;
+}
+
+:root[data-theme="dark"] .resident-account-card {
+  background-color: #182235 !important;
+  border-color: rgba(148, 163, 184, 0.34) !important;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.28);
+}
+
+:root[data-theme="dark"] .resident-account-title,
+:root[data-theme="dark"] .resident-account-value {
+  color: #f8fafc !important;
+}
+
+:root[data-theme="dark"] .resident-account-muted {
+  color: #cbd5e1 !important;
+}
+
+:root[data-theme="dark"] .resident-account-label {
+  color: #94a3b8 !important;
+}
+
+:root[data-theme="dark"] .resident-top-action {
+  background-color: #182235 !important;
+  border-color: rgba(148, 163, 184, 0.38) !important;
+  color: #f8fafc !important;
+}
+
 :root:not([data-theme="dark"]) .shadow-glow {
   box-shadow: 0 18px 46px rgba(15, 23, 42, 0.08), 0 1px 0 rgba(255, 255, 255, 0.92) inset !important;
 }

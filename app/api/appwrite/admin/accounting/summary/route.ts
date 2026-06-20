@@ -14,7 +14,7 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json(summary);
   } catch (error) {
-    const message = error instanceof Error ? error.message : "Unable to load Appwrite accounting summary.";
+    const message = error instanceof Error ? error.message : "Unable to load accounting summary.";
     const status = error instanceof SessionContextError
       ? error.status
       : error instanceof AppwriteRestError

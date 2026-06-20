@@ -85,8 +85,8 @@ export function MobileBottomNav({ role }: { role: MobileRole }) {
 
   return (
     <nav
-      className="fixed inset-x-0 bottom-0 z-50 border-t border-line bg-white/95 px-1 pt-1 shadow-[0_-10px_30px_rgba(15,23,42,0.12)] backdrop-blur-xl lg:hidden"
-      style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.35rem)" }}
+      className="fixed inset-x-3 bottom-3 z-50 overflow-hidden rounded-3xl border border-line bg-white/95 px-1.5 pt-1.5 shadow-[0_-8px_30px_rgba(15,23,42,0.18)] backdrop-blur-xl lg:hidden"
+      style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.45rem)" }}
       aria-label="Mobile primary navigation"
     >
       <div className="mx-auto grid h-16 max-w-2xl" style={{ gridTemplateColumns: `repeat(${items.length}, minmax(0, 1fr))` }}>
@@ -100,7 +100,7 @@ export function MobileBottomNav({ role }: { role: MobileRole }) {
               key={item.href}
               href={item.href}
               className={cn(
-                "relative grid min-h-11 place-items-center content-center gap-0.5 rounded-lg px-1 text-[10px] font-semibold text-slate-500 transition",
+                "relative grid min-h-12 place-items-center content-center gap-0.5 rounded-2xl px-1 text-[10px] font-semibold text-slate-500 transition",
                 danger && "text-red-600",
                 active && (danger ? "bg-red-600/10 text-red-700" : `${estateGreen} bg-[#1a7c4a]/10`)
               )}
@@ -129,7 +129,7 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
       { label: "Bills", href: "/resident/bills", icon: ReceiptText, badge: outstandingBalance > 0 ? 1 : 0 },
       { label: "Pay", href: "/resident/payments", icon: CreditCard },
       { label: "Visitors", href: "/resident/visitors", icon: Users },
-      { label: "🚨 SOS", href: "/resident/sos", icon: AlertTriangle, tone: "danger" }
+      { label: "SOS", href: "/resident/sos", icon: AlertTriangle, tone: "danger" }
     ];
   }
 
@@ -139,14 +139,14 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
       { label: "Verify", href: "/security/verify-visitor", icon: QrCode },
       { label: "Expected", href: "/security/expected-visitors", icon: Users },
       { label: "Logs", href: "/security/logs", icon: ClipboardList },
-      { label: "🚨 SOS", href: "/security/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" }
+      { label: "SOS", href: "/security/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" }
     ];
   }
 
   if (role === "cso") {
     return [
       { label: "Dashboard", href: "/cso", icon: Shield },
-      { label: "🚨 SOS", href: "/cso/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
+      { label: "SOS", href: "/cso/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
       { label: "Checkpoints", href: "/cso#checkpoints", icon: MapPin },
       { label: "Patrol", href: "/cso#patrol-feed", icon: Activity }
     ];
@@ -155,7 +155,7 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
   return [
     { label: "Dashboard", href: role === "super_admin" ? "/super-admin" : "/admin", icon: LayoutDashboard },
     { label: "Residents", href: "/admin/residents", icon: Users },
-    { label: "🚨 SOS", href: "/admin/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
+    { label: "SOS", href: "/admin/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
     { label: "Payments", href: "/admin/payments", icon: WalletCards },
     { label: "Reports", href: role === "super_admin" ? "/super-admin/reports" : "/admin/reports", icon: BarChart3 }
   ];

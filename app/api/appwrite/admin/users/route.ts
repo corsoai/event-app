@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
     );
     return NextResponse.json({ users });
   } catch (error) {
-    return errorResponse(error, "Unable to load Appwrite users.");
+    return errorResponse(error, "Unable to load users.");
   }
 }
 
@@ -52,7 +52,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
-    return errorResponse(error, "Unable to create Appwrite user.");
+    return errorResponse(error, "Unable to create user.");
   }
 }
 
@@ -83,7 +83,7 @@ export async function PATCH(request: NextRequest) {
 
     return NextResponse.json(result);
   } catch (error) {
-    return errorResponse(error, "Unable to update Appwrite user.");
+    return errorResponse(error, "Unable to update user.");
   }
 }
 
@@ -96,7 +96,7 @@ export async function DELETE(request: NextRequest) {
     const result = await deleteAppwriteManagedUser(profileId, estateScopeFor(context));
     return NextResponse.json(result);
   } catch (error) {
-    return errorResponse(error, "Unable to delete Appwrite user.");
+    return errorResponse(error, "Unable to delete user.");
   }
 }
 

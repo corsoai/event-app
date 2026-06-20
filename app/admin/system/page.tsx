@@ -42,7 +42,7 @@ export default function Page() {
 
   async function refresh() {
     setLoading(true);
-    setMessage("Checking Appwrite system status...");
+    setMessage("Checking Corso system status...");
 
     try {
       const response = await fetch("/api/appwrite/admin/system", { cache: "no-store" });
@@ -55,7 +55,7 @@ export default function Page() {
       }
 
       setPayload(data);
-      setMessage(data.status === "ok" ? "Appwrite system is healthy." : "Review the Appwrite checks below.");
+      setMessage(data.status === "ok" ? "Corso system is healthy." : "Review the Corso checks below.");
     } catch (error) {
       setPayload(null);
       setMessage(error instanceof Error ? error.message : "System status check failed.");
@@ -68,7 +68,7 @@ export default function Page() {
     <>
       <PageHeader
         title="System status"
-        description="Check Appwrite deployment readiness, table availability, and imported data counts before making more production changes."
+        description="Check Corso deployment readiness, table availability, and imported data counts before making more production changes."
       >
         <Button type="button" variant="secondary" onClick={() => void refresh()} disabled={loading}>
           <RefreshCw className="h-4 w-4" />
@@ -77,7 +77,7 @@ export default function Page() {
       </PageHeader>
 
       <Card>
-        <CardHeader title="Appwrite health" description={message} />
+        <CardHeader title="Corso health" description={message} />
         {payload ? (
           <div className="grid gap-4 lg:grid-cols-[0.8fr_1.2fr]">
             <div className="rounded-lg border border-line bg-white/[0.03] p-4">

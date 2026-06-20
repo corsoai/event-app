@@ -287,7 +287,7 @@ export async function createAppwriteManagedUser(input: AppwriteManagedUserInput)
   });
 
   return {
-    message: `${fullName} has been created as ${roleLabels[role]} in Appwrite.`,
+    message: `${fullName} has been created as ${roleLabels[role]} in Corso.`,
     temporaryPassword: password,
     loginIdentifier: rawEmail || phone,
     user: {
@@ -694,7 +694,7 @@ async function createAuthUser(input: {
     });
   } catch (error) {
     if (error instanceof AppwriteRestError && error.status === 409) {
-      throw new Error("This email or phone already exists in Appwrite. Use another login contact or reset that user's password.");
+      throw new Error("This email or phone already exists in Corso. Use another login contact or reset that user's password.");
     }
 
     throw error;

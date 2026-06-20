@@ -32,15 +32,15 @@ export async function GET(request: NextRequest) {
       name: "Server configuration",
       status: config.configured ? "ok" : "fail",
       message: config.configured
-        ? "Required Appwrite server variables are present."
+        ? "Required Corso server variables are present."
         : `Missing ${config.missing.join(", ")}.`
     },
     {
-      name: "API key",
+        name: "Server key",
       status: config.apiKeyConfigured ? "ok" : "fail",
       message: config.apiKeyConfigured
-        ? "Server API key is configured without exposing the key value."
-        : "CORSO_APPWRITE_API_KEY is not set."
+        ? "Server key is configured without exposing the key value."
+        : "Corso server key is not set."
     }
   ];
 
@@ -57,7 +57,7 @@ export async function GET(request: NextRequest) {
       checks.push({
         name: "Database access",
         status: "fail",
-        message: describeAppwriteError(database, "Appwrite database request failed.")
+        message: describeAppwriteError(database, "Corso database request failed.")
       });
     } else if (!database) {
       checks.push({
@@ -102,7 +102,7 @@ export async function GET(request: NextRequest) {
         status: missingTables.length ? "fail" : "ok",
         message: missingTables.length
           ? `Missing ${missingTables.length} table(s): ${missingTables.join(", ")}.`
-          : `${liveTableIds.length} expected Appwrite tables are present.`
+          : `${liveTableIds.length} expected Corso tables are present.`
       });
 
       checks.push({
@@ -110,7 +110,7 @@ export async function GET(request: NextRequest) {
         status: rowCounts.residents > 0 ? "ok" : "warn",
         message: rowCounts.residents > 0
           ? `${rowCounts.residents} resident row(s), ${rowCounts.units ?? 0} unit row(s), and ${rowCounts.properties ?? 0} property row(s) are available.`
-          : "No imported Appwrite residents were found yet."
+          : "No imported resident records were found yet."
       });
     }
   }

@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
     });
     return NextResponse.json(accounting);
   } catch (error) {
-    return adminRouteError(error, "Unable to load Appwrite accounting.");
+    return adminRouteError(error, "Unable to load accounting.");
   }
 }
 
