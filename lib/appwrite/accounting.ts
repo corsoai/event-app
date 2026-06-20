@@ -508,11 +508,6 @@ function findAccountingResident(residents: Resident[], identity: AppwriteResiden
     if (byId) return byId;
   }
 
-  if (houseNumber) {
-    const byUnit = residents.find((resident) => resident.houseNumber.trim().toLowerCase() === houseNumber);
-    if (byUnit) return byUnit;
-  }
-
   if (phone) {
     const byPhone = residents.find((resident) => normalizePhoneNumber(resident.phone ?? "") === phone);
     if (byPhone) return byPhone;
@@ -526,6 +521,11 @@ function findAccountingResident(residents: Resident[], identity: AppwriteResiden
   if (fullName) {
     const byName = residents.find((resident) => resident.name.trim().toLowerCase() === fullName);
     if (byName) return byName;
+  }
+
+  if (houseNumber) {
+    const unitMatches = residents.filter((resident) => resident.houseNumber.trim().toLowerCase() === houseNumber);
+    if (unitMatches.length === 1) return unitMatches[0];
   }
 
   return undefined;
