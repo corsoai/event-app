@@ -1319,7 +1319,7 @@ export function AdminDashboard() {
         <StatusBadge key={visitor.status} status={visitor.status} />
       ])
       : [["No visitors today", "—", "—", "—", "—"]];
-  const { accountingState, summary } = useAdminAccountingState(state);
+  const { accountingState, summary, loadingAccounting } = useAdminAccountingState(state);
   const confirmedPayments = accountingState.payments.filter((payment) => payment.status === "confirmed");
   const paid = summary?.paidAmount ?? confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
   const expected = summary?.expectedRevenue ?? accountingState.bills.reduce((sum, bill) => sum + bill.amount, 0);
@@ -1329,6 +1329,7 @@ export function AdminDashboard() {
   const manualPayments = confirmedPayments.filter((payment) => payment.channel !== "online").reduce((sum, payment) => sum + payment.amount, 0);
   const pendingPayments = summary?.pendingReviewAmount ?? accountingState.payments.filter((payment) => payment.status === "pending").reduce((sum, payment) => sum + payment.amount, 0);
   const openComplaints = useAdminOpenComplaintsCount(state.complaints.filter((item) => item.status !== "resolved").length);
+  const totalResidents = summary?.residentsCount ?? accountingState.residents.length;
 
   return (
     <>
@@ -1344,7 +1345,7 @@ export function AdminDashboard() {
         </Link>
       </PageHeader>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
-        <StatCard label="Total residents" value={String(state.residents.length)} helper="Across active demo estates" icon={<Users className="h-5 w-5" />} />
+        <StatCard label="Total residents" value={loadingAccounting ? "..." : String(totalResidents)} helper="Live Appwrite resident records" icon={<Users className="h-5 w-5" />} />
         <StatCard label="Visitors today" value={loadingVisitors ? "..." : String(todaysVisitorViews.length)} helper="Live Appwrite records for today" icon={<QrCode className="h-5 w-5" />} />
         <StatCard label="Open complaints" value={String(openComplaints)} helper="Needs admin action" icon={<ClipboardList className="h-5 w-5" />} />
       </div>
