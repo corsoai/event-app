@@ -109,6 +109,8 @@ async function residentAccountingFor(context: SessionContext, bypassCache: boole
   const prefs = user.prefs ?? {};
   return listAppwriteResidentAccounting(
     {
+      residentId: typeof prefs.residentId === "string" ? prefs.residentId : undefined,
+      houseNumber: typeof prefs.houseNumber === "string" ? prefs.houseNumber : undefined,
       email: typeof prefs.email === "string" ? prefs.email : user.email,
       phone: typeof prefs.phone === "string" ? prefs.phone : normalizePhoneNumber(user.phone ?? ""),
       fullName: typeof prefs.fullName === "string" ? prefs.fullName : user.name

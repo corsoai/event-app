@@ -19,6 +19,8 @@ export async function GET(request: NextRequest) {
     const prefs = user.prefs ?? {};
     const accounting = await listAppwriteResidentAccounting(
       {
+        residentId: typeof prefs.residentId === "string" ? prefs.residentId : undefined,
+        houseNumber: typeof prefs.houseNumber === "string" ? prefs.houseNumber : undefined,
         email: typeof prefs.email === "string" ? prefs.email : user.email,
         phone: typeof prefs.phone === "string" ? prefs.phone : normalizePhoneNumber(user.phone ?? ""),
         fullName: typeof prefs.fullName === "string" ? prefs.fullName : user.name

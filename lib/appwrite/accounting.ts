@@ -138,6 +138,8 @@ export type AppwriteBillInput = {
 };
 
 export type AppwriteResidentAccountingIdentity = {
+  residentId?: string;
+  houseNumber?: string;
   email?: string;
   phone?: string;
   fullName?: string;
@@ -495,9 +497,21 @@ function residentBalanceMap(bills: Bill[]) {
 }
 
 function findAccountingResident(residents: Resident[], identity: AppwriteResidentAccountingIdentity) {
+  const residentId = identity.residentId?.trim() ?? "";
+  const houseNumber = identity.houseNumber?.trim().toLowerCase() ?? "";
   const email = identity.email?.trim().toLowerCase() ?? "";
   const phone = normalizePhoneNumber(identity.phone ?? "");
   const fullName = identity.fullName?.trim().toLowerCase() ?? "";
+
+  if (residentId) {
+    const byId = residents.find((resident) => resident.id === residentId);
+    if (byId) return byId;
+  }
+
+  if (houseNumber) {
+    const byUnit = residents.find((resident) => resident.houseNumber.trim().toLowerCase() === houseNumber);
+    if (byUnit) return byUnit;
+  }
 
   if (phone) {
     const byPhone = residents.find((resident) => normalizePhoneNumber(resident.phone ?? "") === phone);
