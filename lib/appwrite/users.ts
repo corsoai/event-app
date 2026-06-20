@@ -555,14 +555,7 @@ export async function deleteAppwriteManagedUser(profileId: string, scope: Appwri
 
 export async function loginWithAppwrite(identifier: string, password: string) {
   const email = await resolveLoginEmail(identifier);
-  const session = await appwriteRequest<AppwriteSession>("/account/sessions/email", {
-    method: "POST",
-    requireApiKey: false,
-    body: {
-      email,
-      password
-    }
-  });
+  const session = await createEmailSession(email, password);
   if (!session.secret) {
     throw new Error("Appwrite did not return a session secret for this login.");
   }
@@ -586,6 +579,61 @@ export async function loginWithAppwrite(identifier: string, password: string) {
     appwriteUserId: user.$id,
     appwriteSessionSecret: session.secret
   };
+}
+
+async function createEmailSession(email: string, password: string) {
+  const config = getAppwriteServerConfig();
+  if (!config.projectId) {
+    throw new Error("Appwrite server configuration is missing: NEXT_PUBLIC_APPWRITE_PROJECT_ID");
+  }
+
+  const response = await fetch(`${config.endpoint}/account/sessions/email`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Appwrite-Project": config.projectId,
+      "X-Appwrite-Response-Format": "1.9.5"
+    },
+    body: JSON.stringify({ email, password }),
+    cache: "no-store"
+  });
+  const payload = await response.json().catch(() => null) as AppwriteSession | Record<string, unknown> | null;
+
+  if (!response.ok) {
+    const message = payload && typeof payload === "object" && "message" in payload
+      ? String((payload as { message?: unknown }).message)
+      : `Appwrite request failed with HTTP ${response.status}`;
+    throw new AppwriteRestError(`${message} (POST /account/sessions/email)`, response.status, payload);
+  }
+
+  const session = payload as AppwriteSession;
+  return {
+    ...session,
+    secret: session.secret || sessionSecretFromSetCookie(response.headers.get("set-cookie"), config.projectId)
+  };
+}
+
+function sessionSecretFromSetCookie(header: string | null, projectId: string) {
+  if (!header) {
+    return "";
+  }
+
+  const escapedProjectId = projectId.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  const matches = [...header.matchAll(new RegExp(`a_session_${escapedProjectId}(?:_legacy)?=([^;]+)`, "g"))];
+  for (const match of matches.reverse()) {
+    const encoded = match[1];
+    try {
+      const decoded = decodeURIComponent(encoded);
+      const parsed = JSON.parse(Buffer.from(decoded, "base64").toString("utf8")) as { secret?: unknown };
+      if (typeof parsed.secret === "string" && parsed.secret.trim()) {
+        return parsed.secret.trim();
+      }
+    } catch {
+      // Try the next matching cookie value.
+    }
+  }
+
+  return "";
 }
 
 async function resolveLoginEmail(identifier: string) {

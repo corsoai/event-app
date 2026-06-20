@@ -159,13 +159,35 @@ export async function appwriteUpsertRow<T>(
     throw new Error(`Appwrite server configuration is missing: ${config.missing.join(", ")}`);
   }
 
-  return appwriteRequest<T>(
+  const existingRow = await appwriteRequest<unknown>(
     `/tablesdb/${config.databaseId}/tables/${tableId}/rows/${rowId}`,
     {
-      method: "PUT",
+      method: "GET",
+      allowNotFound: true
+    }
+  );
+  const payload = {
+    data: compactRecord(data),
+    permissions: []
+  };
+
+  if (existingRow) {
+    return appwriteRequest<T>(
+      `/tablesdb/${config.databaseId}/tables/${tableId}/rows/${rowId}`,
+      {
+        method: "PATCH",
+        body: payload
+      }
+    );
+  }
+
+  return appwriteRequest<T>(
+    `/tablesdb/${config.databaseId}/tables/${tableId}/rows`,
+    {
+      method: "POST",
       body: {
-        data: compactRecord(data),
-        permissions: []
+        rowId,
+        ...payload
       }
     }
   );
