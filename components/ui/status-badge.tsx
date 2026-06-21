@@ -2,11 +2,11 @@ import { cn } from "@/lib/utils";
 import type { StatusTone } from "@/lib/types";
 
 const tones: Record<StatusTone, string> = {
-  green: "border-emerald-300 bg-emerald-50 text-emerald-700 dark:border-emerald-400/40 dark:bg-emerald-400/15 dark:text-emerald-200",
-  blue: "border-sky-300 bg-sky-50 text-sky-700 dark:border-sky-400/40 dark:bg-sky-400/15 dark:text-sky-200",
-  yellow: "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-300/50 dark:bg-amber-300/15 dark:text-amber-100",
-  red: "border-red-300 bg-red-50 text-red-700 dark:border-red-400/50 dark:bg-red-400/15 dark:text-red-100",
-  slate: "border-slate-300 bg-slate-100 text-slate-700 dark:border-slate-500/40 dark:bg-slate-500/15 dark:text-slate-200"
+  green: "border-emerald-400 bg-emerald-100 text-emerald-900 shadow-sm dark:border-emerald-300/55 dark:bg-emerald-400/18 dark:text-emerald-50",
+  blue: "border-sky-400 bg-sky-100 text-sky-900 shadow-sm dark:border-sky-300/55 dark:bg-sky-400/18 dark:text-sky-50",
+  yellow: "border-amber-400 bg-amber-100 text-amber-950 shadow-sm dark:border-amber-300/60 dark:bg-amber-300/18 dark:text-amber-50",
+  red: "border-red-400 bg-red-100 text-red-900 shadow-sm dark:border-red-300/60 dark:bg-red-400/18 dark:text-red-50",
+  slate: "border-slate-400 bg-slate-200 text-slate-900 shadow-sm dark:border-slate-400/55 dark:bg-slate-500/18 dark:text-slate-50"
 };
 
 export function statusTone(status: string): StatusTone {

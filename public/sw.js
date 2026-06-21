@@ -1,4 +1,4 @@
-const CACHE_NAME = `corso-v${new Date().toISOString().slice(0, 10)}`;
+const CACHE_NAME = "corso-v2026-06-21-ui-stability-1";
 const OFFLINE_URL = "/offline.html";
 const APP_SHELL = [
   OFFLINE_URL,
@@ -65,7 +65,7 @@ self.addEventListener("fetch", (event) => {
   }
 
   if (isNavigationLikeRequest(event.request, requestUrl)) {
-    event.respondWith(networkFirst(event.request, { offlineFallback: true }));
+    event.respondWith(networkFirst(event.request, { offlineFallback: true, cacheResponse: false }));
     return;
   }
 
@@ -96,7 +96,7 @@ function isNavigationLikeRequest(request, requestUrl) {
 async function networkFirst(request, options = {}) {
   try {
     const response = await fetch(request);
-    if (response.ok) {
+    if (response.ok && options.cacheResponse !== false) {
       const cache = await caches.open(CACHE_NAME);
       cache.put(request, response.clone());
     }

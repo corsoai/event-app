@@ -24,7 +24,7 @@ export function Field({
   children: ReactNode;
 }) {
   return (
-    <label className="grid gap-2 text-sm font-medium text-slate-800 dark:text-slate-200">
+    <label className="form-field-label grid gap-2 text-sm font-semibold text-slate-800 dark:text-slate-100">
       {label}
       {children}
     </label>

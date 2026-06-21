@@ -624,20 +624,32 @@ function useLiveVisitorViews(loader: () => Promise<AppwriteVisitorView[]>, optio
   const [visitorViews, setVisitorViews] = useState<AppwriteVisitorView[]>([]);
   const [loadingVisitors, setLoadingVisitors] = useState(true);
   const [visitorError, setVisitorError] = useState("");
+  const requestIdRef = useRef(0);
 
   const refreshVisitors = async (refreshOptions: { silent?: boolean } = {}) => {
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+
     if (!refreshOptions.silent) {
       setLoadingVisitors(true);
     }
     setVisitorError("");
 
     try {
-      setVisitorViews(await loader());
+      const nextVisitorViews = await loader();
+      if (requestId !== requestIdRef.current) {
+        return;
+      }
+      setVisitorViews(nextVisitorViews);
     } catch (error) {
+      if (requestId !== requestIdRef.current) {
+        return;
+      }
       setVisitorError(error instanceof Error ? error.message : "Visitor records could not be loaded.");
-      setVisitorViews([]);
     } finally {
-      setLoadingVisitors(false);
+      if (requestId === requestIdRef.current) {
+        setLoadingVisitors(false);
+      }
     }
   };
 
@@ -679,7 +691,7 @@ function LiveVisitorCards({
     <Card className="mb-6">
       <CardHeader
         title={title}
-        description={loading ? "Loading live visitor records..." : `${visitorViews.length} live visitor record${visitorViews.length === 1 ? "" : "s"} found.`}
+        description={loading ? "Loading visitor records from Corso..." : `${visitorViews.length} visitor record${visitorViews.length === 1 ? "" : "s"} found.`}
       />
       {error ? (
         <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm font-semibold text-danger">
@@ -688,7 +700,7 @@ function LiveVisitorCards({
       ) : null}
       {!error && !loading && !visitorViews.length ? (
         <div className="rounded-lg border border-line bg-white/80 p-4 text-sm text-slate-500">
-          No live visitor records returned for this account.
+          No visitor records found for this account.
         </div>
       ) : null}
       <div className="grid gap-3">
@@ -1385,20 +1397,20 @@ export function AdminDashboard() {
   const { state } = useLocalEstateStore();
   const { visitorViews, loadingVisitors, visitorError } = useLiveVisitorViews(readAppwriteAdminVisitors);
   const todaysVisitorViews = visitorViews.filter(({ visitor }) => isTodayVisitor(visitor));
-  const recentTodayVisitorViews = [...todaysVisitorViews]
+  const recentVisitorViews = [...visitorViews]
     .sort((left, right) => visitorSortTime(right.visitor) - visitorSortTime(left.visitor))
     .slice(0, 5);
   const visitorAccessRows = loadingVisitors
     ? visitorLoadingRows(5)
-    : recentTodayVisitorViews.length
-      ? recentTodayVisitorViews.map(({ visitor, residentName }) => [
+    : recentVisitorViews.length
+      ? recentVisitorViews.map(({ visitor, residentName }) => [
         visitor.visitorName,
         residentName,
         `${visitor.visitDate} ${formatClockTime(visitor.arrivalTime)}`,
         <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
         <StatusBadge key={visitor.status} status={visitor.status} />
       ])
-      : [["No visitors today", "—", "—", "—", "—"]];
+      : [["No visitor records yet", "—", "—", "—", "—"]];
   const { accountingState, summary, loadingAccounting } = useAdminAccountingState(state);
   const confirmedPayments = accountingState.payments.filter((payment) => payment.status === "confirmed");
   const paid = summary?.paidAmount ?? confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
@@ -1426,13 +1438,13 @@ export function AdminDashboard() {
       </PageHeader>
       <div className="grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
         <StatCard label="Total residents" value={loadingAccounting ? "..." : String(totalResidents)} helper="Live resident records" icon={<Users className="h-5 w-5" />} />
-        <StatCard label="Visitors today" value={loadingVisitors ? "..." : String(todaysVisitorViews.length)} helper="Live visitor records for today" icon={<QrCode className="h-5 w-5" />} />
+        <StatCard label="Visitors today" value={loadingVisitors ? "..." : String(todaysVisitorViews.length)} helper="Visitor records dated today" icon={<QrCode className="h-5 w-5" />} />
         <StatCard label="Open complaints" value={String(openComplaints)} helper="Needs admin action" icon={<ClipboardList className="h-5 w-5" />} />
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-[1.3fr_0.7fr]">
         <DataTable
           title="Visitor access log"
-          description={visitorError || "Five most recent live visitor records for today."}
+          description={visitorError || "Five most recent visitor records."}
           headers={["Visitor", "Resident", "Date", "Code", "Status"]}
           rows={visitorAccessRows}
         />
@@ -6082,11 +6094,11 @@ export function InviteVisitorPage() {
                 <Select
                   name="count"
                   defaultValue="1"
-                  className="border-smart/70 bg-smart/15 font-semibold text-white shadow-[0_0_0_1px_rgba(29,207,159,0.18)] focus:border-smart focus:ring-smart/40"
+                  className="border-slate-300 bg-white font-semibold text-slate-950 shadow-[0_0_0_1px_rgba(109,190,48,0.12)] focus:border-smart focus:ring-smart/40 dark:border-smart/70 dark:bg-slate-800 dark:text-white"
                   required
                 >
                   {Array.from({ length: 20 }, (_, index) => index + 1).map((count) => (
-                    <option key={count} value={count} className="bg-panel text-white">
+                    <option key={count} value={count} className="bg-white text-slate-950 dark:bg-slate-800 dark:text-white">
                       {count}
                     </option>
                   ))}
@@ -7336,9 +7348,9 @@ export function SecurityDashboard() {
         <h2 className="text-lg font-semibold text-white">Today at the gate</h2>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
-        <StatCard label="Expected today" value={loadingVisitors ? "..." : String(visitors.length)} helper="All gates" icon={<CalendarClock className="h-5 w-5" />} />
-        <StatCard label="Checked in" value={loadingVisitors ? "..." : String(checkedInCount)} helper="Currently inside" icon={<DoorOpen className="h-5 w-5" />} />
-        <StatCard label="Verified codes" value={loadingVisitors ? "..." : String(verifiedCount)} helper="Awaiting check-in" icon={<BadgeCheck className="h-5 w-5" />} />
+        <StatCard label="Expected today" value={loadingVisitors ? "..." : visitorError ? "!" : String(visitors.length)} helper={visitorError ? "Refresh to retry" : "Pending, verified, or inside"} icon={<CalendarClock className="h-5 w-5" />} />
+        <StatCard label="Checked in" value={loadingVisitors ? "..." : visitorError ? "!" : String(checkedInCount)} helper="Currently inside" icon={<DoorOpen className="h-5 w-5" />} />
+        <StatCard label="Verified codes" value={loadingVisitors ? "..." : visitorError ? "!" : String(verifiedCount)} helper="Ready for check-in" icon={<BadgeCheck className="h-5 w-5" />} />
       </div>
       <div className="mt-6">
         <LiveVisitorCards
@@ -9196,7 +9208,7 @@ export function ExpectedVisitorsPage() {
 }
 
 export function EntryLogsPage() {
-  const { visitorViews, loadingVisitors, visitorError } = useLiveVisitorViews(readAppwriteSecurityVisitorHistory);
+  const { visitorViews, loadingVisitors, visitorError, refreshVisitors } = useLiveVisitorViews(readAppwriteSecurityVisitorHistory);
   const sortedVisitorViews = [...visitorViews].sort((left, right) => visitorSortTime(right.visitor) - visitorSortTime(left.visitor));
   const movementRows = loadingVisitors
     ? visitorLoadingRows(6)
@@ -9213,11 +9225,16 @@ export function EntryLogsPage() {
 
   return (
     <>
-      <PageHeader title="Check-in and check-out logs" description="Record entry and exit times, guard names, and visitor movement." />
+      <PageHeader title="Check-in and check-out logs" description="Record entry and exit times, guard names, and visitor movement.">
+        <Button type="button" variant="secondary" onClick={() => void refreshVisitors()} disabled={loadingVisitors}>
+          <RefreshCw className="h-4 w-4" />
+          {loadingVisitors ? "Loading" : "Refresh"}
+        </Button>
+      </PageHeader>
       {visitorError ? <p className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{visitorError}</p> : null}
       <DataTable
         title={loadingVisitors ? "Loading gate movement logs" : "Gate movement logs"}
-        description="Live visitor movement from Corso visitor records."
+        description="Visitor movement from Corso records."
         headers={["Visitor", "Code", "Visit time", "Resident", "Unit", "Status"]}
         rows={movementRows}
       />
@@ -10212,7 +10229,7 @@ function DigitalIdCard({
 }) {
   return (
     <Card className="overflow-hidden p-0">
-      <div className="bg-[radial-gradient(circle_at_top_left,rgba(192,255,107,0.18),transparent_35%),linear-gradient(135deg,#656565,#000000)] p-5">
+      <div className="digital-id-face bg-[radial-gradient(circle_at_top_left,rgba(192,255,107,0.18),transparent_35%),linear-gradient(135deg,#656565,#000000)] p-5">
         <div className="flex items-start justify-between gap-4">
           <div className="grid h-16 w-16 place-items-center rounded-lg border border-smart/30 bg-smart/10 text-2xl font-semibold text-smart">
             {name.split(" ").map((part) => part[0]).join("").slice(0, 2)}

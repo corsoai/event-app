@@ -64,6 +64,26 @@ export type AccessRequestView = {
 };
 
 let publicEstatesSessionCache: Array<{ id: string; name: string }> | null = null;
+const VISITOR_REQUEST_TIMEOUT_MS = 12_000;
+
+async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMessage: string) {
+  const controller = new AbortController();
+  const timeout = window.setTimeout(() => controller.abort(), VISITOR_REQUEST_TIMEOUT_MS);
+
+  try {
+    return await fetch(input, {
+      ...init,
+      signal: controller.signal
+    });
+  } catch (error) {
+    if (error instanceof DOMException && error.name === "AbortError") {
+      throw new Error(timeoutMessage);
+    }
+    throw error;
+  } finally {
+    window.clearTimeout(timeout);
+  }
+}
 
 export async function createAppwriteAccessRequest(input: {
   fullName: string;
@@ -200,27 +220,47 @@ export async function createAppwriteResidentVisitor(input: VisitorCreateInput) {
 }
 
 export async function readAppwriteResidentVisitors() {
-  const response = await fetch("/api/resident/visitors", { cache: "no-store" });
+  const response = await fetchWithTimeout(
+    "/api/resident/visitors",
+    { cache: "no-store" },
+    "Visitor invitations are taking too long to load. Please refresh."
+  );
   return readVisitorViewsResponse(response, "Visitor invitations could not be loaded online.");
 }
 
 export async function readAppwriteAdminVisitors() {
-  const response = await fetch("/api/appwrite/admin/visitors", { cache: "no-store" });
+  const response = await fetchWithTimeout(
+    "/api/appwrite/admin/visitors",
+    { cache: "no-store" },
+    "Visitor logs are taking too long to load. Please refresh."
+  );
   return readVisitorViewsResponse(response, "Visitor logs could not be loaded online.");
 }
 
 export async function readAppwriteExpectedVisitors() {
-  const response = await fetch("/api/security/visitors", { cache: "no-store" });
+  const response = await fetchWithTimeout(
+    "/api/security/visitors",
+    { cache: "no-store" },
+    "Expected visitor records are taking too long to load. Please refresh."
+  );
   return readVisitorViewsResponse(response, "Expected visitors could not be loaded online.");
 }
 
 export async function readAppwriteSecurityVisitorHistory() {
-  const response = await fetch("/api/security/visitor-history", { cache: "no-store" });
+  const response = await fetchWithTimeout(
+    "/api/security/visitor-history",
+    { cache: "no-store" },
+    "Gate movement logs are taking too long to load. Please refresh."
+  );
   return readVisitorViewsResponse(response, "Visitor movement history could not be loaded online.");
 }
 
 export async function findAppwriteVisitorByCode(code: string) {
-  const response = await fetch(`/api/security/visitors?code=${encodeURIComponent(code)}`, { cache: "no-store" });
+  const response = await fetchWithTimeout(
+    `/api/security/visitors?code=${encodeURIComponent(code)}`,
+    { cache: "no-store" },
+    "Visitor code verification is taking too long. Please try again."
+  );
   const payload = await response.json().catch(() => ({})) as {
     visitor?: Visitor;
     resident?: Resident | null;
@@ -238,13 +278,17 @@ export async function findAppwriteVisitorByCode(code: string) {
 }
 
 export async function updateAppwriteVisitorStatus(visitor: Visitor, status: Visitor["status"]) {
-  const response = await fetch("/api/security/visitors", {
-    method: "PATCH",
-    headers: {
-      "Content-Type": "application/json"
+  const response = await fetchWithTimeout(
+    "/api/security/visitors",
+    {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify({ visitorId: visitor.id, status })
     },
-    body: JSON.stringify({ visitorId: visitor.id, status })
-  });
+    "Visitor status update is taking too long. Please try again."
+  );
   const payload = await response.json().catch(() => ({})) as { visitor?: Visitor; error?: string };
 
   if (!response.ok) {

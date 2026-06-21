@@ -225,6 +225,20 @@ table td {
   color: #94a3b8 !important;
 }
 
+.form-field-label {
+  color: #334155 !important;
+}
+
+:root[data-theme="dark"] .form-field-label {
+  color: #e2e8f0 !important;
+}
+
+.form-field-label > input,
+.form-field-label > select,
+.form-field-label > textarea {
+  font-weight: 500;
+}
+
 :root[data-theme="dark"] .visitor-card {
   background-color: #182235 !important;
   border-color: rgba(148, 163, 184, 0.24) !important;
@@ -247,34 +261,64 @@ table td {
   color: rgb(var(--color-smart)) !important;
 }
 
+:root:not([data-theme="dark"]) .status-badge--green {
+  background-color: #dcfce7 !important;
+  border-color: #34d399 !important;
+  color: #065f46 !important;
+}
+
+:root:not([data-theme="dark"]) .status-badge--blue {
+  background-color: #e0f2fe !important;
+  border-color: #38bdf8 !important;
+  color: #075985 !important;
+}
+
+:root:not([data-theme="dark"]) .status-badge--yellow {
+  background-color: #fef3c7 !important;
+  border-color: #f59e0b !important;
+  color: #78350f !important;
+}
+
+:root:not([data-theme="dark"]) .status-badge--red {
+  background-color: #fee2e2 !important;
+  border-color: #f87171 !important;
+  color: #991b1b !important;
+}
+
+:root:not([data-theme="dark"]) .status-badge--slate {
+  background-color: #e2e8f0 !important;
+  border-color: #94a3b8 !important;
+  color: #1e293b !important;
+}
+
 :root[data-theme="dark"] .status-badge--green {
-  background-color: rgba(22, 163, 74, 0.16) !important;
-  border-color: rgba(74, 222, 128, 0.45) !important;
-  color: #bbf7d0 !important;
+  background-color: rgba(22, 163, 74, 0.22) !important;
+  border-color: rgba(110, 231, 183, 0.7) !important;
+  color: #ecfdf5 !important;
 }
 
 :root[data-theme="dark"] .status-badge--blue {
-  background-color: rgba(14, 165, 233, 0.16) !important;
-  border-color: rgba(125, 211, 252, 0.45) !important;
-  color: #bae6fd !important;
+  background-color: rgba(14, 165, 233, 0.22) !important;
+  border-color: rgba(125, 211, 252, 0.7) !important;
+  color: #f0f9ff !important;
 }
 
 :root[data-theme="dark"] .status-badge--yellow {
-  background-color: rgba(217, 119, 6, 0.18) !important;
-  border-color: rgba(252, 211, 77, 0.55) !important;
-  color: #fde68a !important;
+  background-color: rgba(217, 119, 6, 0.24) !important;
+  border-color: rgba(252, 211, 77, 0.72) !important;
+  color: #fffbeb !important;
 }
 
 :root[data-theme="dark"] .status-badge--red {
-  background-color: rgba(220, 38, 38, 0.18) !important;
-  border-color: rgba(252, 165, 165, 0.5) !important;
-  color: #fecaca !important;
+  background-color: rgba(220, 38, 38, 0.24) !important;
+  border-color: rgba(252, 165, 165, 0.72) !important;
+  color: #fff1f2 !important;
 }
 
 :root[data-theme="dark"] .status-badge--slate {
-  background-color: rgba(100, 116, 139, 0.18) !important;
-  border-color: rgba(148, 163, 184, 0.45) !important;
-  color: #e2e8f0 !important;
+  background-color: rgba(100, 116, 139, 0.28) !important;
+  border-color: rgba(203, 213, 225, 0.62) !important;
+  color: #f8fafc !important;
 }
 
 .resident-account-card {
@@ -339,6 +383,28 @@ table td {
 :root:not([data-theme="dark"]) .estate-photo-bg .text-slate-200,
 :root:not([data-theme="dark"]) .estate-photo-bg .text-slate-300 {
   color: #cbd5e1 !important;
+}
+
+.digital-id-face .text-white,
+:root:not([data-theme="dark"]) .digital-id-face .text-white {
+  color: #f8fafc !important;
+}
+
+.digital-id-face h2,
+.digital-id-face p {
+  color: #f8fafc !important;
+}
+
+.digital-id-face .text-slate-300,
+.digital-id-face .text-slate-400,
+:root:not([data-theme="dark"]) .digital-id-face .text-slate-300,
+:root:not([data-theme="dark"]) .digital-id-face .text-slate-400 {
+  color: #cbd5e1 !important;
+}
+
+.digital-id-face .text-smart,
+:root:not([data-theme="dark"]) .digital-id-face .text-smart {
+  color: #bbf7d0 !important;
 }
 
 .security-state-card {

@@ -154,7 +154,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
     try {
       if (mode === "forgot") {
         setMessageTone("success");
-        setMessage("Ask an estate admin to reset your Appwrite password from Users & Roles.");
+        setMessage("Ask an estate admin to reset your Corso password from Users & Roles.");
         return;
       }
 
@@ -553,21 +553,21 @@ async function signInWithAppwrite(identifier: string, password: string): Promise
     return {
       ok: false,
       canFallback: true,
-      error: error instanceof Error ? error.message : "Appwrite login is unavailable."
+      error: error instanceof Error ? error.message : "Corso login is unavailable."
     };
   }
 }
 
 function messageClassName(tone: "success" | "error" | "info") {
   if (tone === "error") {
-    return "rounded-lg border border-red-400/30 bg-red-500/10 px-3 py-2 text-sm text-red-100";
+    return "rounded-lg border border-red-400/40 bg-red-50 px-3 py-2 text-sm font-semibold text-red-700 dark:bg-red-500/10 dark:text-red-100";
   }
 
   if (tone === "success") {
-    return "rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart";
+    return "rounded-lg border border-smart/40 bg-smart/10 px-3 py-2 text-sm font-semibold text-smart-dark dark:text-smart";
   }
 
-  return "rounded-lg border border-sky/20 bg-sky/10 px-3 py-2 text-sm text-sky";
+  return "rounded-lg border border-sky/30 bg-sky/10 px-3 py-2 text-sm font-semibold text-sky-dark dark:text-sky";
 }
 
 function persistSession({
