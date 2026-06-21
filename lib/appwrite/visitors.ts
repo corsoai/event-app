@@ -8,8 +8,7 @@ import {
   appwriteRequest,
   appwriteUpsertRow,
   getAppwriteServerConfig,
-  safeAppwriteId,
-  setupAppwriteOnboardingSchema
+  safeAppwriteId
 } from "@/lib/appwrite/server";
 import { listAppwriteTableRows, type AppwriteEstateScope } from "@/lib/appwrite/residents";
 
@@ -148,11 +147,10 @@ export async function listAppwriteResidentVisitors(input: VisitorSessionInput) {
   const profile = await requireProfile(input, "resident");
   const resident = await findOrCreateResidentForProfile(profile);
   const scope = estateScopeForProfile(profile);
-  const rows = await listAppwriteTableRows<AppwriteVisitorRow>("visitors", scope);
+  const rows = await listVisitorRowsForResident(resident.id, scope);
 
   return buildVisitorViews(
     rows
-      .filter((visitor) => visitor.residentId === resident.id)
       .sort(sortVisitorRowsDescending),
     scope
   );
@@ -270,6 +268,45 @@ async function listVisitorRowsByCode(code: string, scope: AppwriteEstateScope = 
   }
 }
 
+async function listVisitorRowsForResident(residentId: string, scope: AppwriteEstateScope = {}) {
+  const config = getAppwriteServerConfig();
+  const rows: AppwriteVisitorRow[] = [];
+  const limit = 100;
+  let offset = 0;
+
+  while (true) {
+    const query = new URLSearchParams();
+    query.append("queries[0]", JSON.stringify({ method: "equal", attribute: "residentId", values: [residentId] }));
+    let index = 1;
+    if (scope.estateId && !scope.includeAllEstates) {
+      query.append(`queries[${index}]`, JSON.stringify({ method: "equal", attribute: "estateId", values: [scope.estateId] }));
+      index += 1;
+    }
+    query.append(`queries[${index}]`, JSON.stringify({ method: "limit", values: [limit] }));
+    query.append(`queries[${index + 1}]`, JSON.stringify({ method: "offset", values: [offset] }));
+
+    try {
+      const payload = await appwriteRequest<AppwriteRowList<AppwriteVisitorRow>>(
+        `/tablesdb/${config.databaseId}/tables/visitors/rows?${query.toString()}`
+      );
+      const pageRows = payload.rows ?? payload.documents ?? [];
+      rows.push(...pageRows);
+      const total = payload.total ?? rows.length;
+      if (rows.length >= total || pageRows.length < limit) {
+        return rows;
+      }
+      offset += limit;
+    } catch (error) {
+      if (error instanceof Error && error.message.toLowerCase().includes("invalid query")) {
+        const fallbackRows = await listAppwriteTableRows<AppwriteVisitorRow>("visitors", scope);
+        return fallbackRows.filter((visitor) => visitor.residentId === residentId);
+      }
+
+      throw error;
+    }
+  }
+}
+
 async function getVisitorRowById(visitorId: string) {
   const config = getAppwriteServerConfig();
   return appwriteRequest<AppwriteVisitorRow>(
@@ -312,7 +349,6 @@ async function requireProfile(input: VisitorSessionInput, expectedRole?: UserRol
     throw new Error("Your login session has expired. Sign in again.");
   }
 
-  await setupAppwriteOnboardingSchema();
   const profile = await findProfileByUserId(appwriteUserId);
   if (!profile) {
     throw new Error("No active profile was found for this account.");
