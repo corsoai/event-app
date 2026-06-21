@@ -1,4 +1,4 @@
-const CACHE_NAME = "corso-v2026-06-21-ui-stability-1";
+const CACHE_NAME = "corso-v2026-06-21-mobile-visitor-2";
 const OFFLINE_URL = "/offline.html";
 const APP_SHELL = [
   OFFLINE_URL,
@@ -49,13 +49,12 @@ self.addEventListener("fetch", (event) => {
   if (event.request.method !== "GET") return;
 
   const requestUrl = new URL(event.request.url);
+  // Live data, auth, and Appwrite traffic must never be served by the offline shell cache.
   if (requestUrl.origin === self.location.origin && requestUrl.pathname.startsWith("/api/")) {
-    event.respondWith(fetch(event.request));
     return;
   }
 
   if (requestUrl.origin !== self.location.origin) {
-    event.respondWith(fetch(event.request));
     return;
   }
 

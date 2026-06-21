@@ -64,7 +64,15 @@ export type AccessRequestView = {
 };
 
 let publicEstatesSessionCache: Array<{ id: string; name: string }> | null = null;
-const VISITOR_REQUEST_TIMEOUT_MS = 12_000;
+const VISITOR_REQUEST_TIMEOUT_MS = 15_000;
+
+function jsonRequestHeaders(headers?: HeadersInit) {
+  const nextHeaders = new Headers(headers);
+  if (!nextHeaders.has("Accept")) {
+    nextHeaders.set("Accept", "application/json");
+  }
+  return nextHeaders;
+}
 
 async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, timeoutMessage: string) {
   const controller = new AbortController();
@@ -73,6 +81,8 @@ async function fetchWithTimeout(input: RequestInfo | URL, init: RequestInit, tim
   try {
     return await fetch(input, {
       ...init,
+      credentials: init.credentials ?? "same-origin",
+      headers: jsonRequestHeaders(init.headers),
       signal: controller.signal
     });
   } catch (error) {
@@ -366,6 +376,11 @@ export async function updateAppwriteSosIncident(input: SosUpdateInput) {
 }
 
 async function readVisitorViewsResponse(response: Response, fallbackMessage: string) {
+  const contentType = response.headers.get("content-type") ?? "";
+  if (contentType && !contentType.includes("application/json")) {
+    throw new Error("Corso could not read visitor records from the server. Please refresh and try again.");
+  }
+
   const payload = await response.json().catch(() => ({})) as {
     visitors?: AppwriteVisitorView[];
     error?: string;

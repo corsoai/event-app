@@ -226,11 +226,13 @@ table td {
 }
 
 .form-field-label {
-  color: #334155 !important;
+  color: #1f2d3d !important;
+  opacity: 1 !important;
 }
 
 :root[data-theme="dark"] .form-field-label {
-  color: #e2e8f0 !important;
+  color: #f8fafc !important;
+  opacity: 1 !important;
 }
 
 .form-field-label > input,
@@ -292,33 +294,33 @@ table td {
 }
 
 :root[data-theme="dark"] .status-badge--green {
-  background-color: rgba(22, 163, 74, 0.22) !important;
-  border-color: rgba(110, 231, 183, 0.7) !important;
-  color: #ecfdf5 !important;
+  background-color: #047857 !important;
+  border-color: #34d399 !important;
+  color: #ffffff !important;
 }
 
 :root[data-theme="dark"] .status-badge--blue {
-  background-color: rgba(14, 165, 233, 0.22) !important;
-  border-color: rgba(125, 211, 252, 0.7) !important;
-  color: #f0f9ff !important;
+  background-color: #0369a1 !important;
+  border-color: #7dd3fc !important;
+  color: #ffffff !important;
 }
 
 :root[data-theme="dark"] .status-badge--yellow {
-  background-color: rgba(217, 119, 6, 0.24) !important;
-  border-color: rgba(252, 211, 77, 0.72) !important;
-  color: #fffbeb !important;
+  background-color: #b45309 !important;
+  border-color: #fcd34d !important;
+  color: #ffffff !important;
 }
 
 :root[data-theme="dark"] .status-badge--red {
-  background-color: rgba(220, 38, 38, 0.24) !important;
-  border-color: rgba(252, 165, 165, 0.72) !important;
-  color: #fff1f2 !important;
+  background-color: #b91c1c !important;
+  border-color: #fca5a5 !important;
+  color: #ffffff !important;
 }
 
 :root[data-theme="dark"] .status-badge--slate {
-  background-color: rgba(100, 116, 139, 0.28) !important;
-  border-color: rgba(203, 213, 225, 0.62) !important;
-  color: #f8fafc !important;
+  background-color: #475569 !important;
+  border-color: #cbd5e1 !important;
+  color: #ffffff !important;
 }
 
 .resident-account-card {
@@ -474,9 +476,9 @@ table td {
 }
 
 :root:not([data-theme="dark"]) .security-status-pill--ok {
-  background-color: #dcfce7 !important;
-  border: 1px solid #bbf7d0;
-  color: #15803d !important;
+  background-color: #d1fae5 !important;
+  border: 1px solid #10b981;
+  color: #064e3b !important;
 }
 
 :root:not([data-theme="dark"]) .security-status-pill--attention {
@@ -492,9 +494,9 @@ table td {
 }
 
 :root[data-theme="dark"] .security-status-pill--ok {
-  background-color: rgba(192, 255, 107, 0.15) !important;
-  border: 1px solid rgba(192, 255, 107, 0.22);
-  color: rgb(var(--color-smart)) !important;
+  background-color: #047857 !important;
+  border: 1px solid #34d399;
+  color: #ffffff !important;
 }
 
 :root[data-theme="dark"] .security-status-pill--attention {

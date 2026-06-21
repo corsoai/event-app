@@ -678,7 +678,8 @@ function LiveVisitorCards({
   loading,
   error,
   showResident = false,
-  actionFor
+  actionFor,
+  onRetry
 }: {
   title: string;
   visitorViews: AppwriteVisitorView[];
@@ -686,6 +687,7 @@ function LiveVisitorCards({
   error: string;
   showResident?: boolean;
   actionFor?: (visitor: Visitor) => ReactNode;
+  onRetry?: () => void;
 }) {
   return (
     <Card className="mb-6">
@@ -694,8 +696,27 @@ function LiveVisitorCards({
         description={loading ? "Loading visitor records from Corso..." : `${visitorViews.length} visitor record${visitorViews.length === 1 ? "" : "s"} found.`}
       />
       {error ? (
-        <div className="rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm font-semibold text-danger">
-          {error}
+        <div className="flex flex-col gap-3 rounded-lg border border-danger/30 bg-danger/10 p-4 text-sm font-semibold text-danger sm:flex-row sm:items-center sm:justify-between">
+          <span>{error}</span>
+          {onRetry ? (
+            <Button type="button" variant="secondary" className="w-full sm:w-auto" onClick={onRetry}>
+              <RefreshCw className="h-4 w-4" />
+              Retry
+            </Button>
+          ) : null}
+        </div>
+      ) : null}
+      {!error && loading && !visitorViews.length ? (
+        <div className="grid gap-3">
+          {Array.from({ length: 2 }, (_, index) => (
+            <div key={index} className="rounded-lg border border-line bg-white/70 p-4 shadow-sm dark:bg-slate-800/70">
+              <div className="h-4 w-36 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+              <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                <div className="h-3 w-44 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+                <div className="h-3 w-32 animate-pulse rounded bg-slate-200 dark:bg-slate-700" />
+              </div>
+            </div>
+          ))}
         </div>
       ) : null}
       {!error && !loading && !visitorViews.length ? (
@@ -6144,10 +6165,11 @@ export function MyVisitorsPage() {
       </PageHeader>
       {visitorError ? <p className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{visitorError}</p> : null}
       <LiveVisitorCards
-        title={loadingVisitors ? "Loading visitor invitations" : "Visitor invitations"}
+        title="Visitor invitations"
         visitorViews={visitorViews}
         loading={loadingVisitors}
         error={visitorError}
+        onRetry={() => void refreshVisitors()}
       />
     </>
   );
@@ -8907,9 +8929,11 @@ function QrScannerPanel({
 
     async function startScanner() {
       if (!navigator.mediaDevices?.getUserMedia) {
-        setMessage(helper);
+        setMessage("Camera access is not available in this browser. Enter the 6-digit code manually.");
         return;
       }
+
+      setMessage("Starting camera...");
 
       try {
         const stream = await openQrCamera();
@@ -8922,8 +8946,13 @@ function QrScannerPanel({
         streamRef.current = stream;
 
         if (videoRef.current) {
-          videoRef.current.srcObject = stream;
-          await videoRef.current.play();
+          const video = videoRef.current;
+          video.muted = true;
+          video.autoplay = true;
+          video.playsInline = true;
+          video.srcObject = stream;
+          await waitForVideoMetadata(video);
+          await video.play();
         }
 
         const detector = window.BarcodeDetector ? new window.BarcodeDetector({ formats: ["qr_code"] }) : null;
@@ -8949,8 +8978,10 @@ function QrScannerPanel({
         };
 
         frameRef.current = window.requestAnimationFrame(scanFrame);
-      } catch {
-        setMessage(helper);
+      } catch (error) {
+        streamRef.current?.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        setMessage(cameraStartErrorMessage(error));
       }
     }
 
@@ -8983,7 +9014,7 @@ function QrScannerPanel({
         </Button>
       </div>
       <div className="mt-4 overflow-hidden rounded-lg border border-white/15 bg-ink">
-        <video ref={videoRef} className="h-[62vh] w-full object-cover sm:aspect-[4/3] sm:h-auto" muted playsInline />
+        <video ref={videoRef} className="h-[62vh] w-full object-cover sm:aspect-[4/3] sm:h-auto" muted playsInline autoPlay />
       </div>
       {message ? <p className="mt-3 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
     </div>
@@ -8991,17 +9022,66 @@ function QrScannerPanel({
 }
 
 async function openQrCamera() {
-  try {
-    return await navigator.mediaDevices.getUserMedia({
+  const constraints: MediaStreamConstraints[] = [
+    {
       audio: false,
-      video: { facingMode: { ideal: "environment" } }
-    });
-  } catch {
-    return navigator.mediaDevices.getUserMedia({
+      video: {
+        facingMode: { ideal: "environment" },
+        width: { ideal: 1280 },
+        height: { ideal: 720 }
+      }
+    },
+    {
+      audio: false,
+      video: { facingMode: "environment" }
+    },
+    {
       audio: false,
       video: true
-    });
+    }
+  ];
+  let lastError: unknown;
+
+  for (const constraint of constraints) {
+    try {
+      return await navigator.mediaDevices.getUserMedia(constraint);
+    } catch (error) {
+      lastError = error;
+    }
   }
+
+  throw lastError ?? new Error("Camera could not be started.");
+}
+
+function waitForVideoMetadata(video: HTMLVideoElement) {
+  if (video.readyState >= HTMLMediaElement.HAVE_METADATA && video.videoWidth > 0) {
+    return Promise.resolve();
+  }
+
+  return new Promise<void>((resolve) => {
+    const timeout = window.setTimeout(resolve, 1800);
+    video.addEventListener(
+      "loadedmetadata",
+      () => {
+        window.clearTimeout(timeout);
+        resolve();
+      },
+      { once: true }
+    );
+  });
+}
+
+function cameraStartErrorMessage(error: unknown) {
+  if (error instanceof DOMException) {
+    if (error.name === "NotAllowedError" || error.name === "SecurityError") {
+      return "Camera permission was blocked. Allow camera access for app.corso.ng or enter the code manually.";
+    }
+    if (error.name === "NotFoundError" || error.name === "OverconstrainedError") {
+      return "No usable camera was found on this device. Enter the code manually.";
+    }
+  }
+
+  return "Camera could not start on this device. Enter the 6-digit code manually.";
 }
 
 async function readQrValueFromVideo(

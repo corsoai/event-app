@@ -47,6 +47,7 @@ export function MobileBottomNav({ role }: { role: MobileRole }) {
   const pathname = usePathname();
   const [outstandingBalance, setOutstandingBalance] = useState(0);
   const [openIncidents, setOpenIncidents] = useState(0);
+  const [keyboardOpen, setKeyboardOpen] = useState(false);
 
   useEffect(() => {
     if (role !== "resident") return;
@@ -83,9 +84,42 @@ export function MobileBottomNav({ role }: { role: MobileRole }) {
 
   const items = useMemo(() => mobileItemsForRole(role, outstandingBalance, openIncidents), [role, outstandingBalance, openIncidents]);
 
+  useEffect(() => {
+    function checkKeyboardState() {
+      const activeElement = document.activeElement;
+      const focusedInput = isTextEntryElement(activeElement);
+      const visualViewport = window.visualViewport;
+      const viewportShrunk = visualViewport ? window.innerHeight - visualViewport.height > 140 : false;
+      const mobileWidth = window.innerWidth < 1024;
+
+      setKeyboardOpen(Boolean(focusedInput && mobileWidth && (viewportShrunk || focusedInput)));
+    }
+
+    function checkAfterFocusChange() {
+      window.setTimeout(checkKeyboardState, 80);
+    }
+
+    window.addEventListener("focusin", checkKeyboardState);
+    window.addEventListener("focusout", checkAfterFocusChange);
+    window.addEventListener("resize", checkKeyboardState);
+    window.visualViewport?.addEventListener("resize", checkKeyboardState);
+    checkKeyboardState();
+
+    return () => {
+      window.removeEventListener("focusin", checkKeyboardState);
+      window.removeEventListener("focusout", checkAfterFocusChange);
+      window.removeEventListener("resize", checkKeyboardState);
+      window.visualViewport?.removeEventListener("resize", checkKeyboardState);
+    };
+  }, []);
+
+  if (keyboardOpen) {
+    return null;
+  }
+
   return (
     <nav
-      className="fixed inset-x-3 bottom-3 z-50 overflow-hidden rounded-3xl border border-line bg-white/95 px-1.5 pt-1.5 shadow-[0_-8px_30px_rgba(15,23,42,0.18)] backdrop-blur-xl lg:hidden"
+      className="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-50 overflow-hidden rounded-3xl border border-line bg-white/95 px-1.5 pt-1.5 shadow-[0_-8px_30px_rgba(15,23,42,0.18)] backdrop-blur-xl lg:hidden"
       style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.45rem)" }}
       aria-label="Mobile primary navigation"
     >
@@ -168,4 +202,26 @@ function isActiveMobileTab(pathname: string, href: string) {
   }
 
   return pathname === cleanHref || pathname.startsWith(`${cleanHref}/`);
+}
+
+function isTextEntryElement(element: Element | null) {
+  if (!(element instanceof HTMLElement)) {
+    return false;
+  }
+
+  if (element.isContentEditable) {
+    return true;
+  }
+
+  const tagName = element.tagName.toLowerCase();
+  if (tagName === "textarea" || tagName === "select") {
+    return true;
+  }
+
+  if (tagName !== "input") {
+    return false;
+  }
+
+  const type = (element.getAttribute("type") ?? "text").toLowerCase();
+  return !["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"].includes(type);
 }
