@@ -64,7 +64,7 @@ export type AccessRequestView = {
 };
 
 let publicEstatesSessionCache: Array<{ id: string; name: string }> | null = null;
-const VISITOR_REQUEST_TIMEOUT_MS = 15_000;
+const VISITOR_REQUEST_TIMEOUT_MS = 12_000;
 
 function jsonRequestHeaders(headers?: HeadersInit) {
   const nextHeaders = new Headers(headers);

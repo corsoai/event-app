@@ -5756,25 +5756,6 @@ export function ResidentDashboard() {
         </Card>
         <ResidentAnnouncementsPage compact />
       </div>
-      {summary ? summary.outstandingBalance > 0 ? (
-        <button
-          type="button"
-          className="fixed bottom-[5.25rem] right-4 z-40 grid h-14 w-14 place-items-center rounded-full bg-[#1a7c4a] text-white shadow-[0_12px_30px_rgba(26,124,74,0.35)] disabled:opacity-70 sm:hidden"
-          aria-label="Pay now"
-          onClick={startOutstandingPayment}
-          disabled={onlinePaymentLoading}
-        >
-          <CreditCard className="h-6 w-6" />
-        </button>
-      ) : (
-        <Link
-          href="/resident/invite-visitor"
-          className="fixed bottom-[5.25rem] right-4 z-40 grid h-14 w-14 place-items-center rounded-full bg-[#1a7c4a] text-white shadow-[0_12px_30px_rgba(26,124,74,0.35)] sm:hidden"
-          aria-label="Invite visitor"
-        >
-          <QrCode className="h-6 w-6" />
-        </Link>
-      ) : null}
     </>
   );
 }
@@ -7348,17 +7329,17 @@ export function SecurityDashboard() {
           <CardHeader title="Recent gate activity" description="Latest visitor invitations and movements." />
           <div className="grid gap-3">
             {recentVisitors.length ? recentVisitors.map((visitor) => (
-              <div key={visitor.id} className="rounded-lg border border-line/70 bg-white/70 p-3">
+              <div key={visitor.id} className="rounded-lg border border-line/70 bg-white/80 p-3 dark:bg-slate-900/70">
                 <div className="flex items-start justify-between gap-3">
                   <div>
-                    <p className="font-semibold text-slate-950">{visitor.visitorName}</p>
-                    <p className="mt-1 text-xs text-slate-500">{visitor.code} - {formatClockTime(visitor.arrivalTime)}</p>
+                    <p className="font-semibold text-slate-950 dark:text-white">{visitor.visitorName}</p>
+                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{visitor.code} - {formatClockTime(visitor.arrivalTime)}</p>
                   </div>
                   <StatusBadge status={visitor.status} />
                 </div>
               </div>
             )) : (
-              <p className="rounded-lg border border-line bg-white/60 p-3 text-sm text-slate-500">No recent visitor activity.</p>
+              <p className="rounded-lg border border-line bg-white/70 p-3 text-sm text-slate-600 dark:bg-slate-900/70 dark:text-slate-300">No recent visitor activity.</p>
             )}
           </div>
         </Card>
@@ -7367,7 +7348,7 @@ export function SecurityDashboard() {
         <VerifyVisitorPage compact />
       </div>
       <div className="mt-6">
-        <h2 className="text-lg font-semibold text-white">Today at the gate</h2>
+        <h2 className="text-lg font-semibold text-slate-950 dark:text-white">Today at the gate</h2>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
         <StatCard label="Expected today" value={loadingVisitors ? "..." : visitorError ? "!" : String(visitors.length)} helper={visitorError ? "Refresh to retry" : "Pending, verified, or inside"} icon={<CalendarClock className="h-5 w-5" />} />
@@ -8901,6 +8882,81 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
   );
 }
 
+export function GuardTourPage({ compact = false }: { compact?: boolean }) {
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const [messageTone, setMessageTone] = useState<"ok" | "warn" | "error">("ok");
+  const [scans, setScans] = useState<GuardPatrolEvent[]>([]);
+
+  useEffect(() => installGuardTourSync(), []);
+
+  async function handleCheckpointScan(rawValue: string) {
+    if (!isGuardCheckpointQr(rawValue)) {
+      setMessage("That QR code is not a guard checkpoint. Scan a checkpoint QR to log your patrol.");
+      setMessageTone("error");
+      return;
+    }
+
+    setSaving(true);
+    setMessage("Checkpoint scanned. Checking GPS and saving patrol log...");
+    setMessageTone("ok");
+
+    try {
+      const result = await submitGuardCheckpointScan(rawValue);
+      setMessage(result.message);
+      setMessageTone(result.offline ? "warn" : result.ok ? "ok" : "error");
+      if (result.patrol) {
+        const patrol = result.patrol;
+        setScans((current) => [patrol, ...current].slice(0, 20));
+      }
+      void syncPendingTourLogs();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Checkpoint scan could not be saved.");
+      setMessageTone("error");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      {!compact ? <PageHeader title="Guard tour" description="Scan checkpoint QR codes to log your patrol." /> : null}
+      <Card>
+        <CardHeader title="Checkpoint scan" description="Scan a checkpoint QR to record this patrol point." />
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <Button className="w-full sm:w-auto" onClick={() => setScannerOpen(true)} disabled={saving}>
+            <Camera className="h-4 w-4" />
+            {saving ? "Saving..." : "Scan checkpoint"}
+          </Button>
+        </div>
+        <QrScannerPanel
+          active={scannerOpen}
+          title="Scan checkpoint QR"
+          helper={saving ? "Saving checkpoint scan..." : "Camera ready. Scanning checkpoint QR code."}
+          onResult={(value) => void handleCheckpointScan(value)}
+          onClose={() => setScannerOpen(false)}
+        />
+        {message ? <p className={`mt-5 rounded-lg px-3 py-2 text-sm ${guardTourMessageClassName(messageTone)}`}>{message}</p> : null}
+      </Card>
+      <Card>
+        <CardHeader title="This patrol" description="Checkpoints you have scanned in this session." />
+        {scans.length > 0 ? (
+          <div className="mt-4 grid gap-3">
+            {scans.map((patrol, index) => (
+              <PatrolEventCard key={`${patrol.id}-${index}`} patrol={patrol} />
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+            No checkpoints scanned yet. Scan a checkpoint QR to start your patrol.
+          </p>
+        )}
+      </Card>
+    </>
+  );
+}
+
 function QrScannerPanel({
   active,
   title,
@@ -8919,6 +8975,7 @@ function QrScannerPanel({
   const streamRef = useRef<MediaStream | null>(null);
   const frameRef = useRef<number | null>(null);
   const [message, setMessage] = useState(helper);
+  const [needsManualPlay, setNeedsManualPlay] = useState(false);
 
   useEffect(() => {
     if (!active) {
@@ -8933,6 +8990,7 @@ function QrScannerPanel({
         return;
       }
 
+      setNeedsManualPlay(false);
       setMessage("Starting camera...");
 
       try {
@@ -8950,9 +9008,17 @@ function QrScannerPanel({
           video.muted = true;
           video.autoplay = true;
           video.playsInline = true;
+          video.controls = false;
+          video.setAttribute("playsinline", "true");
+          video.setAttribute("webkit-playsinline", "true");
           video.srcObject = stream;
           await waitForVideoMetadata(video);
-          await video.play();
+          try {
+            await video.play();
+          } catch {
+            setNeedsManualPlay(true);
+            setMessage("Camera is ready. Tap the preview if scanning does not start.");
+          }
         }
 
         const detector = window.BarcodeDetector ? new window.BarcodeDetector({ formats: ["qr_code"] }) : null;
@@ -9004,6 +9070,20 @@ function QrScannerPanel({
     return null;
   }
 
+  function startVideoPlayback() {
+    const video = videoRef.current;
+    if (!video) return;
+
+    void video.play()
+      .then(() => {
+        setNeedsManualPlay(false);
+        setMessage(helper);
+      })
+      .catch(() => {
+        setNeedsManualPlay(true);
+      });
+  }
+
   return (
     <div className="fixed inset-0 z-[80] overflow-y-auto bg-black p-4 shadow-glow sm:static sm:mt-4 sm:rounded-lg sm:border sm:border-smart/30">
       <div className="flex items-center justify-between gap-3">
@@ -9013,8 +9093,24 @@ function QrScannerPanel({
           Close
         </Button>
       </div>
-      <div className="mt-4 overflow-hidden rounded-lg border border-white/15 bg-ink">
-        <video ref={videoRef} className="h-[62vh] w-full object-cover sm:aspect-[4/3] sm:h-auto" muted playsInline autoPlay />
+      <div
+        className="relative mt-4 overflow-hidden rounded-lg border border-white/15 bg-ink"
+        role="button"
+        tabIndex={0}
+        onClick={startVideoPlayback}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            startVideoPlayback();
+          }
+        }}
+      >
+        <video ref={videoRef} className="h-[62vh] w-full object-cover sm:aspect-[4/3] sm:h-auto" muted playsInline autoPlay disablePictureInPicture />
+        {needsManualPlay ? (
+          <div className="absolute inset-0 grid place-items-center bg-black/55 p-4 text-center text-sm font-semibold text-white">
+            Tap to start camera preview
+          </div>
+        ) : null}
       </div>
       {message ? <p className="mt-3 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
     </div>
@@ -9054,14 +9150,21 @@ async function openQrCamera() {
 }
 
 function waitForVideoMetadata(video: HTMLVideoElement) {
-  if (video.readyState >= HTMLMediaElement.HAVE_METADATA && video.videoWidth > 0) {
+  if (video.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA && video.videoWidth > 0) {
     return Promise.resolve();
   }
 
   return new Promise<void>((resolve) => {
-    const timeout = window.setTimeout(resolve, 1800);
+    const timeout = window.setTimeout(resolve, 2200);
+    const done = () => {
+      window.clearTimeout(timeout);
+      resolve();
+    };
+
+    video.addEventListener("loadedmetadata", done, { once: true });
+    video.addEventListener("loadeddata", done, { once: true });
     video.addEventListener(
-      "loadedmetadata",
+      "canplay",
       () => {
         window.clearTimeout(timeout);
         resolve();

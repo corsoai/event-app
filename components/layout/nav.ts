@@ -37,7 +37,7 @@ export const securityNav: NavItem[] = [
   { label: "Dashboard", href: "/security", icon: "Gauge" },
   { label: "🚨 SOS", href: "/security/sos-alerts", icon: "AlertTriangle", tone: "danger", badge: "sos" },
   { label: "Verify Visitor", href: "/security/verify-visitor", icon: "QrCode" },
-  { label: "Guard Tour", href: "/security/verify-visitor", icon: "ShieldCheck" },
+  { label: "Guard Tour", href: "/security/guard-tour", icon: "ShieldCheck" },
   { label: "Expected Visitors", href: "/security/expected-visitors", icon: "DoorOpen" },
   { label: "Entry Logs", href: "/security/logs", icon: "FileText" },
   { label: "Verify Digital ID", href: "/security/verify-id", icon: "IdCard" }

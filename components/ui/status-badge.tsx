@@ -32,7 +32,7 @@ export function StatusBadge({ status, tone }: { status: string; tone?: StatusTon
   return (
     <span
       className={cn(
-        "status-badge inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-semibold capitalize",
+        "status-badge inline-flex items-center whitespace-nowrap rounded-full border px-2.5 py-1 text-xs font-extrabold capitalize",
         `status-badge--${resolvedTone}`,
         tones[resolvedTone]
       )}
