@@ -212,7 +212,7 @@ export function AppShell({
             <div className="grid gap-1">
             {navItems.map((item) => (
               <NavLink
-                key={item.href}
+                key={`${item.href}:${item.label}`}
                 item={item}
                 active={pathname === item.href}
                 onNavigate={() => setOpen(false)}
@@ -254,7 +254,7 @@ export function AppShell({
         </div>
         <nav className="mt-6 grid flex-1 gap-1 overflow-y-auto overscroll-contain pr-1">
           {navItems.map((item) => (
-            <NavLink key={item.href} item={item} active={pathname === item.href} collapseLabel badgeCount={item.badge === "sos" ? activeSosCount : 0} />
+            <NavLink key={`${item.href}:${item.label}`} item={item} active={pathname === item.href} collapseLabel badgeCount={item.badge === "sos" ? activeSosCount : 0} />
           ))}
         </nav>
       </aside>

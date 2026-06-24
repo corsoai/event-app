@@ -226,19 +226,30 @@ table td {
 }
 
 .form-field-label {
-  color: #1f2d3d !important;
+  color: #1f2937 !important;
   opacity: 1 !important;
+  text-shadow: none !important;
 }
 
 :root[data-theme="dark"] .form-field-label {
   color: #f8fafc !important;
   opacity: 1 !important;
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35) !important;
 }
 
 .form-field-label > input,
 .form-field-label > select,
 .form-field-label > textarea {
   font-weight: 500;
+}
+
+@supports selector(:has(*)) {
+  body:has(input:focus) .mobile-bottom-nav,
+  body:has(textarea:focus) .mobile-bottom-nav,
+  body:has(select:focus) .mobile-bottom-nav,
+  body:has([contenteditable="true"]:focus) .mobile-bottom-nav {
+    display: none !important;
+  }
 }
 
 :root[data-theme="dark"] .visitor-card {
@@ -263,10 +274,16 @@ table td {
   color: rgb(var(--color-smart)) !important;
 }
 
+.status-badge {
+  opacity: 1 !important;
+  font-weight: 800 !important;
+  text-shadow: none !important;
+}
+
 :root:not([data-theme="dark"]) .status-badge--green {
-  background-color: #dcfce7 !important;
-  border-color: #34d399 !important;
-  color: #065f46 !important;
+  background-color: #bbf7d0 !important;
+  border-color: #22c55e !important;
+  color: #14532d !important;
 }
 
 :root:not([data-theme="dark"]) .status-badge--blue {
@@ -294,8 +311,8 @@ table td {
 }
 
 :root[data-theme="dark"] .status-badge--green {
-  background-color: #047857 !important;
-  border-color: #34d399 !important;
+  background-color: #166534 !important;
+  border-color: #86efac !important;
   color: #ffffff !important;
 }
 

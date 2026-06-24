@@ -14,6 +14,7 @@ import {
   QrCode,
   ReceiptText,
   Shield,
+  ShieldCheck,
   Users,
   WalletCards
 } from "lucide-react";
@@ -85,31 +86,57 @@ export function MobileBottomNav({ role }: { role: MobileRole }) {
   const items = useMemo(() => mobileItemsForRole(role, outstandingBalance, openIncidents), [role, outstandingBalance, openIncidents]);
 
   useEffect(() => {
-    function checkKeyboardState() {
+    let timeoutId: number | null = null;
+
+    function checkKeyboardState(forceOpen = false) {
       const activeElement = document.activeElement;
       const focusedInput = isTextEntryElement(activeElement);
       const visualViewport = window.visualViewport;
-      const viewportShrunk = visualViewport ? window.innerHeight - visualViewport.height > 140 : false;
+      const viewportShrunk = visualViewport
+        ? window.innerHeight - visualViewport.height > 90 || visualViewport.height < window.innerHeight * 0.82
+        : false;
       const mobileWidth = window.innerWidth < 1024;
 
-      setKeyboardOpen(Boolean(focusedInput && mobileWidth && (viewportShrunk || focusedInput)));
+      setKeyboardOpen(Boolean(focusedInput && mobileWidth && (forceOpen || viewportShrunk || focusedInput)));
     }
 
-    function checkAfterFocusChange() {
-      window.setTimeout(checkKeyboardState, 80);
+    function scheduleCheck(delay: number | Event = 80) {
+      const delayMs = typeof delay === "number" ? delay : 80;
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+      timeoutId = window.setTimeout(() => checkKeyboardState(), delayMs);
     }
 
-    window.addEventListener("focusin", checkKeyboardState);
-    window.addEventListener("focusout", checkAfterFocusChange);
-    window.addEventListener("resize", checkKeyboardState);
-    window.visualViewport?.addEventListener("resize", checkKeyboardState);
+    function handleFocusIn() {
+      checkKeyboardState(true);
+      scheduleCheck(220);
+    }
+
+    function handleFocusOut() {
+      scheduleCheck(140);
+    }
+
+    window.addEventListener("focusin", handleFocusIn, true);
+    window.addEventListener("focusout", handleFocusOut, true);
+    window.addEventListener("resize", scheduleCheck);
+    window.addEventListener("orientationchange", scheduleCheck);
+    window.visualViewport?.addEventListener("resize", scheduleCheck);
+    window.visualViewport?.addEventListener("scroll", scheduleCheck);
+    document.addEventListener("selectionchange", scheduleCheck);
     checkKeyboardState();
 
     return () => {
-      window.removeEventListener("focusin", checkKeyboardState);
-      window.removeEventListener("focusout", checkAfterFocusChange);
-      window.removeEventListener("resize", checkKeyboardState);
-      window.visualViewport?.removeEventListener("resize", checkKeyboardState);
+      if (timeoutId !== null) {
+        window.clearTimeout(timeoutId);
+      }
+      window.removeEventListener("focusin", handleFocusIn, true);
+      window.removeEventListener("focusout", handleFocusOut, true);
+      window.removeEventListener("resize", scheduleCheck);
+      window.removeEventListener("orientationchange", scheduleCheck);
+      window.visualViewport?.removeEventListener("resize", scheduleCheck);
+      window.visualViewport?.removeEventListener("scroll", scheduleCheck);
+      document.removeEventListener("selectionchange", scheduleCheck);
     };
   }, []);
 
@@ -119,7 +146,7 @@ export function MobileBottomNav({ role }: { role: MobileRole }) {
 
   return (
     <nav
-      className="fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-50 overflow-hidden rounded-3xl border border-line bg-white/95 px-1.5 pt-1.5 shadow-[0_-8px_30px_rgba(15,23,42,0.18)] backdrop-blur-xl lg:hidden"
+      className="mobile-bottom-nav fixed inset-x-3 bottom-[calc(0.75rem+env(safe-area-inset-bottom))] z-50 overflow-hidden rounded-3xl border border-line bg-white/95 px-1.5 pt-1.5 shadow-[0_-8px_30px_rgba(15,23,42,0.18)] backdrop-blur-xl lg:hidden"
       style={{ paddingBottom: "max(env(safe-area-inset-bottom), 0.45rem)" }}
       aria-label="Mobile primary navigation"
     >
@@ -171,6 +198,7 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
     return [
       { label: "Dashboard", href: "/security", icon: Shield },
       { label: "Verify", href: "/security/verify-visitor", icon: QrCode },
+      { label: "Tour", href: "/security/guard-tour", icon: ShieldCheck },
       { label: "Expected", href: "/security/expected-visitors", icon: Users },
       { label: "Logs", href: "/security/logs", icon: ClipboardList },
       { label: "SOS", href: "/security/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" }
