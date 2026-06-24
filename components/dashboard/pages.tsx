@@ -7312,41 +7312,50 @@ export function SecurityDashboard() {
           <ChevronRight className="h-5 w-5" />
         </Link>
       ) : null}
-      <div className="grid gap-3 sm:hidden">
-        <Link href="/security/verify-visitor">
-          <Button className="min-h-[72px] w-full justify-center text-base">
-            <QrCode className="h-6 w-6" />
-            Scan QR Code
-          </Button>
+      <div className="grid grid-cols-2 gap-3">
+        <Link
+          href="/security/verify-visitor"
+          className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-smart/40 bg-smart/15 p-5 text-center shadow-[0_18px_40px_rgba(192,255,107,0.16)] transition active:scale-[0.98]"
+        >
+          <span className="grid h-14 w-14 place-items-center rounded-2xl bg-smart text-ink">
+            <QrCode className="h-7 w-7" />
+          </span>
+          <span className="block">
+            <span className="block text-base font-semibold text-white">Verify Visitor</span>
+            <span className="mt-1 block text-xs text-slate-300">Scan or enter a code</span>
+          </span>
         </Link>
-        <Link href="/security/verify-visitor">
-          <Button variant="secondary" className="min-h-[72px] w-full justify-center text-base">
-            <Search className="h-6 w-6" />
-            Enter Code Manually
-          </Button>
+        <Link
+          href="/security/guard-tour"
+          className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-white/15 bg-white/[0.06] p-5 text-center transition active:scale-[0.98]"
+        >
+          <span className="grid h-14 w-14 place-items-center rounded-2xl bg-white/10 text-white">
+            <ShieldCheck className="h-7 w-7" />
+          </span>
+          <span className="block">
+            <span className="block text-base font-semibold text-white">Guard Tour</span>
+            <span className="mt-1 block text-xs text-slate-300">Scan checkpoint QR</span>
+          </span>
         </Link>
-        <Card>
-          <CardHeader title="Recent gate activity" description="Latest visitor invitations and movements." />
-          <div className="grid gap-3">
-            {recentVisitors.length ? recentVisitors.map((visitor) => (
-              <div key={visitor.id} className="rounded-lg border border-line/70 bg-white/80 p-3 dark:bg-slate-900/70">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-slate-950 dark:text-white">{visitor.visitorName}</p>
-                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{visitor.code} - {formatClockTime(visitor.arrivalTime)}</p>
-                  </div>
-                  <StatusBadge status={visitor.status} />
+      </div>
+      <Card className="mt-3">
+        <CardHeader title="Recent gate activity" description="Latest visitor invitations and movements." />
+        <div className="grid gap-3">
+          {recentVisitors.length ? recentVisitors.map((visitor) => (
+            <div key={visitor.id} className="rounded-lg border border-line/70 bg-white/80 p-3 dark:bg-slate-900/70">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-slate-950 dark:text-white">{visitor.visitorName}</p>
+                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{visitor.code} - {formatClockTime(visitor.arrivalTime)}</p>
                 </div>
+                <StatusBadge status={visitor.status} />
               </div>
-            )) : (
-              <p className="rounded-lg border border-line bg-white/70 p-3 text-sm text-slate-600 dark:bg-slate-900/70 dark:text-slate-300">No recent visitor activity.</p>
-            )}
-          </div>
-        </Card>
-      </div>
-      <div className="hidden sm:block">
-        <VerifyVisitorPage compact />
-      </div>
+            </div>
+          )) : (
+            <p className="rounded-lg border border-line bg-white/70 p-3 text-sm text-slate-600 dark:bg-slate-900/70 dark:text-slate-300">No recent visitor activity.</p>
+          )}
+        </div>
+      </Card>
       <div className="mt-6">
         <h2 className="text-lg font-semibold text-slate-950 dark:text-white">Today at the gate</h2>
       </div>
@@ -8603,7 +8612,9 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
   const [scannerOpen, setScannerOpen] = useState(false);
   const autoVerifiedVisitors = useRef(new Set<string>());
   const lastAutoSearchCode = useRef("");
+  const resultRef = useRef<HTMLDivElement | null>(null);
   const found = code.length === 6 ? findVisitorForCode(code) : undefined;
+  const foundKey = found ? `${found.id}:${found.status}` : "";
   const residentsDirectory = lookupResident
     ? [lookupResident, ...state.residents.filter((resident) => resident.id !== lookupResident.id)]
     : state.residents;
@@ -8630,6 +8641,12 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
   }, [code, found]);
 
   useEffect(() => installGuardTourSync(), []);
+
+  useEffect(() => {
+    if (foundKey) {
+      resultRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [foundKey]);
 
   function handleCodeChange(value: string) {
     const nextCode = value.replace(/\D/g, "").slice(0, 6);
@@ -8862,9 +8879,9 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
           onResult={(value) => void handleVisitorQrScan(value)}
           onClose={() => setScannerOpen(false)}
         />
-        <div className="mt-5">
+        <div ref={resultRef} className="mt-5">
           {tourMessage ? <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${guardTourMessageClassName(tourMessageTone)}`}>{tourMessage}</p> : null}
-          {message ? <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${visitorLookupMessageClassName(message)}`}>{message}</p> : null}
+          {message && !found ? <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${visitorLookupMessageClassName(message)}`}>{message}</p> : null}
           {found ? (
           <VisitorVerificationCard
               visitor={found}
@@ -9085,8 +9102,8 @@ function QrScannerPanel({
   }
 
   return (
-    <div className="fixed inset-0 z-[80] overflow-y-auto bg-black p-4 shadow-glow sm:static sm:mt-4 sm:rounded-lg sm:border sm:border-smart/30">
-      <div className="flex items-center justify-between gap-3">
+    <div className="fixed inset-0 z-[80] flex flex-col bg-black p-4 shadow-glow lg:static lg:block lg:mt-4 lg:rounded-lg lg:border lg:border-smart/30">
+      <div className="flex shrink-0 items-center justify-between gap-3">
         <h3 className="text-base font-semibold text-white">{title}</h3>
         <Button type="button" variant="ghost" className="min-h-9 px-3" onClick={onClose}>
           <X className="h-4 w-4" />
@@ -9094,7 +9111,7 @@ function QrScannerPanel({
         </Button>
       </div>
       <div
-        className="relative mt-4 overflow-hidden rounded-lg border border-white/15 bg-ink"
+        className="relative mt-4 min-h-0 flex-1 overflow-hidden rounded-lg border border-white/15 bg-ink"
         role="button"
         tabIndex={0}
         onClick={startVideoPlayback}
@@ -9105,14 +9122,14 @@ function QrScannerPanel({
           }
         }}
       >
-        <video ref={videoRef} className="h-[62vh] w-full object-cover sm:aspect-[4/3] sm:h-auto" muted playsInline autoPlay disablePictureInPicture />
+        <video ref={videoRef} className="h-full w-full object-cover lg:aspect-[4/3] lg:h-auto" muted playsInline autoPlay disablePictureInPicture />
         {needsManualPlay ? (
           <div className="absolute inset-0 grid place-items-center bg-black/55 p-4 text-center text-sm font-semibold text-white">
             Tap to start camera preview
           </div>
         ) : null}
       </div>
-      {message ? <p className="mt-3 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
+      {message ? <p className="mt-3 shrink-0 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
     </div>
   );
 }
