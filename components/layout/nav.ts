@@ -45,6 +45,7 @@ export const securityNav: NavItem[] = [
 
 export const csoNav: NavItem[] = [
   { label: "Command", href: "/cso", icon: "Gauge" },
+  { label: "Personnel", href: "/cso/personnel", icon: "Users" },
   { label: "🚨 SOS", href: "/cso/sos-alerts", icon: "AlertTriangle", tone: "danger", badge: "sos" },
   { label: "Checkpoints", href: "/cso#checkpoints", icon: "ShieldCheck" },
   { label: "Patrol Feed", href: "/cso#patrol-feed", icon: "FileText" }

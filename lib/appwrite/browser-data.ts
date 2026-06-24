@@ -1,6 +1,6 @@
 "use client";
 
-import type { Resident, SecurityIncident, UserRole, Visitor } from "@/lib/types";
+import type { Resident, SecurityIncident, Staff, UserRole, Visitor } from "@/lib/types";
 
 type AccessRequestResult = {
   status: "created" | "already-pending" | "already-approved";
@@ -421,4 +421,43 @@ export async function updateAppwriteResident(residentId: string, input: Resident
   }
 
   return payload.resident;
+}
+
+export async function readAppwriteStaff(): Promise<Staff[]> {
+  const response = await fetch(`/api/appwrite/security/staff?t=${Date.now()}`, { cache: "no-store" });
+  const payload = await response.json().catch(() => ({})) as { staff?: Staff[]; error?: string };
+
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Unable to load staff.");
+  }
+
+  return Array.isArray(payload.staff) ? payload.staff : [];
+}
+
+export async function saveAppwriteStaff(input: Record<string, unknown>): Promise<Staff> {
+  const response = await fetch("/api/appwrite/security/staff", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+  const payload = await response.json().catch(() => ({})) as { staff?: Staff; error?: string };
+
+  if (!response.ok || !payload.staff) {
+    throw new Error(payload.error ?? "Unable to save staff.");
+  }
+
+  return payload.staff;
+}
+
+export async function deleteAppwriteStaff(id: string): Promise<void> {
+  const response = await fetch(`/api/appwrite/security/staff?id=${encodeURIComponent(id)}`, {
+    method: "DELETE"
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(payload.error ?? "Unable to delete staff.");
+  }
 }

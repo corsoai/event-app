@@ -393,3 +393,32 @@ export type CsoReview = {
   followUpDate?: string;
   status: "open" | "pending" | "approved" | "rejected" | "closed" | "completed";
 };
+
+export type StaffEmploymentStatus = "active" | "on_leave" | "suspended" | "terminated";
+export type StaffEmploymentType = "full_time" | "part_time" | "contract";
+
+export type Staff = {
+  id: string;
+  estateId: string;
+  fullName: string;
+  roleTitle: string;
+  phone: string;
+  email: string;
+  photoUrl: string;
+  employmentStatus: StaffEmploymentStatus;
+  employmentType: StaffEmploymentType;
+  hireDate: string;
+  endDate: string;
+  assignedPost: string;
+  checkpointId: string;
+  onDuty: boolean;
+  currentShiftLabel: string;
+  idType: string;
+  idNumber: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+  address: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+};

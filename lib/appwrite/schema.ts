@@ -25,6 +25,7 @@ export const APPWRITE_TABLE_KNOWLEDGE_BASE = "knowledge_base";
 export const APPWRITE_TABLE_HOUSEHOLD_MEMBERS = "household_members";
 export const APPWRITE_TABLE_SUBSCRIPTION_RATES = "subscription_rates";
 export const APPWRITE_TABLE_MONTHLY_BILLING_RUNS = "monthly_billing_runs";
+export const APPWRITE_TABLE_STAFF = "staff";
 
 export const APPWRITE_TABLE_IDS = {
   estates: APPWRITE_TABLE_ESTATES,
@@ -52,7 +53,8 @@ export const APPWRITE_TABLE_IDS = {
   knowledgeBase: APPWRITE_TABLE_KNOWLEDGE_BASE,
   householdMembers: APPWRITE_TABLE_HOUSEHOLD_MEMBERS,
   subscriptionRates: APPWRITE_TABLE_SUBSCRIPTION_RATES,
-  monthlyBillingRuns: APPWRITE_TABLE_MONTHLY_BILLING_RUNS
+  monthlyBillingRuns: APPWRITE_TABLE_MONTHLY_BILLING_RUNS,
+  staff: APPWRITE_TABLE_STAFF
 } as const;
 
 export type AppwriteColumnDefinition = {
@@ -697,6 +699,38 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
       { key: "billing_run_unique", type: "unique", attributes: ["estateId", "billingMonth"] },
       { key: "billing_run_status_idx", type: "key", attributes: ["status"] },
       { key: "billing_run_date_idx", type: "key", attributes: ["runDate"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_STAFF,
+    name: "Staff",
+    columns: [
+      ...baseColumns,
+      { key: "staffId", type: "string", size: 64, required: false },
+      { key: "fullName", type: "string", size: 160, required: true },
+      { key: "roleTitle", type: "string", size: 64, required: true },
+      { key: "phone", type: "string", size: 64, required: false },
+      { key: "email", type: "string", size: 160, required: false },
+      { key: "photoUrl", type: "string", size: 512, required: false },
+      { key: "employmentStatus", type: "string", size: 32, required: false },
+      { key: "employmentType", type: "string", size: 32, required: false },
+      { key: "hireDate", type: "string", size: 32, required: false },
+      { key: "endDate", type: "string", size: 32, required: false },
+      { key: "assignedPost", type: "string", size: 160, required: false },
+      { key: "checkpointId", type: "string", size: 64, required: false },
+      { key: "onDuty", type: "boolean", required: false, default: false },
+      { key: "currentShiftLabel", type: "string", size: 64, required: false },
+      { key: "idType", type: "string", size: 64, required: false },
+      { key: "idNumber", type: "string", size: 64, required: false },
+      { key: "emergencyContactName", type: "string", size: 160, required: false },
+      { key: "emergencyContactPhone", type: "string", size: 64, required: false },
+      { key: "address", type: "string", size: 512, required: false },
+      { key: "notes", type: "string", size: 1024, required: false }
+    ],
+    indexes: [
+      { key: "staff_estate_idx", type: "key", attributes: ["estateId"] },
+      { key: "staff_role_idx", type: "key", attributes: ["roleTitle"] },
+      { key: "staff_status_idx", type: "key", attributes: ["employmentStatus"] }
     ]
   }
 ];

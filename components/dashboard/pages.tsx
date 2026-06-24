@@ -38,6 +38,7 @@ import {
   ShieldCheck,
   Siren,
   Store,
+  Plus,
   Trash2,
   Upload,
   UserCheck,
@@ -91,6 +92,9 @@ import {
 } from "@/lib/local-store";
 import {
   createAppwriteResidentSos,
+  readAppwriteStaff,
+  saveAppwriteStaff,
+  deleteAppwriteStaff,
   createAppwriteResidentVisitor,
   findAppwriteVisitorByCode,
   readAppwriteAdminSosIncidents,
@@ -113,7 +117,7 @@ import {
   syncPendingTourLogs
 } from "@/lib/guard-tour";
 import { APPWRITE_ONBOARDING_DATABASE_ID } from "@/lib/appwrite/schema";
-import type { AppwriteAnnouncement, AppwriteComplaint, AppwriteKnowledgeBaseArticle, Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, HouseholdMember, Payment, Property, Resident, SecurityIncident, StatusTone, Unit, UserRole, Visitor } from "@/lib/types";
+import type { AppwriteAnnouncement, AppwriteComplaint, AppwriteKnowledgeBaseArticle, Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, HouseholdMember, Payment, Property, Resident, SecurityIncident, Staff, StatusTone, Unit, UserRole, Visitor } from "@/lib/types";
 import { contactLabel, makeDigitalIdNumber, money } from "@/lib/utils";
 import { getVisitorWindowState, VISITOR_CODE_VALIDITY_HOURS } from "@/lib/visitor-window";
 import { useRouter } from "next/navigation";
@@ -7377,6 +7381,286 @@ export function SecurityDashboard() {
           showResident
         />
       </div>
+    </>
+  );
+}
+
+type StaffFormState = {
+  fullName: string;
+  roleTitle: string;
+  phone: string;
+  email: string;
+  photoUrl: string;
+  employmentStatus: Staff["employmentStatus"];
+  employmentType: Staff["employmentType"];
+  hireDate: string;
+  endDate: string;
+  assignedPost: string;
+  currentShiftLabel: string;
+  idType: string;
+  idNumber: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+  address: string;
+  notes: string;
+  onDuty: boolean;
+};
+
+function emptyStaffForm(): StaffFormState {
+  return {
+    fullName: "",
+    roleTitle: "",
+    phone: "",
+    email: "",
+    photoUrl: "",
+    employmentStatus: "active",
+    employmentType: "full_time",
+    hireDate: "",
+    endDate: "",
+    assignedPost: "",
+    currentShiftLabel: "",
+    idType: "",
+    idNumber: "",
+    emergencyContactName: "",
+    emergencyContactPhone: "",
+    address: "",
+    notes: "",
+    onDuty: false
+  };
+}
+
+function staffToForm(member: Staff): StaffFormState {
+  return {
+    fullName: member.fullName,
+    roleTitle: member.roleTitle,
+    phone: member.phone,
+    email: member.email,
+    photoUrl: member.photoUrl,
+    employmentStatus: member.employmentStatus,
+    employmentType: member.employmentType,
+    hireDate: member.hireDate,
+    endDate: member.endDate,
+    assignedPost: member.assignedPost,
+    currentShiftLabel: member.currentShiftLabel,
+    idType: member.idType,
+    idNumber: member.idNumber,
+    emergencyContactName: member.emergencyContactName,
+    emergencyContactPhone: member.emergencyContactPhone,
+    address: member.address,
+    notes: member.notes,
+    onDuty: member.onDuty
+  };
+}
+
+function staffStatusLabel(status: Staff["employmentStatus"]) {
+  switch (status) {
+    case "on_leave":
+      return "On leave";
+    case "suspended":
+      return "Suspended";
+    case "terminated":
+      return "Terminated";
+    default:
+      return "Active";
+  }
+}
+
+export function CsoPersonnelPage() {
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | Staff["employmentStatus"]>("all");
+  const [editing, setEditing] = useState<Staff | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<StaffFormState>(emptyStaffForm());
+
+  useEffect(() => {
+    void loadStaff();
+  }, []);
+
+  async function loadStaff() {
+    setLoading(true);
+    try {
+      const rows = await readAppwriteStaff();
+      setStaff(rows);
+      setMessage("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to load staff.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function openAdd() {
+    setEditing(null);
+    setForm(emptyStaffForm());
+    setShowForm(true);
+  }
+
+  function openEdit(member: Staff) {
+    setEditing(member);
+    setForm(staffToForm(member));
+    setShowForm(true);
+  }
+
+  function updateField<K extends keyof StaffFormState>(key: K, value: StaffFormState[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  async function submitStaff(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!form.fullName.trim() || !form.roleTitle.trim()) {
+      setMessage("Name and role are required.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await saveAppwriteStaff({ id: editing?.id, ...form });
+      setShowForm(false);
+      setEditing(null);
+      await loadStaff();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to save staff.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeStaff(member: Staff) {
+    if (typeof window !== "undefined" && !window.confirm(`Remove ${member.fullName}? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      await deleteAppwriteStaff(member.id);
+      await loadStaff();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to remove staff.");
+    }
+  }
+
+  const query = search.trim().toLowerCase();
+  const filtered = staff.filter((member) => {
+    const matchesStatus = statusFilter === "all" || member.employmentStatus === statusFilter;
+    const matchesSearch = !query
+      || member.fullName.toLowerCase().includes(query)
+      || member.roleTitle.toLowerCase().includes(query)
+      || member.phone.includes(query);
+    return matchesStatus && matchesSearch;
+  });
+
+  const onDutyCount = staff.filter((member) => member.onDuty).length;
+  const activeCount = staff.filter((member) => member.employmentStatus === "active").length;
+  const onLeaveCount = staff.filter((member) => member.employmentStatus === "on_leave").length;
+
+  return (
+    <>
+      <PageHeader title="Personnel" description="Manage estate staff and security personnel." />
+      {message ? <p className="mb-4 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
+
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard label="Total staff" value={String(staff.length)} helper="All records" icon={<Users className="h-5 w-5" />} />
+        <StatCard label="On duty" value={String(onDutyCount)} helper="Currently working" icon={<ShieldCheck className="h-5 w-5" />} />
+        <StatCard label="Active" value={String(activeCount)} helper="Employed" icon={<BadgeCheck className="h-5 w-5" />} />
+        <StatCard label="On leave" value={String(onLeaveCount)} helper="Away" icon={<CalendarClock className="h-5 w-5" />} />
+      </div>
+
+      <Card>
+        <CardHeader
+          title="Staff directory"
+          description="Search and manage personnel records."
+          action={<Button onClick={openAdd}><Plus className="h-4 w-4" />Add staff</Button>}
+        />
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row">
+          <Input placeholder="Search name, role, phone" value={search} onChange={(event) => setSearch(event.target.value)} />
+          <Select value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value as "all" | Staff["employmentStatus"])}>
+            <option value="all">All statuses</option>
+            <option value="active">Active</option>
+            <option value="on_leave">On leave</option>
+            <option value="suspended">Suspended</option>
+            <option value="terminated">Terminated</option>
+          </Select>
+        </div>
+        {loading ? (
+          <p className="text-sm text-slate-300">Loading staff...</p>
+        ) : filtered.length ? (
+          <div className="grid gap-2">
+            {filtered.map((member) => (
+              <div key={member.id} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 p-3">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 font-semibold text-white">
+                    <span className="truncate">{member.fullName}</span>
+                    {member.onDuty ? <span className="rounded-full bg-smart/20 px-2 py-0.5 text-[11px] font-semibold text-smart">On duty</span> : null}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-slate-400">
+                    {member.roleTitle}{member.phone ? ` · ${member.phone}` : ""} · {staffStatusLabel(member.employmentStatus)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button variant="secondary" className="min-h-9 px-3" onClick={() => openEdit(member)}>Edit</Button>
+                  <Button variant="ghost" className="min-h-9 px-3 text-danger" onClick={() => void removeStaff(member)}><Trash2 className="h-4 w-4" /></Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">No staff found. Tap &quot;Add staff&quot; to create the first record.</p>
+        )}
+      </Card>
+
+      {showForm ? (
+        <Card className="mt-4">
+          <CardHeader
+            title={editing ? `Edit ${editing.fullName}` : "Add staff"}
+            description="Personnel profile details."
+            action={<Button variant="ghost" onClick={() => setShowForm(false)}><X className="h-4 w-4" />Close</Button>}
+          />
+          <form className="grid gap-4" onSubmit={submitStaff}>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Full name"><Input value={form.fullName} onChange={(event) => updateField("fullName", event.target.value)} required /></Field>
+              <Field label="Role / title"><Input value={form.roleTitle} onChange={(event) => updateField("roleTitle", event.target.value)} placeholder="e.g. Security Guard" required /></Field>
+              <Field label="Phone"><Input value={form.phone} onChange={(event) => updateField("phone", event.target.value)} /></Field>
+              <Field label="Email"><Input value={form.email} onChange={(event) => updateField("email", event.target.value)} /></Field>
+              <Field label="Employment status">
+                <Select value={form.employmentStatus} onChange={(event) => updateField("employmentStatus", event.currentTarget.value as Staff["employmentStatus"])}>
+                  <option value="active">Active</option>
+                  <option value="on_leave">On leave</option>
+                  <option value="suspended">Suspended</option>
+                  <option value="terminated">Terminated</option>
+                </Select>
+              </Field>
+              <Field label="Employment type">
+                <Select value={form.employmentType} onChange={(event) => updateField("employmentType", event.currentTarget.value as Staff["employmentType"])}>
+                  <option value="full_time">Full-time</option>
+                  <option value="part_time">Part-time</option>
+                  <option value="contract">Contract</option>
+                </Select>
+              </Field>
+              <Field label="Hire date"><Input type="date" value={form.hireDate} onChange={(event) => updateField("hireDate", event.target.value)} /></Field>
+              <Field label="End date"><Input type="date" value={form.endDate} onChange={(event) => updateField("endDate", event.target.value)} /></Field>
+              <Field label="Assigned post"><Input value={form.assignedPost} onChange={(event) => updateField("assignedPost", event.target.value)} placeholder="e.g. Main Gate" /></Field>
+              <Field label="Shift"><Input value={form.currentShiftLabel} onChange={(event) => updateField("currentShiftLabel", event.target.value)} placeholder="e.g. Night (6pm-6am)" /></Field>
+              <Field label="ID type"><Input value={form.idType} onChange={(event) => updateField("idType", event.target.value)} placeholder="e.g. NIN" /></Field>
+              <Field label="ID number"><Input value={form.idNumber} onChange={(event) => updateField("idNumber", event.target.value)} /></Field>
+              <Field label="Emergency contact name"><Input value={form.emergencyContactName} onChange={(event) => updateField("emergencyContactName", event.target.value)} /></Field>
+              <Field label="Emergency contact phone"><Input value={form.emergencyContactPhone} onChange={(event) => updateField("emergencyContactPhone", event.target.value)} /></Field>
+              <Field label="Photo URL"><Input value={form.photoUrl} onChange={(event) => updateField("photoUrl", event.target.value)} placeholder="Optional image link" /></Field>
+            </div>
+            <Field label="Address"><Input value={form.address} onChange={(event) => updateField("address", event.target.value)} /></Field>
+            <Field label="Notes"><Textarea value={form.notes} onChange={(event) => updateField("notes", event.target.value)} /></Field>
+            <label className="flex items-center gap-2 text-sm text-slate-200">
+              <input type="checkbox" checked={form.onDuty} onChange={(event) => updateField("onDuty", event.target.checked)} className="h-4 w-4" />
+              Currently on duty
+            </label>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={saving}>{saving ? "Saving..." : editing ? "Save changes" : "Add staff"}</Button>
+              <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
+            </div>
+          </form>
+        </Card>
+      ) : null}
     </>
   );
 }
