@@ -9,6 +9,7 @@ import {
   Building2,
   CalendarClock,
   Camera,
+  Car,
   ChevronDown,
   ChevronRight,
   CheckCircle2,
@@ -7312,30 +7313,33 @@ export function SecurityDashboard() {
           <ChevronRight className="h-5 w-5" />
         </Link>
       ) : null}
-      <div className="grid grid-cols-2 gap-3">
+      <div className="grid grid-cols-3 gap-2.5">
         <Link
           href="/security/verify-visitor"
-          className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-smart/40 bg-smart/15 p-5 text-center shadow-[0_18px_40px_rgba(192,255,107,0.16)] transition active:scale-[0.98]"
+          className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-smart/40 bg-smart/15 p-4 text-center shadow-[0_18px_40px_rgba(192,255,107,0.16)] transition active:scale-[0.98]"
         >
-          <span className="grid h-14 w-14 place-items-center rounded-2xl bg-smart text-ink">
-            <QrCode className="h-7 w-7" />
+          <span className="grid h-12 w-12 place-items-center rounded-xl bg-smart text-ink">
+            <QrCode className="h-6 w-6" />
           </span>
-          <span className="block">
-            <span className="block text-base font-semibold text-white">Verify Visitor</span>
-            <span className="mt-1 block text-xs text-slate-300">Scan or enter a code</span>
-          </span>
+          <span className="text-sm font-semibold leading-tight text-white">Verify Visitor</span>
         </Link>
         <Link
           href="/security/guard-tour"
-          className="flex flex-col items-center justify-center gap-3 rounded-2xl border border-white/15 bg-white/[0.06] p-5 text-center transition active:scale-[0.98]"
+          className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[0.06] p-4 text-center transition active:scale-[0.98]"
         >
-          <span className="grid h-14 w-14 place-items-center rounded-2xl bg-white/10 text-white">
-            <ShieldCheck className="h-7 w-7" />
+          <span className="grid h-12 w-12 place-items-center rounded-xl bg-white/10 text-white">
+            <ShieldCheck className="h-6 w-6" />
           </span>
-          <span className="block">
-            <span className="block text-base font-semibold text-white">Guard Tour</span>
-            <span className="mt-1 block text-xs text-slate-300">Scan checkpoint QR</span>
+          <span className="text-sm font-semibold leading-tight text-white">Guard Tour</span>
+        </Link>
+        <Link
+          href="/security/scan-plate"
+          className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[0.06] p-4 text-center transition active:scale-[0.98]"
+        >
+          <span className="grid h-12 w-12 place-items-center rounded-xl bg-white/10 text-white">
+            <Car className="h-6 w-6" />
           </span>
+          <span className="text-sm font-semibold leading-tight text-white">Scan Plate</span>
         </Link>
       </div>
       <Card className="mt-3">
@@ -8971,6 +8975,284 @@ export function GuardTourPage({ compact = false }: { compact?: boolean }) {
         )}
       </Card>
     </>
+  );
+}
+
+function parseNigerianPlate(rawText: string) {
+  const cleaned = (rawText ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const match = cleaned.match(/([A-Z]{3})(\d{3})([A-Z]{2})/);
+  if (match) {
+    return { plate: `${match[1]}-${match[2]}-${match[3]}`, matched: true };
+  }
+  return { plate: cleaned.slice(0, 12), matched: false };
+}
+
+export function ScanPlatePage({ compact = false }: { compact?: boolean }) {
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [plate, setPlate] = useState("");
+  const [rawText, setRawText] = useState("");
+  const [matched, setMatched] = useState(true);
+  const [vehicleClass, setVehicleClass] = useState("Car");
+  const [scans, setScans] = useState<{ plate: string; vehicleClass: string; at: string }[]>([]);
+
+  function handlePlateResult(detected: string, raw: string, didMatch: boolean) {
+    setPlate(detected);
+    setRawText(raw);
+    setMatched(didMatch);
+  }
+
+  function logPlate() {
+    const value = plate.trim().toUpperCase();
+    if (!value) return;
+    setScans((current) => [{ plate: value, vehicleClass, at: new Date().toISOString() }, ...current].slice(0, 20));
+    setPlate("");
+    setRawText("");
+    setMatched(true);
+    setVehicleClass("Car");
+  }
+
+  return (
+    <>
+      {!compact ? <PageHeader title="Scan number plate" description="Capture a vehicle plate at the gate, then confirm." /> : null}
+      <Card>
+        <CardHeader title="Plate capture" description="Point the camera at the plate from 1-3m, capture, then confirm or edit before logging." />
+        <Button className="w-full sm:w-auto" onClick={() => setScannerOpen(true)}>
+          <Camera className="h-4 w-4" />
+          Scan plate
+        </Button>
+        <PlateScannerPanel active={scannerOpen} onResult={handlePlateResult} onClose={() => setScannerOpen(false)} />
+        {plate ? (
+          <div className="mt-5 rounded-lg border border-smart/30 bg-smart/10 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-smart">
+              {matched ? "Plate detected - confirm" : "Best read - please check"}
+            </p>
+            <Field label="Plate number">
+              <Input value={plate} onChange={(event) => setPlate(event.target.value.toUpperCase())} className="font-mono text-lg" />
+            </Field>
+            <Field label="Vehicle class">
+              <Select value={vehicleClass} onChange={(event) => setVehicleClass(event.currentTarget.value)}>
+                <option value="Car">Car</option>
+                <option value="SUV">SUV</option>
+                <option value="Bus">Bus</option>
+                <option value="Truck">Truck</option>
+                <option value="Motorcycle">Motorcycle</option>
+                <option value="Tricycle">Tricycle (Keke)</option>
+                <option value="Other">Other</option>
+              </Select>
+            </Field>
+            {rawText ? <p className="mt-2 text-xs text-slate-400">Raw read: {rawText.replace(/\s+/g, " ").trim()}</p> : null}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button onClick={logPlate}>Confirm &amp; log</Button>
+              <Button variant="secondary" onClick={() => { setPlate(""); setRawText(""); }}>Discard</Button>
+            </div>
+          </div>
+        ) : null}
+      </Card>
+      <Card>
+        <CardHeader title="This session" description="Plates captured in this session." />
+        {scans.length > 0 ? (
+          <div className="mt-4 grid gap-2">
+            {scans.map((scan, index) => (
+              <div key={`${scan.plate}-${index}`} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                <span className="font-mono text-base font-semibold text-white">{scan.plate}</span>
+                <span className="flex items-center gap-2 text-xs text-slate-400">
+                  <span className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-slate-200">{scan.vehicleClass}</span>
+                  {formatClockTime(scan.at)}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+            No plates captured yet. Tap Scan plate to start.
+          </p>
+        )}
+      </Card>
+    </>
+  );
+}
+
+function PlateScannerPanel({
+  active,
+  onResult,
+  onClose
+}: {
+  active: boolean;
+  onResult: (plate: string, raw: string, matched: boolean) => void;
+  onClose: () => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [message, setMessage] = useState("Point the camera at the number plate, then tap Capture.");
+  const [needsManualPlay, setNeedsManualPlay] = useState(false);
+  const [reading, setReading] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [active]);
+
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function startCamera() {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setMessage("Camera access is not available in this browser.");
+        return;
+      }
+
+      setNeedsManualPlay(false);
+      setMessage("Starting camera...");
+
+      try {
+        const stream = await openQrCamera();
+
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        streamRef.current = stream;
+
+        if (videoRef.current) {
+          const video = videoRef.current;
+          video.muted = true;
+          video.autoplay = true;
+          video.playsInline = true;
+          video.setAttribute("playsinline", "true");
+          video.setAttribute("webkit-playsinline", "true");
+          video.srcObject = stream;
+          await waitForVideoMetadata(video);
+          try {
+            await video.play();
+          } catch {
+            setNeedsManualPlay(true);
+          }
+        }
+
+        setMessage("Point the camera at the number plate, then tap Capture.");
+      } catch (error) {
+        streamRef.current?.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        setMessage(cameraStartErrorMessage(error));
+      }
+    }
+
+    void startCamera();
+
+    return () => {
+      cancelled = true;
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    };
+  }, [active]);
+
+  if (!active || !mounted) {
+    return null;
+  }
+
+  function startVideoPlayback() {
+    const video = videoRef.current;
+    if (!video) return;
+    void video.play().then(() => setNeedsManualPlay(false)).catch(() => setNeedsManualPlay(true));
+  }
+
+  async function capturePlate() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || reading) return;
+
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      setMessage("Camera still warming up. Try again in a moment.");
+      return;
+    }
+
+    setReading(true);
+    setMessage("Reading plate...");
+
+    try {
+      const maxWidth = 1100;
+      const scale = video.videoWidth > maxWidth ? maxWidth / video.videoWidth : 1;
+      canvas.width = Math.round(video.videoWidth * scale);
+      canvas.height = Math.round(video.videoHeight * scale);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        setReading(false);
+        return;
+      }
+      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+      const { recognize } = await import("tesseract.js");
+      const result = await recognize(canvas, "eng");
+      const text = result?.data?.text ?? "";
+      const parsed = parseNigerianPlate(text);
+
+      if (!parsed.plate) {
+        setMessage("Couldn't read any text. Move closer, hold steady, and try again.");
+        setReading(false);
+        return;
+      }
+
+      onResult(parsed.plate, text, parsed.matched);
+      onClose();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Plate could not be read. Try again.");
+    } finally {
+      setReading(false);
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[120] flex flex-col bg-black p-4 shadow-glow">
+      <div className="flex shrink-0 items-center justify-between gap-3">
+        <h3 className="text-base font-semibold text-white">Scan number plate</h3>
+        <Button type="button" variant="ghost" className="min-h-9 px-3" onClick={onClose}>
+          <X className="h-4 w-4" />
+          Close
+        </Button>
+      </div>
+      <div
+        className="relative mt-4 min-h-0 flex-1 overflow-hidden rounded-lg border border-white/15 bg-ink"
+        role="button"
+        tabIndex={0}
+        onClick={startVideoPlayback}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            startVideoPlayback();
+          }
+        }}
+      >
+        <video ref={videoRef} className="h-full w-full object-cover" muted playsInline autoPlay disablePictureInPicture />
+        <canvas ref={canvasRef} className="hidden" />
+        <div className="pointer-events-none absolute inset-x-6 top-1/2 h-[22%] -translate-y-1/2 rounded-lg border-2 border-smart/70" />
+        {needsManualPlay ? (
+          <div className="absolute inset-0 grid place-items-center bg-black/55 p-4 text-center text-sm font-semibold text-white">
+            Tap to start camera preview
+          </div>
+        ) : null}
+      </div>
+      {message ? <p className="mt-3 shrink-0 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
+      <Button type="button" className="mt-3 min-h-12 w-full shrink-0 justify-center text-base" onClick={() => void capturePlate()} disabled={reading}>
+        <Camera className="h-5 w-5" />
+        {reading ? "Reading..." : "Capture plate"}
+      </Button>
+    </div>,
+    document.body
   );
 }
 
