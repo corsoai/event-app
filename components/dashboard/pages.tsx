@@ -8993,6 +8993,20 @@ function QrScannerPanel({
   const frameRef = useRef<number | null>(null);
   const [message, setMessage] = useState(helper);
   const [needsManualPlay, setNeedsManualPlay] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [active]);
 
   useEffect(() => {
     if (!active) {
@@ -9083,7 +9097,7 @@ function QrScannerPanel({
     };
   }, [active, helper, onClose, onResult]);
 
-  if (!active) {
+  if (!active || !mounted) {
     return null;
   }
 
@@ -9101,8 +9115,8 @@ function QrScannerPanel({
       });
   }
 
-  return (
-    <div className="fixed inset-0 z-[80] flex flex-col bg-black p-4 shadow-glow lg:static lg:block lg:mt-4 lg:rounded-lg lg:border lg:border-smart/30">
+  return createPortal(
+    <div className="fixed inset-0 z-[120] flex flex-col bg-black p-4 shadow-glow">
       <div className="flex shrink-0 items-center justify-between gap-3">
         <h3 className="text-base font-semibold text-white">{title}</h3>
         <Button type="button" variant="ghost" className="min-h-9 px-3" onClick={onClose}>
@@ -9122,7 +9136,7 @@ function QrScannerPanel({
           }
         }}
       >
-        <video ref={videoRef} className="h-full w-full object-cover lg:aspect-[4/3] lg:h-auto" muted playsInline autoPlay disablePictureInPicture />
+        <video ref={videoRef} className="h-full w-full object-cover" muted playsInline autoPlay disablePictureInPicture />
         {needsManualPlay ? (
           <div className="absolute inset-0 grid place-items-center bg-black/55 p-4 text-center text-sm font-semibold text-white">
             Tap to start camera preview
@@ -9130,7 +9144,8 @@ function QrScannerPanel({
         ) : null}
       </div>
       {message ? <p className="mt-3 shrink-0 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
-    </div>
+    </div>,
+    document.body
   );
 }
 
