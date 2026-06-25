@@ -9777,7 +9777,7 @@ function parseNigerianPlate(rawText: string) {
   const cleaned = (rawText ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
   const match = cleaned.match(/([A-Z]{3})(\d{3})([A-Z]{2})/);
   if (match) {
-    return { plate: `${match[1]}-${match[2]}-${match[3]}`, matched: true };
+    return { plate: `${match[1]}-${match[2]}${match[3]}`, matched: true };
   }
   return { plate: cleaned.slice(0, 12), matched: false };
 }
@@ -9980,24 +9980,54 @@ function PlateScannerPanel({
     setMessage("Reading plate...");
 
     try {
-      const maxWidth = 1100;
-      const scale = video.videoWidth > maxWidth ? maxWidth / video.videoWidth : 1;
-      canvas.width = Math.round(video.videoWidth * scale);
-      canvas.height = Math.round(video.videoHeight * scale);
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      // Crop to the centred guide-box band so we OCR only the plate, not the whole frame.
+      const cropX = Math.round(vw * 0.05);
+      const cropY = Math.round(vh * 0.34);
+      const cropW = Math.round(vw * 0.90);
+      const cropH = Math.round(vh * 0.30);
+      const targetW = 1000;
+      const targetH = Math.max(1, Math.round((cropH / cropW) * targetW));
+      canvas.width = targetW;
+      canvas.height = targetH;
       const ctx = canvas.getContext("2d");
       if (!ctx) {
         setReading(false);
         return;
       }
-      ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+      ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH);
 
-      const { recognize } = await import("tesseract.js");
-      const result = await recognize(canvas, "eng");
+      // Grayscale + adaptive threshold to isolate the dark characters from the plate background.
+      const imageData = ctx.getImageData(0, 0, targetW, targetH);
+      const pixels = imageData.data;
+      let graySum = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        const gray = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
+        pixels[i] = pixels[i + 1] = pixels[i + 2] = gray;
+        graySum += gray;
+      }
+      const meanGray = graySum / (pixels.length / 4);
+      const threshold = meanGray * 0.82;
+      for (let i = 0; i < pixels.length; i += 4) {
+        const value = pixels[i] < threshold ? 0 : 255;
+        pixels[i] = pixels[i + 1] = pixels[i + 2] = value;
+      }
+      ctx.putImageData(imageData, 0, 0);
+
+      const { createWorker, PSM } = await import("tesseract.js");
+      const worker = await createWorker("eng");
+      await worker.setParameters({
+        tessedit_pageseg_mode: PSM.SINGLE_LINE,
+        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-"
+      });
+      const result = await worker.recognize(canvas);
+      await worker.terminate();
       const text = result?.data?.text ?? "";
       const parsed = parseNigerianPlate(text);
 
       if (!parsed.plate) {
-        setMessage("Couldn't read any text. Move closer, hold steady, and try again.");
+        setMessage("Couldn't read the plate. Fill the green box with the plate, hold steady, and try again.");
         setReading(false);
         return;
       }
@@ -10034,7 +10064,8 @@ function PlateScannerPanel({
       >
         <video ref={videoRef} className="h-full w-full object-cover" muted playsInline autoPlay disablePictureInPicture />
         <canvas ref={canvasRef} className="hidden" />
-        <div className="pointer-events-none absolute inset-x-6 top-1/2 h-[22%] -translate-y-1/2 rounded-lg border-2 border-smart/70" />
+        <div className="pointer-events-none absolute inset-x-[5%] top-1/2 h-[30%] -translate-y-1/2 rounded-lg border-2 border-smart/70" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 text-center text-xs font-medium text-white/80">Fill the box with the number plate</div>
         {needsManualPlay ? (
           <div className="absolute inset-0 grid place-items-center bg-black/55 p-4 text-center text-sm font-semibold text-white">
             Tap to start camera preview
