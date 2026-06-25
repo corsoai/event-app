@@ -1,4 +1,4 @@
-import type { Staff } from "@/lib/types";
+import type { Staff, StaffAttendance, StaffAttendanceStatus } from "@/lib/types";
 import {
   APPWRITE_LBSVIEW_ESTATE_ID,
   appwriteDeleteRow,
@@ -8,6 +8,7 @@ import {
 import { listAppwriteTableRows, type AppwriteEstateScope } from "@/lib/appwrite/residents";
 
 const STAFF_TABLE = "staff";
+const ATTENDANCE_TABLE = "staff_attendance";
 
 type AppwriteStaffRow = {
   $id?: string;
@@ -149,4 +150,95 @@ export async function deleteStaff(staffId: string) {
   }
   await appwriteDeleteRow<AppwriteStaffRow>(STAFF_TABLE, id);
   return { id };
+}
+
+type AppwriteAttendanceRow = {
+  $id?: string;
+  estateId?: string;
+  staffId?: string;
+  staffName?: string;
+  attendanceDate?: string;
+  clockIn?: string;
+  clockOut?: string;
+  status?: string;
+  source?: string;
+  note?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type StaffAttendanceSaveInput = {
+  staffId: string;
+  staffName?: string;
+  attendanceDate: string;
+  clockIn?: string;
+  clockOut?: string;
+  status?: StaffAttendanceStatus;
+  source?: string;
+  note?: string;
+  estateId?: string | null;
+  includeAllEstates?: boolean;
+};
+
+function mapAttendanceRow(row: AppwriteAttendanceRow): StaffAttendance {
+  return {
+    id: row.$id ?? "",
+    estateId: row.estateId ?? "",
+    staffId: text(row.staffId),
+    staffName: text(row.staffName),
+    attendanceDate: text(row.attendanceDate),
+    clockIn: text(row.clockIn),
+    clockOut: text(row.clockOut),
+    status: (row.status as StaffAttendanceStatus) || "present",
+    source: text(row.source),
+    note: text(row.note),
+    createdAt: text(row.createdAt),
+    updatedAt: text(row.updatedAt)
+  };
+}
+
+export async function listStaffAttendance(attendanceDate: string, scope: AppwriteEstateScope = {}) {
+  const rows = await listAppwriteTableRows<AppwriteAttendanceRow>(ATTENDANCE_TABLE, scope);
+  const target = attendanceDate.trim();
+  return rows
+    .map(mapAttendanceRow)
+    .filter((row) => !target || row.attendanceDate === target);
+}
+
+export async function saveStaffAttendance(input: StaffAttendanceSaveInput) {
+  const staffId = input.staffId.trim();
+  const attendanceDate = input.attendanceDate.trim();
+  if (!staffId || !attendanceDate) {
+    throw new Error("Staff and date are required for attendance.");
+  }
+
+  const estateId = input.includeAllEstates
+    ? APPWRITE_LBSVIEW_ESTATE_ID
+    : input.estateId ?? APPWRITE_LBSVIEW_ESTATE_ID;
+  const now = new Date().toISOString();
+  const rowId = safeAppwriteId("attendance", `${staffId}-${attendanceDate}`);
+
+  const existing = (await listAppwriteTableRows<AppwriteAttendanceRow>(ATTENDANCE_TABLE, {
+    estateId,
+    includeAllEstates: input.includeAllEstates
+  }))
+    .map(mapAttendanceRow)
+    .find((row) => row.id === rowId || (row.staffId === staffId && row.attendanceDate === attendanceDate));
+
+  const payload = {
+    estateId,
+    staffId,
+    staffName: input.staffName?.trim() ?? existing?.staffName ?? "",
+    attendanceDate,
+    clockIn: input.clockIn ?? existing?.clockIn ?? "",
+    clockOut: input.clockOut ?? existing?.clockOut ?? "",
+    status: input.status ?? existing?.status ?? "present",
+    source: input.source ?? existing?.source ?? "supervisor",
+    note: input.note ?? existing?.note ?? "",
+    updatedAt: now,
+    ...(existing ? {} : { createdAt: now })
+  };
+
+  const row = await appwriteUpsertRow<AppwriteAttendanceRow>(ATTENDANCE_TABLE, rowId, payload);
+  return mapAttendanceRow(row);
 }

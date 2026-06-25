@@ -1,6 +1,6 @@
 "use client";
 
-import type { Resident, SecurityIncident, Staff, UserRole, Visitor } from "@/lib/types";
+import type { Resident, SecurityIncident, Staff, StaffAttendance, UserRole, Visitor } from "@/lib/types";
 
 type AccessRequestResult = {
   status: "created" | "already-pending" | "already-approved";
@@ -460,4 +460,32 @@ export async function deleteAppwriteStaff(id: string): Promise<void> {
     const payload = await response.json().catch(() => ({})) as { error?: string };
     throw new Error(payload.error ?? "Unable to delete staff.");
   }
+}
+
+export async function readAppwriteStaffAttendance(date: string): Promise<StaffAttendance[]> {
+  const response = await fetch(`/api/appwrite/security/staff/attendance?date=${encodeURIComponent(date)}&t=${Date.now()}`, { cache: "no-store" });
+  const payload = await response.json().catch(() => ({})) as { attendance?: StaffAttendance[]; error?: string };
+
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Unable to load attendance.");
+  }
+
+  return Array.isArray(payload.attendance) ? payload.attendance : [];
+}
+
+export async function saveAppwriteStaffAttendance(input: Record<string, unknown>): Promise<StaffAttendance> {
+  const response = await fetch("/api/appwrite/security/staff/attendance", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+  const payload = await response.json().catch(() => ({})) as { attendance?: StaffAttendance; error?: string };
+
+  if (!response.ok || !payload.attendance) {
+    throw new Error(payload.error ?? "Unable to save attendance.");
+  }
+
+  return payload.attendance;
 }

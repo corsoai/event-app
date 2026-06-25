@@ -26,6 +26,7 @@ export const APPWRITE_TABLE_HOUSEHOLD_MEMBERS = "household_members";
 export const APPWRITE_TABLE_SUBSCRIPTION_RATES = "subscription_rates";
 export const APPWRITE_TABLE_MONTHLY_BILLING_RUNS = "monthly_billing_runs";
 export const APPWRITE_TABLE_STAFF = "staff";
+export const APPWRITE_TABLE_STAFF_ATTENDANCE = "staff_attendance";
 
 export const APPWRITE_TABLE_IDS = {
   estates: APPWRITE_TABLE_ESTATES,
@@ -54,7 +55,8 @@ export const APPWRITE_TABLE_IDS = {
   householdMembers: APPWRITE_TABLE_HOUSEHOLD_MEMBERS,
   subscriptionRates: APPWRITE_TABLE_SUBSCRIPTION_RATES,
   monthlyBillingRuns: APPWRITE_TABLE_MONTHLY_BILLING_RUNS,
-  staff: APPWRITE_TABLE_STAFF
+  staff: APPWRITE_TABLE_STAFF,
+  staffAttendance: APPWRITE_TABLE_STAFF_ATTENDANCE
 } as const;
 
 export type AppwriteColumnDefinition = {
@@ -731,6 +733,26 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
       { key: "staff_estate_idx", type: "key", attributes: ["estateId"] },
       { key: "staff_role_idx", type: "key", attributes: ["roleTitle"] },
       { key: "staff_status_idx", type: "key", attributes: ["employmentStatus"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_STAFF_ATTENDANCE,
+    name: "Staff Attendance",
+    columns: [
+      ...baseColumns,
+      { key: "staffId", type: "string", size: 64, required: true },
+      { key: "staffName", type: "string", size: 160, required: false },
+      { key: "attendanceDate", type: "string", size: 16, required: true },
+      { key: "clockIn", type: "string", size: 40, required: false },
+      { key: "clockOut", type: "string", size: 40, required: false },
+      { key: "status", type: "string", size: 32, required: false },
+      { key: "source", type: "string", size: 32, required: false },
+      { key: "note", type: "string", size: 512, required: false }
+    ],
+    indexes: [
+      { key: "attendance_estate_idx", type: "key", attributes: ["estateId"] },
+      { key: "attendance_staff_idx", type: "key", attributes: ["staffId"] },
+      { key: "attendance_date_idx", type: "key", attributes: ["attendanceDate"] }
     ]
   }
 ];

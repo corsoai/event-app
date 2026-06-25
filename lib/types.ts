@@ -422,3 +422,20 @@ export type Staff = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type StaffAttendanceStatus = "present" | "late" | "absent" | "on_leave";
+
+export type StaffAttendance = {
+  id: string;
+  estateId: string;
+  staffId: string;
+  staffName: string;
+  attendanceDate: string;
+  clockIn: string;
+  clockOut: string;
+  status: StaffAttendanceStatus;
+  source: string;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+};

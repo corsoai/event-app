@@ -95,6 +95,8 @@ import {
   readAppwriteStaff,
   saveAppwriteStaff,
   deleteAppwriteStaff,
+  readAppwriteStaffAttendance,
+  saveAppwriteStaffAttendance,
   createAppwriteResidentVisitor,
   findAppwriteVisitorByCode,
   readAppwriteAdminSosIncidents,
@@ -117,7 +119,7 @@ import {
   syncPendingTourLogs
 } from "@/lib/guard-tour";
 import { APPWRITE_ONBOARDING_DATABASE_ID } from "@/lib/appwrite/schema";
-import type { AppwriteAnnouncement, AppwriteComplaint, AppwriteKnowledgeBaseArticle, Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, HouseholdMember, Payment, Property, Resident, SecurityIncident, Staff, StatusTone, Unit, UserRole, Visitor } from "@/lib/types";
+import type { AppwriteAnnouncement, AppwriteComplaint, AppwriteKnowledgeBaseArticle, Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, HouseholdMember, Payment, Property, Resident, SecurityIncident, Staff, StaffAttendance, StatusTone, Unit, UserRole, Visitor } from "@/lib/types";
 import { contactLabel, makeDigitalIdNumber, money } from "@/lib/utils";
 import { getVisitorWindowState, VISITOR_CODE_VALIDITY_HOURS } from "@/lib/visitor-window";
 import { useRouter } from "next/navigation";
@@ -7465,6 +7467,131 @@ function staffStatusLabel(status: Staff["employmentStatus"]) {
   }
 }
 
+function StaffAttendanceTab({ estateStaff }: { estateStaff: Staff[] }) {
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [records, setRecords] = useState<StaffAttendance[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState("");
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    readAppwriteStaffAttendance(date)
+      .then((rows) => {
+        if (active) {
+          setRecords(rows);
+          setMessage("");
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setMessage(error instanceof Error ? error.message : "Unable to load attendance.");
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [date]);
+
+  function recordFor(staffId: string) {
+    return records.find((row) => row.staffId === staffId);
+  }
+
+  async function save(member: Staff, changes: { clockIn?: string; clockOut?: string; status?: StaffAttendance["status"] }) {
+    setSavingId(member.id);
+    try {
+      const saved = await saveAppwriteStaffAttendance({
+        staffId: member.id,
+        staffName: member.fullName,
+        attendanceDate: date,
+        ...changes
+      });
+      setRecords((current) => [...current.filter((row) => row.staffId !== member.id), saved]);
+      setMessage("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to save attendance.");
+    } finally {
+      setSavingId("");
+    }
+  }
+
+  const roster = estateStaff.filter((member) => member.employmentStatus !== "terminated");
+  const presentCount = roster.filter((member) => {
+    const rec = recordFor(member.id);
+    return Boolean(rec?.clockIn) && rec?.status !== "absent";
+  }).length;
+
+  return (
+    <Card>
+      <CardHeader
+        title="Daily attendance"
+        description="Clock staff in and out and mark status."
+        action={<Input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="min-h-9" />}
+      />
+      {message ? <p className="mb-3 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
+      <p className="mb-3 text-xs text-slate-400">{presentCount} of {roster.length} clocked in</p>
+      {loading ? (
+        <p className="text-sm text-slate-300">Loading attendance...</p>
+      ) : roster.length ? (
+        <div className="grid gap-2">
+          {roster.map((member) => {
+            const rec = recordFor(member.id);
+            const clockedIn = Boolean(rec?.clockIn);
+            const clockedOut = Boolean(rec?.clockOut);
+            const status = rec?.status ?? "present";
+            return (
+              <div key={member.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-white">{member.fullName}</p>
+                    <p className="mt-0.5 truncate text-xs text-slate-400">
+                      {member.roleTitle}
+                      {rec?.clockIn ? ` · In ${formatClockTime(rec.clockIn)}` : ""}
+                      {rec?.clockOut ? ` · Out ${formatClockTime(rec.clockOut)}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Select value={status} onChange={(event) => void save(member, { status: event.currentTarget.value as StaffAttendance["status"] })}>
+                      <option value="present">Present</option>
+                      <option value="late">Late</option>
+                      <option value="absent">Absent</option>
+                      <option value="on_leave">On leave</option>
+                    </Select>
+                    <Button
+                      variant="secondary"
+                      className="min-h-9 px-3"
+                      disabled={savingId === member.id || clockedIn}
+                      onClick={() => void save(member, { clockIn: new Date().toISOString(), status: status === "absent" ? "present" : status })}
+                    >
+                      Clock in
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      className="min-h-9 px-3"
+                      disabled={savingId === member.id || !clockedIn || clockedOut}
+                      onClick={() => void save(member, { clockOut: new Date().toISOString() })}
+                    >
+                      Clock out
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">No staff to show. Add staff in the Directory tab first.</p>
+      )}
+    </Card>
+  );
+}
+
 export function CsoPersonnelPage() {
   const [staff, setStaff] = useState<Staff[]>([]);
   const [loading, setLoading] = useState(true);
@@ -7475,6 +7602,7 @@ export function CsoPersonnelPage() {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [form, setForm] = useState<StaffFormState>(emptyStaffForm());
+  const [activeTab, setActiveTab] = useState<"directory" | "attendance">("directory");
 
   useEffect(() => {
     void loadStaff();
@@ -7560,6 +7688,13 @@ export function CsoPersonnelPage() {
       <PageHeader title="Personnel" description="Manage estate staff and security personnel." />
       {message ? <p className="mb-4 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
 
+      <div className="mb-4 flex gap-2">
+        <Button variant={activeTab === "directory" ? "primary" : "secondary"} className="min-h-9 px-4" onClick={() => setActiveTab("directory")}>Directory</Button>
+        <Button variant={activeTab === "attendance" ? "primary" : "secondary"} className="min-h-9 px-4" onClick={() => setActiveTab("attendance")}>Attendance</Button>
+      </div>
+
+      {activeTab === "attendance" ? <StaffAttendanceTab estateStaff={staff} /> : (
+        <>
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard label="Total staff" value={String(staff.length)} helper="All records" icon={<Users className="h-5 w-5" />} />
         <StatCard label="On duty" value={String(onDutyCount)} helper="Currently working" icon={<ShieldCheck className="h-5 w-5" />} />
@@ -7661,6 +7796,8 @@ export function CsoPersonnelPage() {
           </form>
         </Card>
       ) : null}
+        </>
+      )}
     </>
   );
 }
