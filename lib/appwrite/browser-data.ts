@@ -1,6 +1,6 @@
 "use client";
 
-import type { Facility, Resident, SecurityIncident, Staff, StaffAttendance, UserRole, Visitor, WorkOrder } from "@/lib/types";
+import type { Facility, Resident, SecurityIncident, Staff, StaffAttendance, UserRole, VehicleLog, Visitor, WorkOrder } from "@/lib/types";
 
 type AccessRequestResult = {
   status: "created" | "already-pending" | "already-approved";
@@ -590,4 +590,32 @@ export async function deleteAppwriteWorkOrder(id: string): Promise<void> {
     const payload = await response.json().catch(() => ({})) as { error?: string };
     throw new Error(payload.error ?? "Unable to delete work order.");
   }
+}
+
+export async function readAppwriteVehicleLogs(): Promise<VehicleLog[]> {
+  const response = await fetch(`/api/appwrite/security/vehicle-logs?t=${Date.now()}`, { cache: "no-store" });
+  const payload = await response.json().catch(() => ({})) as { logs?: VehicleLog[]; error?: string };
+
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Unable to load vehicle logs.");
+  }
+
+  return Array.isArray(payload.logs) ? payload.logs : [];
+}
+
+export async function saveAppwriteVehicleLog(input: Record<string, unknown>): Promise<VehicleLog> {
+  const response = await fetch("/api/appwrite/security/vehicle-logs", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+  const payload = await response.json().catch(() => ({})) as { log?: VehicleLog; error?: string };
+
+  if (!response.ok || !payload.log) {
+    throw new Error(payload.error ?? "Unable to save vehicle log.");
+  }
+
+  return payload.log;
 }

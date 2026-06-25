@@ -481,3 +481,28 @@ export type WorkOrder = {
   createdAt: string;
   updatedAt: string;
 };
+
+export type VehicleDirection = "in" | "out";
+
+export type VehicleLog = {
+  id: string;
+  estateId: string;
+  plate: string;
+  vehicleClass: string;
+  direction: VehicleDirection;
+  postLabel: string;
+  guardId: string;
+  guardName: string;
+  scannedAt: string;
+  visitorId: string;
+  visitorCode: string;
+  residentId: string;
+  knownVehicleId: string;
+  matchStatus: string;
+  region: string;
+  score: number;
+  rawRead: string;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+};

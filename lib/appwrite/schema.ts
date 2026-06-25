@@ -29,6 +29,7 @@ export const APPWRITE_TABLE_STAFF = "staff";
 export const APPWRITE_TABLE_STAFF_ATTENDANCE = "staff_attendance";
 export const APPWRITE_TABLE_FACILITIES = "facilities";
 export const APPWRITE_TABLE_WORK_ORDERS = "work_orders";
+export const APPWRITE_TABLE_VEHICLE_LOGS = "vehicle_logs";
 
 export const APPWRITE_TABLE_IDS = {
   estates: APPWRITE_TABLE_ESTATES,
@@ -60,7 +61,8 @@ export const APPWRITE_TABLE_IDS = {
   staff: APPWRITE_TABLE_STAFF,
   staffAttendance: APPWRITE_TABLE_STAFF_ATTENDANCE,
   facilities: APPWRITE_TABLE_FACILITIES,
-  workOrders: APPWRITE_TABLE_WORK_ORDERS
+  workOrders: APPWRITE_TABLE_WORK_ORDERS,
+  vehicleLogs: APPWRITE_TABLE_VEHICLE_LOGS
 } as const;
 
 export type AppwriteColumnDefinition = {
@@ -804,6 +806,34 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
       { key: "wo_estate_idx", type: "key", attributes: ["estateId"] },
       { key: "wo_status_idx", type: "key", attributes: ["status"] },
       { key: "wo_priority_idx", type: "key", attributes: ["priority"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_VEHICLE_LOGS,
+    name: "Vehicle Logs",
+    columns: [
+      ...baseColumns,
+      { key: "plate", type: "string", size: 32, required: true },
+      { key: "vehicleClass", type: "string", size: 32, required: false },
+      { key: "direction", type: "string", size: 8, required: false },
+      { key: "postLabel", type: "string", size: 120, required: false },
+      { key: "guardId", type: "string", size: 64, required: false },
+      { key: "guardName", type: "string", size: 160, required: false },
+      { key: "scannedAt", type: "datetime", required: false },
+      { key: "visitorId", type: "string", size: 64, required: false },
+      { key: "visitorCode", type: "string", size: 16, required: false },
+      { key: "residentId", type: "string", size: 64, required: false },
+      { key: "knownVehicleId", type: "string", size: 64, required: false },
+      { key: "matchStatus", type: "string", size: 24, required: false },
+      { key: "region", type: "string", size: 16, required: false },
+      { key: "score", type: "float", required: false, default: 0 },
+      { key: "rawRead", type: "string", size: 512, required: false },
+      { key: "note", type: "string", size: 512, required: false }
+    ],
+    indexes: [
+      { key: "vehicle_log_estate_idx", type: "key", attributes: ["estateId"] },
+      { key: "vehicle_log_plate_idx", type: "key", attributes: ["plate"] },
+      { key: "vehicle_log_scanned_idx", type: "key", attributes: ["scannedAt"] }
     ]
   }
 ];

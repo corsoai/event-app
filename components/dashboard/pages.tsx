@@ -105,6 +105,8 @@ import {
   saveAppwriteWorkOrder,
   deleteAppwriteWorkOrder,
   recognizePlateCloud,
+  readAppwriteVehicleLogs,
+  saveAppwriteVehicleLog,
   createAppwriteResidentVisitor,
   findAppwriteVisitorByCode,
   readAppwriteAdminSosIncidents,
@@ -127,7 +129,7 @@ import {
   syncPendingTourLogs
 } from "@/lib/guard-tour";
 import { APPWRITE_ONBOARDING_DATABASE_ID } from "@/lib/appwrite/schema";
-import type { AppwriteAnnouncement, AppwriteComplaint, AppwriteKnowledgeBaseArticle, Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, HouseholdMember, Payment, Property, Resident, Facility, SecurityIncident, Staff, StaffAttendance, StatusTone, Unit, UserRole, Visitor, WorkOrder } from "@/lib/types";
+import type { AppwriteAnnouncement, AppwriteComplaint, AppwriteKnowledgeBaseArticle, Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, HouseholdMember, Payment, Property, Resident, Facility, SecurityIncident, Staff, StaffAttendance, StatusTone, Unit, UserRole, VehicleLog, Visitor, WorkOrder } from "@/lib/types";
 import { contactLabel, makeDigitalIdNumber, money } from "@/lib/utils";
 import { getVisitorWindowState, VISITOR_CODE_VALIDITY_HOURS } from "@/lib/visitor-window";
 import { useRouter } from "next/navigation";
@@ -9799,7 +9801,20 @@ export function ScanPlatePage({ compact = false }: { compact?: boolean }) {
   const [rawText, setRawText] = useState("");
   const [matched, setMatched] = useState(true);
   const [vehicleClass, setVehicleClass] = useState("Car");
-  const [scans, setScans] = useState<{ plate: string; vehicleClass: string; at: string }[]>([]);
+  const [direction, setDirection] = useState<"in" | "out">("in");
+  const [logs, setLogs] = useState<VehicleLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    readAppwriteVehicleLogs()
+      .then((rows) => { if (active) setLogs(rows); })
+      .catch((error) => { if (active) setMessage(error instanceof Error ? error.message : "Unable to load vehicle logs."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
 
   function handlePlateResult(detected: string, raw: string, didMatch: boolean, suggestedClass?: string) {
     setPlate(detected);
@@ -9810,21 +9825,41 @@ export function ScanPlatePage({ compact = false }: { compact?: boolean }) {
     }
   }
 
-  function logPlate() {
+  async function logPlate() {
     const value = plate.trim().toUpperCase();
     if (!value) return;
-    setScans((current) => [{ plate: value, vehicleClass, at: new Date().toISOString() }, ...current].slice(0, 20));
-    setPlate("");
-    setRawText("");
-    setMatched(true);
-    setVehicleClass("Car");
+    setSaving(true);
+    try {
+      const saved = await saveAppwriteVehicleLog({
+        plate: value,
+        vehicleClass,
+        direction,
+        rawRead: rawText,
+        matchStatus: "unknown"
+      });
+      setLogs((current) => [saved, ...current].slice(0, 100));
+      setPlate("");
+      setRawText("");
+      setMatched(true);
+      setVehicleClass("Car");
+      setMessage("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to save vehicle log.");
+    } finally {
+      setSaving(false);
+    }
   }
 
   return (
     <>
       {!compact ? <PageHeader title="Scan number plate" description="Capture a vehicle plate at the gate, then confirm." /> : null}
+      {message ? <p className="mb-4 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
       <Card>
         <CardHeader title="Plate capture" description="Point the camera at the plate from 1-3m, capture, then confirm or edit before logging." />
+        <div className="mb-3 flex gap-2">
+          <Button variant={direction === "in" ? "primary" : "secondary"} className="min-h-9 px-4" onClick={() => setDirection("in")}>Entry</Button>
+          <Button variant={direction === "out" ? "primary" : "secondary"} className="min-h-9 px-4" onClick={() => setDirection("out")}>Exit</Button>
+        </div>
         <Button className="w-full sm:w-auto" onClick={() => setScannerOpen(true)}>
           <Camera className="h-4 w-4" />
           Scan plate
@@ -9851,29 +9886,34 @@ export function ScanPlatePage({ compact = false }: { compact?: boolean }) {
             </Field>
             {rawText ? <p className="mt-2 text-xs text-slate-400">Raw read: {rawText.replace(/\s+/g, " ").trim()}</p> : null}
             <div className="mt-3 flex flex-wrap gap-2">
-              <Button onClick={logPlate}>Confirm &amp; log</Button>
+              <Button onClick={() => void logPlate()} disabled={saving}>{saving ? "Saving..." : `Confirm & log ${direction === "in" ? "entry" : "exit"}`}</Button>
               <Button variant="secondary" onClick={() => { setPlate(""); setRawText(""); }}>Discard</Button>
             </div>
           </div>
         ) : null}
       </Card>
       <Card>
-        <CardHeader title="This session" description="Plates captured in this session." />
-        {scans.length > 0 ? (
+        <CardHeader title="Recent vehicles" description="Saved vehicle entries and exits." />
+        {loading ? (
+          <p className="text-sm text-slate-300">Loading...</p>
+        ) : logs.length > 0 ? (
           <div className="mt-4 grid gap-2">
-            {scans.map((scan, index) => (
-              <div key={`${scan.plate}-${index}`} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                <span className="font-mono text-base font-semibold text-white">{scan.plate}</span>
+            {logs.map((log) => (
+              <div key={log.id} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                <span className="flex items-center gap-2">
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${log.direction === "out" ? "bg-gold/20 text-gold" : "bg-smart/20 text-smart"}`}>{log.direction === "out" ? "OUT" : "IN"}</span>
+                  <span className="font-mono text-base font-semibold text-white">{log.plate}</span>
+                </span>
                 <span className="flex items-center gap-2 text-xs text-slate-400">
-                  <span className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-slate-200">{scan.vehicleClass}</span>
-                  {formatClockTime(scan.at)}
+                  {log.vehicleClass ? <span className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-slate-200">{log.vehicleClass}</span> : null}
+                  {formatClockTime(log.scannedAt)}
                 </span>
               </div>
             ))}
           </div>
         ) : (
           <p className="mt-4 rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
-            No plates captured yet. Tap Scan plate to start.
+            No vehicles logged yet. Set Entry/Exit, tap Scan plate, then Confirm &amp; log.
           </p>
         )}
       </Card>
