@@ -40,6 +40,7 @@ import {
   Store,
   Plus,
   Trash2,
+  Wrench,
   Upload,
   UserCheck,
   UserX,
@@ -97,6 +98,12 @@ import {
   deleteAppwriteStaff,
   readAppwriteStaffAttendance,
   saveAppwriteStaffAttendance,
+  readAppwriteFacilities,
+  saveAppwriteFacility,
+  deleteAppwriteFacility,
+  readAppwriteWorkOrders,
+  saveAppwriteWorkOrder,
+  deleteAppwriteWorkOrder,
   createAppwriteResidentVisitor,
   findAppwriteVisitorByCode,
   readAppwriteAdminSosIncidents,
@@ -119,7 +126,7 @@ import {
   syncPendingTourLogs
 } from "@/lib/guard-tour";
 import { APPWRITE_ONBOARDING_DATABASE_ID } from "@/lib/appwrite/schema";
-import type { AppwriteAnnouncement, AppwriteComplaint, AppwriteKnowledgeBaseArticle, Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, HouseholdMember, Payment, Property, Resident, SecurityIncident, Staff, StaffAttendance, StatusTone, Unit, UserRole, Visitor } from "@/lib/types";
+import type { AppwriteAnnouncement, AppwriteComplaint, AppwriteKnowledgeBaseArticle, Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, HouseholdMember, Payment, Property, Resident, Facility, SecurityIncident, Staff, StaffAttendance, StatusTone, Unit, UserRole, Visitor, WorkOrder } from "@/lib/types";
 import { contactLabel, makeDigitalIdNumber, money } from "@/lib/utils";
 import { getVisitorWindowState, VISITOR_CODE_VALIDITY_HOURS } from "@/lib/visitor-window";
 import { useRouter } from "next/navigation";
@@ -7796,6 +7803,373 @@ export function CsoPersonnelPage() {
           </form>
         </Card>
       ) : null}
+        </>
+      )}
+    </>
+  );
+}
+
+type FacilityFormState = {
+  name: string;
+  category: string;
+  location: string;
+  status: Facility["status"];
+  purchaseDate: string;
+  warrantyExpiry: string;
+  vendorName: string;
+  notes: string;
+};
+
+function emptyFacilityForm(): FacilityFormState {
+  return { name: "", category: "equipment", location: "", status: "operational", purchaseDate: "", warrantyExpiry: "", vendorName: "", notes: "" };
+}
+
+function facilityToForm(facility: Facility): FacilityFormState {
+  return {
+    name: facility.name,
+    category: facility.category || "equipment",
+    location: facility.location,
+    status: facility.status,
+    purchaseDate: facility.purchaseDate,
+    warrantyExpiry: facility.warrantyExpiry,
+    vendorName: facility.vendorName,
+    notes: facility.notes
+  };
+}
+
+type WorkOrderFormState = {
+  title: string;
+  facilityName: string;
+  category: string;
+  priority: WorkOrder["priority"];
+  status: WorkOrder["status"];
+  assignedTo: string;
+  dueDate: string;
+  cost: string;
+  description: string;
+  notes: string;
+};
+
+function emptyWorkOrderForm(): WorkOrderFormState {
+  return { title: "", facilityName: "", category: "", priority: "medium", status: "open", assignedTo: "", dueDate: "", cost: "", description: "", notes: "" };
+}
+
+function workOrderToForm(order: WorkOrder): WorkOrderFormState {
+  return {
+    title: order.title,
+    facilityName: order.facilityName,
+    category: order.category,
+    priority: order.priority,
+    status: order.status,
+    assignedTo: order.assignedTo,
+    dueDate: order.dueDate,
+    cost: order.cost ? String(order.cost) : "",
+    description: order.description,
+    notes: order.notes
+  };
+}
+
+function facilityTitleCase(value: string) {
+  return value ? value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()) : "—";
+}
+
+export function AdminFacilitiesPage() {
+  const [tab, setTab] = useState<"facilities" | "workorders">("facilities");
+  const [facilities, setFacilities] = useState<Facility[]>([]);
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const [facilityForm, setFacilityForm] = useState<FacilityFormState>(emptyFacilityForm());
+  const [editingFacility, setEditingFacility] = useState<Facility | null>(null);
+  const [showFacilityForm, setShowFacilityForm] = useState(false);
+
+  const [woForm, setWoForm] = useState<WorkOrderFormState>(emptyWorkOrderForm());
+  const [editingWo, setEditingWo] = useState<WorkOrder | null>(null);
+  const [showWoForm, setShowWoForm] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    Promise.all([readAppwriteFacilities(), readAppwriteWorkOrders()])
+      .then(([facilityRows, workOrderRows]) => {
+        if (active) {
+          setFacilities(facilityRows);
+          setWorkOrders(workOrderRows);
+          setMessage("");
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setMessage(error instanceof Error ? error.message : "Unable to load facilities.");
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function reloadFacilities() {
+    try {
+      setFacilities(await readAppwriteFacilities());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to load facilities.");
+    }
+  }
+
+  async function reloadWorkOrders() {
+    try {
+      setWorkOrders(await readAppwriteWorkOrders());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to load work orders.");
+    }
+  }
+
+  function updateFacilityField<K extends keyof FacilityFormState>(key: K, value: FacilityFormState[K]) {
+    setFacilityForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateWoField<K extends keyof WorkOrderFormState>(key: K, value: WorkOrderFormState[K]) {
+    setWoForm((current) => ({ ...current, [key]: value }));
+  }
+
+  async function submitFacility(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!facilityForm.name.trim()) {
+      setMessage("Facility name is required.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await saveAppwriteFacility({ id: editingFacility?.id, ...facilityForm });
+      setShowFacilityForm(false);
+      setEditingFacility(null);
+      await reloadFacilities();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to save facility.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeFacility(facility: Facility) {
+    if (typeof window !== "undefined" && !window.confirm(`Delete facility "${facility.name}"?`)) {
+      return;
+    }
+    try {
+      await deleteAppwriteFacility(facility.id);
+      await reloadFacilities();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to delete facility.");
+    }
+  }
+
+  async function submitWo(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!woForm.title.trim()) {
+      setMessage("Work order title is required.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await saveAppwriteWorkOrder({ id: editingWo?.id, ...woForm, cost: woForm.cost ? Number(woForm.cost) : 0 });
+      setShowWoForm(false);
+      setEditingWo(null);
+      await reloadWorkOrders();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to save work order.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeWo(order: WorkOrder) {
+    if (typeof window !== "undefined" && !window.confirm(`Delete work order "${order.title}"?`)) {
+      return;
+    }
+    try {
+      await deleteAppwriteWorkOrder(order.id);
+      await reloadWorkOrders();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to delete work order.");
+    }
+  }
+
+  const openWorkOrders = workOrders.filter((order) => order.status !== "resolved" && order.status !== "closed").length;
+  const attentionFacilities = facilities.filter((facility) => facility.status !== "operational").length;
+
+  return (
+    <>
+      <PageHeader title="Facilities" description="Manage estate facilities and maintenance work orders." />
+      {message ? <p className="mb-4 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
+
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard label="Facilities" value={String(facilities.length)} helper="Registered" icon={<Building2 className="h-5 w-5" />} />
+        <StatCard label="Needs attention" value={String(attentionFacilities)} helper="Not operational" icon={<AlertTriangle className="h-5 w-5" />} />
+        <StatCard label="Work orders" value={String(workOrders.length)} helper="All time" icon={<ClipboardList className="h-5 w-5" />} />
+        <StatCard label="Open" value={String(openWorkOrders)} helper="Unresolved" icon={<Wrench className="h-5 w-5" />} />
+      </div>
+
+      <div className="mb-4 flex gap-2">
+        <Button variant={tab === "facilities" ? "primary" : "secondary"} className="min-h-9 px-4" onClick={() => setTab("facilities")}>Facilities</Button>
+        <Button variant={tab === "workorders" ? "primary" : "secondary"} className="min-h-9 px-4" onClick={() => setTab("workorders")}>Work Orders</Button>
+      </div>
+
+      {tab === "facilities" ? (
+        <>
+          <Card>
+            <CardHeader
+              title="Facility register"
+              description="Estate assets, equipment and amenities."
+              action={<Button onClick={() => { setEditingFacility(null); setFacilityForm(emptyFacilityForm()); setShowFacilityForm(true); }}><Plus className="h-4 w-4" />Add facility</Button>}
+            />
+            {loading ? (
+              <p className="text-sm text-slate-300">Loading...</p>
+            ) : facilities.length ? (
+              <div className="grid gap-2">
+                {facilities.map((facility) => (
+                  <div key={facility.id} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 p-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-white">{facility.name}</p>
+                      <p className="mt-0.5 truncate text-xs text-slate-400">{facilityTitleCase(facility.category)}{facility.location ? ` · ${facility.location}` : ""} · {facilityTitleCase(facility.status)}</p>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <Button variant="secondary" className="min-h-9 px-3" onClick={() => { setEditingFacility(facility); setFacilityForm(facilityToForm(facility)); setShowFacilityForm(true); }}>Edit</Button>
+                      <Button variant="ghost" className="min-h-9 px-3 text-danger" onClick={() => void removeFacility(facility)}><Trash2 className="h-4 w-4" /></Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">No facilities yet. Tap &quot;Add facility&quot;.</p>
+            )}
+          </Card>
+
+          {showFacilityForm ? (
+            <Card className="mt-4">
+              <CardHeader
+                title={editingFacility ? `Edit ${editingFacility.name}` : "Add facility"}
+                description="Facility details."
+                action={<Button variant="ghost" onClick={() => setShowFacilityForm(false)}><X className="h-4 w-4" />Close</Button>}
+              />
+              <form className="grid gap-4" onSubmit={submitFacility}>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Name"><Input value={facilityForm.name} onChange={(event) => updateFacilityField("name", event.target.value)} required /></Field>
+                  <Field label="Category">
+                    <Select value={facilityForm.category} onChange={(event) => updateFacilityField("category", event.currentTarget.value)}>
+                      <option value="building">Building</option>
+                      <option value="equipment">Equipment</option>
+                      <option value="amenity">Amenity</option>
+                      <option value="utility">Utility</option>
+                      <option value="vehicle">Vehicle</option>
+                      <option value="other">Other</option>
+                    </Select>
+                  </Field>
+                  <Field label="Location"><Input value={facilityForm.location} onChange={(event) => updateFacilityField("location", event.target.value)} /></Field>
+                  <Field label="Status">
+                    <Select value={facilityForm.status} onChange={(event) => updateFacilityField("status", event.currentTarget.value as Facility["status"])}>
+                      <option value="operational">Operational</option>
+                      <option value="needs_attention">Needs attention</option>
+                      <option value="out_of_service">Out of service</option>
+                    </Select>
+                  </Field>
+                  <Field label="Purchase date"><Input type="date" value={facilityForm.purchaseDate} onChange={(event) => updateFacilityField("purchaseDate", event.target.value)} /></Field>
+                  <Field label="Warranty expiry"><Input type="date" value={facilityForm.warrantyExpiry} onChange={(event) => updateFacilityField("warrantyExpiry", event.target.value)} /></Field>
+                  <Field label="Vendor"><Input value={facilityForm.vendorName} onChange={(event) => updateFacilityField("vendorName", event.target.value)} placeholder="Service provider" /></Field>
+                </div>
+                <Field label="Notes"><Textarea value={facilityForm.notes} onChange={(event) => updateFacilityField("notes", event.target.value)} /></Field>
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={saving}>{saving ? "Saving..." : editingFacility ? "Save changes" : "Add facility"}</Button>
+                  <Button type="button" variant="secondary" onClick={() => setShowFacilityForm(false)}>Cancel</Button>
+                </div>
+              </form>
+            </Card>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <Card>
+            <CardHeader
+              title="Work orders"
+              description="Maintenance requests and their status."
+              action={<Button onClick={() => { setEditingWo(null); setWoForm(emptyWorkOrderForm()); setShowWoForm(true); }}><Plus className="h-4 w-4" />New work order</Button>}
+            />
+            {loading ? (
+              <p className="text-sm text-slate-300">Loading...</p>
+            ) : workOrders.length ? (
+              <div className="grid gap-2">
+                {workOrders.map((order) => (
+                  <div key={order.id} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 p-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-white">{order.title}</p>
+                      <p className="mt-0.5 truncate text-xs text-slate-400">{order.facilityName ? `${order.facilityName} · ` : ""}{facilityTitleCase(order.priority)} · {facilityTitleCase(order.status)}{order.assignedTo ? ` · ${order.assignedTo}` : ""}</p>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <Button variant="secondary" className="min-h-9 px-3" onClick={() => { setEditingWo(order); setWoForm(workOrderToForm(order)); setShowWoForm(true); }}>Edit</Button>
+                      <Button variant="ghost" className="min-h-9 px-3 text-danger" onClick={() => void removeWo(order)}><Trash2 className="h-4 w-4" /></Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">No work orders yet. Tap &quot;New work order&quot;.</p>
+            )}
+          </Card>
+
+          {showWoForm ? (
+            <Card className="mt-4">
+              <CardHeader
+                title={editingWo ? "Edit work order" : "New work order"}
+                description="Maintenance request details."
+                action={<Button variant="ghost" onClick={() => setShowWoForm(false)}><X className="h-4 w-4" />Close</Button>}
+              />
+              <form className="grid gap-4" onSubmit={submitWo}>
+                <Field label="Title"><Input value={woForm.title} onChange={(event) => updateWoField("title", event.target.value)} required /></Field>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Facility">
+                    <Select value={woForm.facilityName} onChange={(event) => updateWoField("facilityName", event.currentTarget.value)}>
+                      <option value="">— General / none —</option>
+                      {facilities.map((facility) => <option key={facility.id} value={facility.name}>{facility.name}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="Category"><Input value={woForm.category} onChange={(event) => updateWoField("category", event.target.value)} placeholder="e.g. Electrical" /></Field>
+                  <Field label="Priority">
+                    <Select value={woForm.priority} onChange={(event) => updateWoField("priority", event.currentTarget.value as WorkOrder["priority"])}>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="urgent">Urgent</option>
+                    </Select>
+                  </Field>
+                  <Field label="Status">
+                    <Select value={woForm.status} onChange={(event) => updateWoField("status", event.currentTarget.value as WorkOrder["status"])}>
+                      <option value="open">Open</option>
+                      <option value="assigned">Assigned</option>
+                      <option value="in_progress">In progress</option>
+                      <option value="on_hold">On hold</option>
+                      <option value="resolved">Resolved</option>
+                      <option value="closed">Closed</option>
+                    </Select>
+                  </Field>
+                  <Field label="Assigned to"><Input value={woForm.assignedTo} onChange={(event) => updateWoField("assignedTo", event.target.value)} placeholder="Staff or vendor" /></Field>
+                  <Field label="Due date"><Input type="date" value={woForm.dueDate} onChange={(event) => updateWoField("dueDate", event.target.value)} /></Field>
+                  <Field label="Cost"><Input type="number" value={woForm.cost} onChange={(event) => updateWoField("cost", event.target.value)} placeholder="0" /></Field>
+                </div>
+                <Field label="Description"><Textarea value={woForm.description} onChange={(event) => updateWoField("description", event.target.value)} /></Field>
+                <Field label="Notes"><Textarea value={woForm.notes} onChange={(event) => updateWoField("notes", event.target.value)} /></Field>
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={saving}>{saving ? "Saving..." : editingWo ? "Save changes" : "Create work order"}</Button>
+                  <Button type="button" variant="secondary" onClick={() => setShowWoForm(false)}>Cancel</Button>
+                </div>
+              </form>
+            </Card>
+          ) : null}
         </>
       )}
     </>

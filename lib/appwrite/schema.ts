@@ -27,6 +27,8 @@ export const APPWRITE_TABLE_SUBSCRIPTION_RATES = "subscription_rates";
 export const APPWRITE_TABLE_MONTHLY_BILLING_RUNS = "monthly_billing_runs";
 export const APPWRITE_TABLE_STAFF = "staff";
 export const APPWRITE_TABLE_STAFF_ATTENDANCE = "staff_attendance";
+export const APPWRITE_TABLE_FACILITIES = "facilities";
+export const APPWRITE_TABLE_WORK_ORDERS = "work_orders";
 
 export const APPWRITE_TABLE_IDS = {
   estates: APPWRITE_TABLE_ESTATES,
@@ -56,7 +58,9 @@ export const APPWRITE_TABLE_IDS = {
   subscriptionRates: APPWRITE_TABLE_SUBSCRIPTION_RATES,
   monthlyBillingRuns: APPWRITE_TABLE_MONTHLY_BILLING_RUNS,
   staff: APPWRITE_TABLE_STAFF,
-  staffAttendance: APPWRITE_TABLE_STAFF_ATTENDANCE
+  staffAttendance: APPWRITE_TABLE_STAFF_ATTENDANCE,
+  facilities: APPWRITE_TABLE_FACILITIES,
+  workOrders: APPWRITE_TABLE_WORK_ORDERS
 } as const;
 
 export type AppwriteColumnDefinition = {
@@ -753,6 +757,53 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
       { key: "attendance_estate_idx", type: "key", attributes: ["estateId"] },
       { key: "attendance_staff_idx", type: "key", attributes: ["staffId"] },
       { key: "attendance_date_idx", type: "key", attributes: ["attendanceDate"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_FACILITIES,
+    name: "Facilities",
+    columns: [
+      ...baseColumns,
+      { key: "name", type: "string", size: 160, required: true },
+      { key: "category", type: "string", size: 32, required: false },
+      { key: "location", type: "string", size: 160, required: false },
+      { key: "status", type: "string", size: 32, required: false },
+      { key: "purchaseDate", type: "string", size: 32, required: false },
+      { key: "warrantyExpiry", type: "string", size: 32, required: false },
+      { key: "vendorId", type: "string", size: 64, required: false },
+      { key: "vendorName", type: "string", size: 160, required: false },
+      { key: "photoUrl", type: "string", size: 512, required: false },
+      { key: "notes", type: "string", size: 1024, required: false }
+    ],
+    indexes: [
+      { key: "facility_estate_idx", type: "key", attributes: ["estateId"] },
+      { key: "facility_status_idx", type: "key", attributes: ["status"] },
+      { key: "facility_category_idx", type: "key", attributes: ["category"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_WORK_ORDERS,
+    name: "Work Orders",
+    columns: [
+      ...baseColumns,
+      { key: "facilityId", type: "string", size: 64, required: false },
+      { key: "facilityName", type: "string", size: 160, required: false },
+      { key: "title", type: "string", size: 200, required: true },
+      { key: "description", type: "string", size: 2048, required: false },
+      { key: "category", type: "string", size: 64, required: false },
+      { key: "priority", type: "string", size: 16, required: false },
+      { key: "status", type: "string", size: 24, required: false },
+      { key: "reportedByRole", type: "string", size: 32, required: false },
+      { key: "assignedTo", type: "string", size: 160, required: false },
+      { key: "dueDate", type: "string", size: 32, required: false },
+      { key: "resolvedAt", type: "string", size: 40, required: false },
+      { key: "cost", type: "float", required: false, default: 0 },
+      { key: "notes", type: "string", size: 2048, required: false }
+    ],
+    indexes: [
+      { key: "wo_estate_idx", type: "key", attributes: ["estateId"] },
+      { key: "wo_status_idx", type: "key", attributes: ["status"] },
+      { key: "wo_priority_idx", type: "key", attributes: ["priority"] }
     ]
   }
 ];

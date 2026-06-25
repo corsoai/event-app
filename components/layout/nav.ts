@@ -10,6 +10,7 @@ export const adminNav: NavItem[] = [
   { label: "Bills", href: "/admin/bills", icon: "ReceiptText" },
   { label: "Payments", href: "/admin/payments", icon: "WalletCards" },
   { label: "Complaints", href: "/admin/complaints", icon: "ClipboardList" },
+  { label: "Facilities", href: "/admin/facilities", icon: "Building2" },
   { label: "Announcements", href: "/admin/announcements", icon: "Megaphone" },
   { label: "Digital IDs", href: "/admin/digital-ids", icon: "IdCard" },
   { label: "Knowledge Base", href: "/admin/knowledge-base", icon: "BookOpen" },

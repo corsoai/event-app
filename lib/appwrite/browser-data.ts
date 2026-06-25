@@ -1,6 +1,6 @@
 "use client";
 
-import type { Resident, SecurityIncident, Staff, StaffAttendance, UserRole, Visitor } from "@/lib/types";
+import type { Facility, Resident, SecurityIncident, Staff, StaffAttendance, UserRole, Visitor, WorkOrder } from "@/lib/types";
 
 type AccessRequestResult = {
   status: "created" | "already-pending" | "already-approved";
@@ -488,4 +488,82 @@ export async function saveAppwriteStaffAttendance(input: Record<string, unknown>
   }
 
   return payload.attendance;
+}
+
+export async function readAppwriteFacilities(): Promise<Facility[]> {
+  const response = await fetch(`/api/appwrite/admin/facilities?t=${Date.now()}`, { cache: "no-store" });
+  const payload = await response.json().catch(() => ({})) as { facilities?: Facility[]; error?: string };
+
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Unable to load facilities.");
+  }
+
+  return Array.isArray(payload.facilities) ? payload.facilities : [];
+}
+
+export async function saveAppwriteFacility(input: Record<string, unknown>): Promise<Facility> {
+  const response = await fetch("/api/appwrite/admin/facilities", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+  const payload = await response.json().catch(() => ({})) as { facility?: Facility; error?: string };
+
+  if (!response.ok || !payload.facility) {
+    throw new Error(payload.error ?? "Unable to save facility.");
+  }
+
+  return payload.facility;
+}
+
+export async function deleteAppwriteFacility(id: string): Promise<void> {
+  const response = await fetch(`/api/appwrite/admin/facilities?id=${encodeURIComponent(id)}`, {
+    method: "DELETE"
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(payload.error ?? "Unable to delete facility.");
+  }
+}
+
+export async function readAppwriteWorkOrders(): Promise<WorkOrder[]> {
+  const response = await fetch(`/api/appwrite/admin/work-orders?t=${Date.now()}`, { cache: "no-store" });
+  const payload = await response.json().catch(() => ({})) as { workOrders?: WorkOrder[]; error?: string };
+
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Unable to load work orders.");
+  }
+
+  return Array.isArray(payload.workOrders) ? payload.workOrders : [];
+}
+
+export async function saveAppwriteWorkOrder(input: Record<string, unknown>): Promise<WorkOrder> {
+  const response = await fetch("/api/appwrite/admin/work-orders", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(input)
+  });
+  const payload = await response.json().catch(() => ({})) as { workOrder?: WorkOrder; error?: string };
+
+  if (!response.ok || !payload.workOrder) {
+    throw new Error(payload.error ?? "Unable to save work order.");
+  }
+
+  return payload.workOrder;
+}
+
+export async function deleteAppwriteWorkOrder(id: string): Promise<void> {
+  const response = await fetch(`/api/appwrite/admin/work-orders?id=${encodeURIComponent(id)}`, {
+    method: "DELETE"
+  });
+
+  if (!response.ok) {
+    const payload = await response.json().catch(() => ({})) as { error?: string };
+    throw new Error(payload.error ?? "Unable to delete work order.");
+  }
 }
