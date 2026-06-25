@@ -104,6 +104,7 @@ import {
   readAppwriteWorkOrders,
   saveAppwriteWorkOrder,
   deleteAppwriteWorkOrder,
+  recognizePlateCloud,
   createAppwriteResidentVisitor,
   findAppwriteVisitorByCode,
   readAppwriteAdminSosIncidents,
@@ -9782,6 +9783,16 @@ function parseNigerianPlate(rawText: string) {
   return { plate: cleaned.slice(0, 12), matched: false };
 }
 
+function mapVehicleClass(vehicleType: string) {
+  const value = (vehicleType || "").toLowerCase();
+  if (value.includes("suv")) return "SUV";
+  if (value.includes("bus")) return "Bus";
+  if (value.includes("truck") || value.includes("pickup") || value.includes("van") || value.includes("lorry")) return "Truck";
+  if (value.includes("motor") || value.includes("bike")) return "Motorcycle";
+  if (value.includes("sedan") || value.includes("car") || value.includes("hatch") || value.includes("wagon")) return "Car";
+  return "";
+}
+
 export function ScanPlatePage({ compact = false }: { compact?: boolean }) {
   const [scannerOpen, setScannerOpen] = useState(false);
   const [plate, setPlate] = useState("");
@@ -9790,10 +9801,13 @@ export function ScanPlatePage({ compact = false }: { compact?: boolean }) {
   const [vehicleClass, setVehicleClass] = useState("Car");
   const [scans, setScans] = useState<{ plate: string; vehicleClass: string; at: string }[]>([]);
 
-  function handlePlateResult(detected: string, raw: string, didMatch: boolean) {
+  function handlePlateResult(detected: string, raw: string, didMatch: boolean, suggestedClass?: string) {
     setPlate(detected);
     setRawText(raw);
     setMatched(didMatch);
+    if (suggestedClass) {
+      setVehicleClass(suggestedClass);
+    }
   }
 
   function logPlate() {
@@ -9873,7 +9887,7 @@ function PlateScannerPanel({
   onClose
 }: {
   active: boolean;
-  onResult: (plate: string, raw: string, matched: boolean) => void;
+  onResult: (plate: string, raw: string, matched: boolean, vehicleClass?: string) => void;
   onClose: () => void;
 }) {
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -9997,6 +10011,31 @@ function PlateScannerPanel({
         return;
       }
       ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH);
+
+      // Cloud ANPR (Plate Recognizer) is authoritative when reachable. Only fall back to
+      // on-device OCR when the cloud is unavailable (offline or not configured).
+      try {
+        const colorBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob((value) => resolve(value), "image/jpeg", 0.9));
+        if (colorBlob) {
+          const cloud = await recognizePlateCloud(colorBlob);
+          if (cloud) {
+            if (cloud.plate) {
+              const parsedCloud = parseNigerianPlate(cloud.plate);
+              const finalPlate = parsedCloud.matched ? parsedCloud.plate : cloud.plate.toUpperCase().replace(/\s+/g, "");
+              const confidence = cloud.score ? ` (${Math.round(cloud.score * 100)}%)` : "";
+              onResult(finalPlate, `Cloud read: ${cloud.plate}${confidence}`, true, mapVehicleClass(cloud.vehicleType));
+              onClose();
+              return;
+            }
+            // Cloud is active but saw no plate — don't fall back to the weaker reader.
+            setMessage("No plate detected. Move closer so the plate fills the box, hold steady, and try again.");
+            setReading(false);
+            return;
+          }
+        }
+      } catch {
+        // Network/parse error — fall through to on-device OCR (offline mode).
+      }
 
       // Grayscale + adaptive threshold to isolate the dark characters from the plate background.
       const imageData = ctx.getImageData(0, 0, targetW, targetH);

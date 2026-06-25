@@ -490,6 +490,30 @@ export async function saveAppwriteStaffAttendance(input: Record<string, unknown>
   return payload.attendance;
 }
 
+export async function recognizePlateCloud(imageBlob: Blob): Promise<{ plate: string; score: number; region: string; vehicleType: string } | null> {
+  try {
+    const form = new FormData();
+    form.append("upload", imageBlob, "plate.jpg");
+    const response = await fetch("/api/appwrite/security/plate-recognize", { method: "POST", body: form });
+    if (response.status === 503) {
+      // Cloud ANPR not configured — caller falls back to on-device OCR.
+      return null;
+    }
+    const payload = await response.json().catch(() => ({})) as { plate?: string; score?: number; region?: string; vehicleType?: string; error?: string };
+    if (!response.ok) {
+      return null;
+    }
+    return {
+      plate: payload.plate ?? "",
+      score: payload.score ?? 0,
+      region: payload.region ?? "",
+      vehicleType: payload.vehicleType ?? ""
+    };
+  } catch {
+    return null;
+  }
+}
+
 export async function readAppwriteFacilities(): Promise<Facility[]> {
   const response = await fetch(`/api/appwrite/admin/facilities?t=${Date.now()}`, { cache: "no-store" });
   const payload = await response.json().catch(() => ({})) as { facilities?: Facility[]; error?: string };
