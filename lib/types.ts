@@ -393,3 +393,116 @@ export type CsoReview = {
   followUpDate?: string;
   status: "open" | "pending" | "approved" | "rejected" | "closed" | "completed";
 };
+
+export type StaffEmploymentStatus = "active" | "on_leave" | "suspended" | "terminated";
+export type StaffEmploymentType = "full_time" | "part_time" | "contract";
+
+export type Staff = {
+  id: string;
+  estateId: string;
+  fullName: string;
+  roleTitle: string;
+  phone: string;
+  email: string;
+  photoUrl: string;
+  employmentStatus: StaffEmploymentStatus;
+  employmentType: StaffEmploymentType;
+  hireDate: string;
+  endDate: string;
+  assignedPost: string;
+  checkpointId: string;
+  onDuty: boolean;
+  currentShiftLabel: string;
+  idType: string;
+  idNumber: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+  address: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type StaffAttendanceStatus = "present" | "late" | "absent" | "on_leave";
+
+export type StaffAttendance = {
+  id: string;
+  estateId: string;
+  staffId: string;
+  staffName: string;
+  attendanceDate: string;
+  clockIn: string;
+  clockOut: string;
+  status: StaffAttendanceStatus;
+  source: string;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type FacilityStatus = "operational" | "needs_attention" | "out_of_service";
+
+export type Facility = {
+  id: string;
+  estateId: string;
+  name: string;
+  category: string;
+  location: string;
+  status: FacilityStatus;
+  purchaseDate: string;
+  warrantyExpiry: string;
+  vendorId: string;
+  vendorName: string;
+  photoUrl: string;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type WorkOrderPriority = "low" | "medium" | "high" | "urgent";
+export type WorkOrderStatus = "open" | "assigned" | "in_progress" | "on_hold" | "resolved" | "closed";
+
+export type WorkOrder = {
+  id: string;
+  estateId: string;
+  facilityId: string;
+  facilityName: string;
+  title: string;
+  description: string;
+  category: string;
+  priority: WorkOrderPriority;
+  status: WorkOrderStatus;
+  reportedByRole: string;
+  assignedTo: string;
+  dueDate: string;
+  resolvedAt: string;
+  cost: number;
+  notes: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type VehicleDirection = "in" | "out";
+
+export type VehicleLog = {
+  id: string;
+  estateId: string;
+  plate: string;
+  vehicleClass: string;
+  direction: VehicleDirection;
+  postLabel: string;
+  guardId: string;
+  guardName: string;
+  scannedAt: string;
+  visitorId: string;
+  visitorCode: string;
+  residentId: string;
+  knownVehicleId: string;
+  matchStatus: string;
+  region: string;
+  score: number;
+  rawRead: string;
+  note: string;
+  createdAt: string;
+  updatedAt: string;
+};

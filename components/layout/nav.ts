@@ -10,6 +10,7 @@ export const adminNav: NavItem[] = [
   { label: "Bills", href: "/admin/bills", icon: "ReceiptText" },
   { label: "Payments", href: "/admin/payments", icon: "WalletCards" },
   { label: "Complaints", href: "/admin/complaints", icon: "ClipboardList" },
+  { label: "Facilities", href: "/admin/facilities", icon: "Building2" },
   { label: "Announcements", href: "/admin/announcements", icon: "Megaphone" },
   { label: "Digital IDs", href: "/admin/digital-ids", icon: "IdCard" },
   { label: "Knowledge Base", href: "/admin/knowledge-base", icon: "BookOpen" },
@@ -45,6 +46,7 @@ export const securityNav: NavItem[] = [
 
 export const csoNav: NavItem[] = [
   { label: "Command", href: "/cso", icon: "Gauge" },
+  { label: "Personnel", href: "/cso/personnel", icon: "Users" },
   { label: "🚨 SOS", href: "/cso/sos-alerts", icon: "AlertTriangle", tone: "danger", badge: "sos" },
   { label: "Checkpoints", href: "/cso#checkpoints", icon: "ShieldCheck" },
   { label: "Patrol Feed", href: "/cso#patrol-feed", icon: "FileText" }

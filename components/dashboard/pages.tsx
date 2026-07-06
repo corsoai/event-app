@@ -9,6 +9,7 @@ import {
   Building2,
   CalendarClock,
   Camera,
+  Car,
   ChevronDown,
   ChevronRight,
   CheckCircle2,
@@ -37,7 +38,9 @@ import {
   ShieldCheck,
   Siren,
   Store,
+  Plus,
   Trash2,
+  Wrench,
   Upload,
   UserCheck,
   UserX,
@@ -90,6 +93,20 @@ import {
 } from "@/lib/local-store";
 import {
   createAppwriteResidentSos,
+  readAppwriteStaff,
+  saveAppwriteStaff,
+  deleteAppwriteStaff,
+  readAppwriteStaffAttendance,
+  saveAppwriteStaffAttendance,
+  readAppwriteFacilities,
+  saveAppwriteFacility,
+  deleteAppwriteFacility,
+  readAppwriteWorkOrders,
+  saveAppwriteWorkOrder,
+  deleteAppwriteWorkOrder,
+  recognizePlateCloud,
+  readAppwriteVehicleLogs,
+  saveAppwriteVehicleLog,
   createAppwriteResidentVisitor,
   findAppwriteVisitorByCode,
   readAppwriteAdminSosIncidents,
@@ -112,7 +129,7 @@ import {
   syncPendingTourLogs
 } from "@/lib/guard-tour";
 import { APPWRITE_ONBOARDING_DATABASE_ID } from "@/lib/appwrite/schema";
-import type { AppwriteAnnouncement, AppwriteComplaint, AppwriteKnowledgeBaseArticle, Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, HouseholdMember, Payment, Property, Resident, SecurityIncident, StatusTone, Unit, UserRole, Visitor } from "@/lib/types";
+import type { AppwriteAnnouncement, AppwriteComplaint, AppwriteKnowledgeBaseArticle, Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, HouseholdMember, Payment, Property, Resident, Facility, SecurityIncident, Staff, StaffAttendance, StatusTone, Unit, UserRole, VehicleLog, Visitor, WorkOrder } from "@/lib/types";
 import { contactLabel, makeDigitalIdNumber, money } from "@/lib/utils";
 import { getVisitorWindowState, VISITOR_CODE_VALIDITY_HOURS } from "@/lib/visitor-window";
 import { useRouter } from "next/navigation";
@@ -7305,41 +7322,53 @@ export function SecurityDashboard() {
           <ChevronRight className="h-5 w-5" />
         </Link>
       ) : null}
-      <div className="grid gap-3 sm:hidden">
-        <Link href="/security/verify-visitor">
-          <Button className="min-h-[72px] w-full justify-center text-base">
+      <div className="grid grid-cols-3 gap-2.5">
+        <Link
+          href="/security/verify-visitor"
+          className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-smart/40 bg-smart/15 p-4 text-center shadow-[0_18px_40px_rgba(192,255,107,0.16)] transition active:scale-[0.98]"
+        >
+          <span className="grid h-12 w-12 place-items-center rounded-xl bg-smart text-ink">
             <QrCode className="h-6 w-6" />
-            Scan QR Code
-          </Button>
+          </span>
+          <span className="text-sm font-semibold leading-tight text-white">Verify Visitor</span>
         </Link>
-        <Link href="/security/verify-visitor">
-          <Button variant="secondary" className="min-h-[72px] w-full justify-center text-base">
-            <Search className="h-6 w-6" />
-            Enter Code Manually
-          </Button>
+        <Link
+          href="/security/guard-tour"
+          className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[0.06] p-4 text-center transition active:scale-[0.98]"
+        >
+          <span className="grid h-12 w-12 place-items-center rounded-xl bg-white/10 text-white">
+            <ShieldCheck className="h-6 w-6" />
+          </span>
+          <span className="text-sm font-semibold leading-tight text-white">Guard Tour</span>
         </Link>
-        <Card>
-          <CardHeader title="Recent gate activity" description="Latest visitor invitations and movements." />
-          <div className="grid gap-3">
-            {recentVisitors.length ? recentVisitors.map((visitor) => (
-              <div key={visitor.id} className="rounded-lg border border-line/70 bg-white/80 p-3 dark:bg-slate-900/70">
-                <div className="flex items-start justify-between gap-3">
-                  <div>
-                    <p className="font-semibold text-slate-950 dark:text-white">{visitor.visitorName}</p>
-                    <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{visitor.code} - {formatClockTime(visitor.arrivalTime)}</p>
-                  </div>
-                  <StatusBadge status={visitor.status} />
+        <Link
+          href="/security/scan-plate"
+          className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[0.06] p-4 text-center transition active:scale-[0.98]"
+        >
+          <span className="grid h-12 w-12 place-items-center rounded-xl bg-white/10 text-white">
+            <Car className="h-6 w-6" />
+          </span>
+          <span className="text-sm font-semibold leading-tight text-white">Scan Plate</span>
+        </Link>
+      </div>
+      <Card className="mt-3">
+        <CardHeader title="Recent gate activity" description="Latest visitor invitations and movements." />
+        <div className="grid gap-3">
+          {recentVisitors.length ? recentVisitors.map((visitor) => (
+            <div key={visitor.id} className="rounded-lg border border-line/70 bg-white/80 p-3 dark:bg-slate-900/70">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="font-semibold text-slate-950 dark:text-white">{visitor.visitorName}</p>
+                  <p className="mt-1 text-xs text-slate-600 dark:text-slate-300">{visitor.code} - {formatClockTime(visitor.arrivalTime)}</p>
                 </div>
+                <StatusBadge status={visitor.status} />
               </div>
-            )) : (
-              <p className="rounded-lg border border-line bg-white/70 p-3 text-sm text-slate-600 dark:bg-slate-900/70 dark:text-slate-300">No recent visitor activity.</p>
-            )}
-          </div>
-        </Card>
-      </div>
-      <div className="hidden sm:block">
-        <VerifyVisitorPage compact />
-      </div>
+            </div>
+          )) : (
+            <p className="rounded-lg border border-line bg-white/70 p-3 text-sm text-slate-600 dark:bg-slate-900/70 dark:text-slate-300">No recent visitor activity.</p>
+          )}
+        </div>
+      </Card>
       <div className="mt-6">
         <h2 className="text-lg font-semibold text-slate-950 dark:text-white">Today at the gate</h2>
       </div>
@@ -7357,6 +7386,788 @@ export function SecurityDashboard() {
           showResident
         />
       </div>
+    </>
+  );
+}
+
+type StaffFormState = {
+  fullName: string;
+  roleTitle: string;
+  phone: string;
+  email: string;
+  photoUrl: string;
+  employmentStatus: Staff["employmentStatus"];
+  employmentType: Staff["employmentType"];
+  hireDate: string;
+  endDate: string;
+  assignedPost: string;
+  currentShiftLabel: string;
+  idType: string;
+  idNumber: string;
+  emergencyContactName: string;
+  emergencyContactPhone: string;
+  address: string;
+  notes: string;
+  onDuty: boolean;
+};
+
+function emptyStaffForm(): StaffFormState {
+  return {
+    fullName: "",
+    roleTitle: "",
+    phone: "",
+    email: "",
+    photoUrl: "",
+    employmentStatus: "active",
+    employmentType: "full_time",
+    hireDate: "",
+    endDate: "",
+    assignedPost: "",
+    currentShiftLabel: "",
+    idType: "",
+    idNumber: "",
+    emergencyContactName: "",
+    emergencyContactPhone: "",
+    address: "",
+    notes: "",
+    onDuty: false
+  };
+}
+
+function staffToForm(member: Staff): StaffFormState {
+  return {
+    fullName: member.fullName,
+    roleTitle: member.roleTitle,
+    phone: member.phone,
+    email: member.email,
+    photoUrl: member.photoUrl,
+    employmentStatus: member.employmentStatus,
+    employmentType: member.employmentType,
+    hireDate: member.hireDate,
+    endDate: member.endDate,
+    assignedPost: member.assignedPost,
+    currentShiftLabel: member.currentShiftLabel,
+    idType: member.idType,
+    idNumber: member.idNumber,
+    emergencyContactName: member.emergencyContactName,
+    emergencyContactPhone: member.emergencyContactPhone,
+    address: member.address,
+    notes: member.notes,
+    onDuty: member.onDuty
+  };
+}
+
+function staffStatusLabel(status: Staff["employmentStatus"]) {
+  switch (status) {
+    case "on_leave":
+      return "On leave";
+    case "suspended":
+      return "Suspended";
+    case "terminated":
+      return "Terminated";
+    default:
+      return "Active";
+  }
+}
+
+function StaffAttendanceTab({ estateStaff }: { estateStaff: Staff[] }) {
+  const [date, setDate] = useState(() => new Date().toISOString().slice(0, 10));
+  const [records, setRecords] = useState<StaffAttendance[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [savingId, setSavingId] = useState("");
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    readAppwriteStaffAttendance(date)
+      .then((rows) => {
+        if (active) {
+          setRecords(rows);
+          setMessage("");
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setMessage(error instanceof Error ? error.message : "Unable to load attendance.");
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, [date]);
+
+  function recordFor(staffId: string) {
+    return records.find((row) => row.staffId === staffId);
+  }
+
+  async function save(member: Staff, changes: { clockIn?: string; clockOut?: string; status?: StaffAttendance["status"] }) {
+    setSavingId(member.id);
+    try {
+      const saved = await saveAppwriteStaffAttendance({
+        staffId: member.id,
+        staffName: member.fullName,
+        attendanceDate: date,
+        ...changes
+      });
+      setRecords((current) => [...current.filter((row) => row.staffId !== member.id), saved]);
+      setMessage("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to save attendance.");
+    } finally {
+      setSavingId("");
+    }
+  }
+
+  const roster = estateStaff.filter((member) => member.employmentStatus !== "terminated");
+  const presentCount = roster.filter((member) => {
+    const rec = recordFor(member.id);
+    return Boolean(rec?.clockIn) && rec?.status !== "absent";
+  }).length;
+
+  return (
+    <Card>
+      <CardHeader
+        title="Daily attendance"
+        description="Clock staff in and out and mark status."
+        action={<Input type="date" value={date} onChange={(event) => setDate(event.target.value)} className="min-h-9" />}
+      />
+      {message ? <p className="mb-3 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
+      <p className="mb-3 text-xs text-slate-400">{presentCount} of {roster.length} clocked in</p>
+      {loading ? (
+        <p className="text-sm text-slate-300">Loading attendance...</p>
+      ) : roster.length ? (
+        <div className="grid gap-2">
+          {roster.map((member) => {
+            const rec = recordFor(member.id);
+            const clockedIn = Boolean(rec?.clockIn);
+            const clockedOut = Boolean(rec?.clockOut);
+            const status = rec?.status ?? "present";
+            return (
+              <div key={member.id} className="rounded-lg border border-white/10 bg-white/5 p-3">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0">
+                    <p className="truncate font-semibold text-white">{member.fullName}</p>
+                    <p className="mt-0.5 truncate text-xs text-slate-400">
+                      {member.roleTitle}
+                      {rec?.clockIn ? ` · In ${formatClockTime(rec.clockIn)}` : ""}
+                      {rec?.clockOut ? ` · Out ${formatClockTime(rec.clockOut)}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Select value={status} onChange={(event) => void save(member, { status: event.currentTarget.value as StaffAttendance["status"] })}>
+                      <option value="present">Present</option>
+                      <option value="late">Late</option>
+                      <option value="absent">Absent</option>
+                      <option value="on_leave">On leave</option>
+                    </Select>
+                    <Button
+                      variant="secondary"
+                      className="min-h-9 px-3"
+                      disabled={savingId === member.id || clockedIn}
+                      onClick={() => void save(member, { clockIn: new Date().toISOString(), status: status === "absent" ? "present" : status })}
+                    >
+                      Clock in
+                    </Button>
+                    <Button
+                      variant="secondary"
+                      className="min-h-9 px-3"
+                      disabled={savingId === member.id || !clockedIn || clockedOut}
+                      onClick={() => void save(member, { clockOut: new Date().toISOString() })}
+                    >
+                      Clock out
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">No staff to show. Add staff in the Directory tab first.</p>
+      )}
+    </Card>
+  );
+}
+
+export function CsoPersonnelPage() {
+  const [staff, setStaff] = useState<Staff[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState<"all" | Staff["employmentStatus"]>("all");
+  const [editing, setEditing] = useState<Staff | null>(null);
+  const [showForm, setShowForm] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [form, setForm] = useState<StaffFormState>(emptyStaffForm());
+  const [activeTab, setActiveTab] = useState<"directory" | "attendance">("directory");
+
+  useEffect(() => {
+    void loadStaff();
+  }, []);
+
+  async function loadStaff() {
+    setLoading(true);
+    try {
+      const rows = await readAppwriteStaff();
+      setStaff(rows);
+      setMessage("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to load staff.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  function openAdd() {
+    setEditing(null);
+    setForm(emptyStaffForm());
+    setShowForm(true);
+  }
+
+  function openEdit(member: Staff) {
+    setEditing(member);
+    setForm(staffToForm(member));
+    setShowForm(true);
+  }
+
+  function updateField<K extends keyof StaffFormState>(key: K, value: StaffFormState[K]) {
+    setForm((current) => ({ ...current, [key]: value }));
+  }
+
+  async function submitStaff(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!form.fullName.trim() || !form.roleTitle.trim()) {
+      setMessage("Name and role are required.");
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await saveAppwriteStaff({ id: editing?.id, ...form });
+      setShowForm(false);
+      setEditing(null);
+      await loadStaff();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to save staff.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeStaff(member: Staff) {
+    if (typeof window !== "undefined" && !window.confirm(`Remove ${member.fullName}? This cannot be undone.`)) {
+      return;
+    }
+    try {
+      await deleteAppwriteStaff(member.id);
+      await loadStaff();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to remove staff.");
+    }
+  }
+
+  const query = search.trim().toLowerCase();
+  const filtered = staff.filter((member) => {
+    const matchesStatus = statusFilter === "all" || member.employmentStatus === statusFilter;
+    const matchesSearch = !query
+      || member.fullName.toLowerCase().includes(query)
+      || member.roleTitle.toLowerCase().includes(query)
+      || member.phone.includes(query);
+    return matchesStatus && matchesSearch;
+  });
+
+  const onDutyCount = staff.filter((member) => member.onDuty).length;
+  const activeCount = staff.filter((member) => member.employmentStatus === "active").length;
+  const onLeaveCount = staff.filter((member) => member.employmentStatus === "on_leave").length;
+
+  return (
+    <>
+      <PageHeader title="Personnel" description="Manage estate staff and security personnel." />
+      {message ? <p className="mb-4 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
+
+      <div className="mb-4 flex gap-2">
+        <Button variant={activeTab === "directory" ? "primary" : "secondary"} className="min-h-9 px-4" onClick={() => setActiveTab("directory")}>Directory</Button>
+        <Button variant={activeTab === "attendance" ? "primary" : "secondary"} className="min-h-9 px-4" onClick={() => setActiveTab("attendance")}>Attendance</Button>
+      </div>
+
+      {activeTab === "attendance" ? <StaffAttendanceTab estateStaff={staff} /> : (
+        <>
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard label="Total staff" value={String(staff.length)} helper="All records" icon={<Users className="h-5 w-5" />} />
+        <StatCard label="On duty" value={String(onDutyCount)} helper="Currently working" icon={<ShieldCheck className="h-5 w-5" />} />
+        <StatCard label="Active" value={String(activeCount)} helper="Employed" icon={<BadgeCheck className="h-5 w-5" />} />
+        <StatCard label="On leave" value={String(onLeaveCount)} helper="Away" icon={<CalendarClock className="h-5 w-5" />} />
+      </div>
+
+      <Card>
+        <CardHeader
+          title="Staff directory"
+          description="Search and manage personnel records."
+          action={<Button onClick={openAdd}><Plus className="h-4 w-4" />Add staff</Button>}
+        />
+        <div className="mb-4 flex flex-col gap-3 sm:flex-row">
+          <Input placeholder="Search name, role, phone" value={search} onChange={(event) => setSearch(event.target.value)} />
+          <Select value={statusFilter} onChange={(event) => setStatusFilter(event.currentTarget.value as "all" | Staff["employmentStatus"])}>
+            <option value="all">All statuses</option>
+            <option value="active">Active</option>
+            <option value="on_leave">On leave</option>
+            <option value="suspended">Suspended</option>
+            <option value="terminated">Terminated</option>
+          </Select>
+        </div>
+        {loading ? (
+          <p className="text-sm text-slate-300">Loading staff...</p>
+        ) : filtered.length ? (
+          <div className="grid gap-2">
+            {filtered.map((member) => (
+              <div key={member.id} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 p-3">
+                <div className="min-w-0">
+                  <p className="flex items-center gap-2 font-semibold text-white">
+                    <span className="truncate">{member.fullName}</span>
+                    {member.onDuty ? <span className="rounded-full bg-smart/20 px-2 py-0.5 text-[11px] font-semibold text-smart">On duty</span> : null}
+                  </p>
+                  <p className="mt-0.5 truncate text-xs text-slate-400">
+                    {member.roleTitle}{member.phone ? ` · ${member.phone}` : ""} · {staffStatusLabel(member.employmentStatus)}
+                  </p>
+                </div>
+                <div className="flex shrink-0 gap-2">
+                  <Button variant="secondary" className="min-h-9 px-3" onClick={() => openEdit(member)}>Edit</Button>
+                  <Button variant="ghost" className="min-h-9 px-3 text-danger" onClick={() => void removeStaff(member)}><Trash2 className="h-4 w-4" /></Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">No staff found. Tap &quot;Add staff&quot; to create the first record.</p>
+        )}
+      </Card>
+
+      {showForm ? (
+        <Card className="mt-4">
+          <CardHeader
+            title={editing ? `Edit ${editing.fullName}` : "Add staff"}
+            description="Personnel profile details."
+            action={<Button variant="ghost" onClick={() => setShowForm(false)}><X className="h-4 w-4" />Close</Button>}
+          />
+          <form className="grid gap-4" onSubmit={submitStaff}>
+            <div className="grid gap-4 sm:grid-cols-2">
+              <Field label="Full name"><Input value={form.fullName} onChange={(event) => updateField("fullName", event.target.value)} required /></Field>
+              <Field label="Role / title"><Input value={form.roleTitle} onChange={(event) => updateField("roleTitle", event.target.value)} placeholder="e.g. Security Guard" required /></Field>
+              <Field label="Phone"><Input value={form.phone} onChange={(event) => updateField("phone", event.target.value)} /></Field>
+              <Field label="Email"><Input value={form.email} onChange={(event) => updateField("email", event.target.value)} /></Field>
+              <Field label="Employment status">
+                <Select value={form.employmentStatus} onChange={(event) => updateField("employmentStatus", event.currentTarget.value as Staff["employmentStatus"])}>
+                  <option value="active">Active</option>
+                  <option value="on_leave">On leave</option>
+                  <option value="suspended">Suspended</option>
+                  <option value="terminated">Terminated</option>
+                </Select>
+              </Field>
+              <Field label="Employment type">
+                <Select value={form.employmentType} onChange={(event) => updateField("employmentType", event.currentTarget.value as Staff["employmentType"])}>
+                  <option value="full_time">Full-time</option>
+                  <option value="part_time">Part-time</option>
+                  <option value="contract">Contract</option>
+                </Select>
+              </Field>
+              <Field label="Hire date"><Input type="date" value={form.hireDate} onChange={(event) => updateField("hireDate", event.target.value)} /></Field>
+              <Field label="End date"><Input type="date" value={form.endDate} onChange={(event) => updateField("endDate", event.target.value)} /></Field>
+              <Field label="Assigned post"><Input value={form.assignedPost} onChange={(event) => updateField("assignedPost", event.target.value)} placeholder="e.g. Main Gate" /></Field>
+              <Field label="Shift"><Input value={form.currentShiftLabel} onChange={(event) => updateField("currentShiftLabel", event.target.value)} placeholder="e.g. Night (6pm-6am)" /></Field>
+              <Field label="ID type"><Input value={form.idType} onChange={(event) => updateField("idType", event.target.value)} placeholder="e.g. NIN" /></Field>
+              <Field label="ID number"><Input value={form.idNumber} onChange={(event) => updateField("idNumber", event.target.value)} /></Field>
+              <Field label="Emergency contact name"><Input value={form.emergencyContactName} onChange={(event) => updateField("emergencyContactName", event.target.value)} /></Field>
+              <Field label="Emergency contact phone"><Input value={form.emergencyContactPhone} onChange={(event) => updateField("emergencyContactPhone", event.target.value)} /></Field>
+              <Field label="Photo URL"><Input value={form.photoUrl} onChange={(event) => updateField("photoUrl", event.target.value)} placeholder="Optional image link" /></Field>
+            </div>
+            <Field label="Address"><Input value={form.address} onChange={(event) => updateField("address", event.target.value)} /></Field>
+            <Field label="Notes"><Textarea value={form.notes} onChange={(event) => updateField("notes", event.target.value)} /></Field>
+            <label className="flex items-center gap-2 text-sm text-slate-200">
+              <input type="checkbox" checked={form.onDuty} onChange={(event) => updateField("onDuty", event.target.checked)} className="h-4 w-4" />
+              Currently on duty
+            </label>
+            <div className="flex gap-2">
+              <Button type="submit" disabled={saving}>{saving ? "Saving..." : editing ? "Save changes" : "Add staff"}</Button>
+              <Button type="button" variant="secondary" onClick={() => setShowForm(false)}>Cancel</Button>
+            </div>
+          </form>
+        </Card>
+      ) : null}
+        </>
+      )}
+    </>
+  );
+}
+
+type FacilityFormState = {
+  name: string;
+  category: string;
+  location: string;
+  status: Facility["status"];
+  purchaseDate: string;
+  warrantyExpiry: string;
+  vendorName: string;
+  notes: string;
+};
+
+function emptyFacilityForm(): FacilityFormState {
+  return { name: "", category: "equipment", location: "", status: "operational", purchaseDate: "", warrantyExpiry: "", vendorName: "", notes: "" };
+}
+
+function facilityToForm(facility: Facility): FacilityFormState {
+  return {
+    name: facility.name,
+    category: facility.category || "equipment",
+    location: facility.location,
+    status: facility.status,
+    purchaseDate: facility.purchaseDate,
+    warrantyExpiry: facility.warrantyExpiry,
+    vendorName: facility.vendorName,
+    notes: facility.notes
+  };
+}
+
+type WorkOrderFormState = {
+  title: string;
+  facilityName: string;
+  category: string;
+  priority: WorkOrder["priority"];
+  status: WorkOrder["status"];
+  assignedTo: string;
+  dueDate: string;
+  cost: string;
+  description: string;
+  notes: string;
+};
+
+function emptyWorkOrderForm(): WorkOrderFormState {
+  return { title: "", facilityName: "", category: "", priority: "medium", status: "open", assignedTo: "", dueDate: "", cost: "", description: "", notes: "" };
+}
+
+function workOrderToForm(order: WorkOrder): WorkOrderFormState {
+  return {
+    title: order.title,
+    facilityName: order.facilityName,
+    category: order.category,
+    priority: order.priority,
+    status: order.status,
+    assignedTo: order.assignedTo,
+    dueDate: order.dueDate,
+    cost: order.cost ? String(order.cost) : "",
+    description: order.description,
+    notes: order.notes
+  };
+}
+
+function facilityTitleCase(value: string) {
+  return value ? value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()) : "—";
+}
+
+export function AdminFacilitiesPage() {
+  const [tab, setTab] = useState<"facilities" | "workorders">("facilities");
+  const [facilities, setFacilities] = useState<Facility[]>([]);
+  const [workOrders, setWorkOrders] = useState<WorkOrder[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [message, setMessage] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const [facilityForm, setFacilityForm] = useState<FacilityFormState>(emptyFacilityForm());
+  const [editingFacility, setEditingFacility] = useState<Facility | null>(null);
+  const [showFacilityForm, setShowFacilityForm] = useState(false);
+
+  const [woForm, setWoForm] = useState<WorkOrderFormState>(emptyWorkOrderForm());
+  const [editingWo, setEditingWo] = useState<WorkOrder | null>(null);
+  const [showWoForm, setShowWoForm] = useState(false);
+
+  useEffect(() => {
+    let active = true;
+    setLoading(true);
+    Promise.all([readAppwriteFacilities(), readAppwriteWorkOrders()])
+      .then(([facilityRows, workOrderRows]) => {
+        if (active) {
+          setFacilities(facilityRows);
+          setWorkOrders(workOrderRows);
+          setMessage("");
+        }
+      })
+      .catch((error) => {
+        if (active) {
+          setMessage(error instanceof Error ? error.message : "Unable to load facilities.");
+        }
+      })
+      .finally(() => {
+        if (active) {
+          setLoading(false);
+        }
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  async function reloadFacilities() {
+    try {
+      setFacilities(await readAppwriteFacilities());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to load facilities.");
+    }
+  }
+
+  async function reloadWorkOrders() {
+    try {
+      setWorkOrders(await readAppwriteWorkOrders());
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to load work orders.");
+    }
+  }
+
+  function updateFacilityField<K extends keyof FacilityFormState>(key: K, value: FacilityFormState[K]) {
+    setFacilityForm((current) => ({ ...current, [key]: value }));
+  }
+
+  function updateWoField<K extends keyof WorkOrderFormState>(key: K, value: WorkOrderFormState[K]) {
+    setWoForm((current) => ({ ...current, [key]: value }));
+  }
+
+  async function submitFacility(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!facilityForm.name.trim()) {
+      setMessage("Facility name is required.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await saveAppwriteFacility({ id: editingFacility?.id, ...facilityForm });
+      setShowFacilityForm(false);
+      setEditingFacility(null);
+      await reloadFacilities();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to save facility.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeFacility(facility: Facility) {
+    if (typeof window !== "undefined" && !window.confirm(`Delete facility "${facility.name}"?`)) {
+      return;
+    }
+    try {
+      await deleteAppwriteFacility(facility.id);
+      await reloadFacilities();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to delete facility.");
+    }
+  }
+
+  async function submitWo(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!woForm.title.trim()) {
+      setMessage("Work order title is required.");
+      return;
+    }
+    setSaving(true);
+    try {
+      await saveAppwriteWorkOrder({ id: editingWo?.id, ...woForm, cost: woForm.cost ? Number(woForm.cost) : 0 });
+      setShowWoForm(false);
+      setEditingWo(null);
+      await reloadWorkOrders();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to save work order.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removeWo(order: WorkOrder) {
+    if (typeof window !== "undefined" && !window.confirm(`Delete work order "${order.title}"?`)) {
+      return;
+    }
+    try {
+      await deleteAppwriteWorkOrder(order.id);
+      await reloadWorkOrders();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to delete work order.");
+    }
+  }
+
+  const openWorkOrders = workOrders.filter((order) => order.status !== "resolved" && order.status !== "closed").length;
+  const attentionFacilities = facilities.filter((facility) => facility.status !== "operational").length;
+
+  return (
+    <>
+      <PageHeader title="Facilities" description="Manage estate facilities and maintenance work orders." />
+      {message ? <p className="mb-4 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
+
+      <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
+        <StatCard label="Facilities" value={String(facilities.length)} helper="Registered" icon={<Building2 className="h-5 w-5" />} />
+        <StatCard label="Needs attention" value={String(attentionFacilities)} helper="Not operational" icon={<AlertTriangle className="h-5 w-5" />} />
+        <StatCard label="Work orders" value={String(workOrders.length)} helper="All time" icon={<ClipboardList className="h-5 w-5" />} />
+        <StatCard label="Open" value={String(openWorkOrders)} helper="Unresolved" icon={<Wrench className="h-5 w-5" />} />
+      </div>
+
+      <div className="mb-4 flex gap-2">
+        <Button variant={tab === "facilities" ? "primary" : "secondary"} className="min-h-9 px-4" onClick={() => setTab("facilities")}>Facilities</Button>
+        <Button variant={tab === "workorders" ? "primary" : "secondary"} className="min-h-9 px-4" onClick={() => setTab("workorders")}>Work Orders</Button>
+      </div>
+
+      {tab === "facilities" ? (
+        <>
+          <Card>
+            <CardHeader
+              title="Facility register"
+              description="Estate assets, equipment and amenities."
+              action={<Button onClick={() => { setEditingFacility(null); setFacilityForm(emptyFacilityForm()); setShowFacilityForm(true); }}><Plus className="h-4 w-4" />Add facility</Button>}
+            />
+            {loading ? (
+              <p className="text-sm text-slate-300">Loading...</p>
+            ) : facilities.length ? (
+              <div className="grid gap-2">
+                {facilities.map((facility) => (
+                  <div key={facility.id} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 p-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-white">{facility.name}</p>
+                      <p className="mt-0.5 truncate text-xs text-slate-400">{facilityTitleCase(facility.category)}{facility.location ? ` · ${facility.location}` : ""} · {facilityTitleCase(facility.status)}</p>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <Button variant="secondary" className="min-h-9 px-3" onClick={() => { setEditingFacility(facility); setFacilityForm(facilityToForm(facility)); setShowFacilityForm(true); }}>Edit</Button>
+                      <Button variant="ghost" className="min-h-9 px-3 text-danger" onClick={() => void removeFacility(facility)}><Trash2 className="h-4 w-4" /></Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">No facilities yet. Tap &quot;Add facility&quot;.</p>
+            )}
+          </Card>
+
+          {showFacilityForm ? (
+            <Card className="mt-4">
+              <CardHeader
+                title={editingFacility ? `Edit ${editingFacility.name}` : "Add facility"}
+                description="Facility details."
+                action={<Button variant="ghost" onClick={() => setShowFacilityForm(false)}><X className="h-4 w-4" />Close</Button>}
+              />
+              <form className="grid gap-4" onSubmit={submitFacility}>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Name"><Input value={facilityForm.name} onChange={(event) => updateFacilityField("name", event.target.value)} required /></Field>
+                  <Field label="Category">
+                    <Select value={facilityForm.category} onChange={(event) => updateFacilityField("category", event.currentTarget.value)}>
+                      <option value="building">Building</option>
+                      <option value="equipment">Equipment</option>
+                      <option value="amenity">Amenity</option>
+                      <option value="utility">Utility</option>
+                      <option value="vehicle">Vehicle</option>
+                      <option value="other">Other</option>
+                    </Select>
+                  </Field>
+                  <Field label="Location"><Input value={facilityForm.location} onChange={(event) => updateFacilityField("location", event.target.value)} /></Field>
+                  <Field label="Status">
+                    <Select value={facilityForm.status} onChange={(event) => updateFacilityField("status", event.currentTarget.value as Facility["status"])}>
+                      <option value="operational">Operational</option>
+                      <option value="needs_attention">Needs attention</option>
+                      <option value="out_of_service">Out of service</option>
+                    </Select>
+                  </Field>
+                  <Field label="Purchase date"><Input type="date" value={facilityForm.purchaseDate} onChange={(event) => updateFacilityField("purchaseDate", event.target.value)} /></Field>
+                  <Field label="Warranty expiry"><Input type="date" value={facilityForm.warrantyExpiry} onChange={(event) => updateFacilityField("warrantyExpiry", event.target.value)} /></Field>
+                  <Field label="Vendor"><Input value={facilityForm.vendorName} onChange={(event) => updateFacilityField("vendorName", event.target.value)} placeholder="Service provider" /></Field>
+                </div>
+                <Field label="Notes"><Textarea value={facilityForm.notes} onChange={(event) => updateFacilityField("notes", event.target.value)} /></Field>
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={saving}>{saving ? "Saving..." : editingFacility ? "Save changes" : "Add facility"}</Button>
+                  <Button type="button" variant="secondary" onClick={() => setShowFacilityForm(false)}>Cancel</Button>
+                </div>
+              </form>
+            </Card>
+          ) : null}
+        </>
+      ) : (
+        <>
+          <Card>
+            <CardHeader
+              title="Work orders"
+              description="Maintenance requests and their status."
+              action={<Button onClick={() => { setEditingWo(null); setWoForm(emptyWorkOrderForm()); setShowWoForm(true); }}><Plus className="h-4 w-4" />New work order</Button>}
+            />
+            {loading ? (
+              <p className="text-sm text-slate-300">Loading...</p>
+            ) : workOrders.length ? (
+              <div className="grid gap-2">
+                {workOrders.map((order) => (
+                  <div key={order.id} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 p-3">
+                    <div className="min-w-0">
+                      <p className="truncate font-semibold text-white">{order.title}</p>
+                      <p className="mt-0.5 truncate text-xs text-slate-400">{order.facilityName ? `${order.facilityName} · ` : ""}{facilityTitleCase(order.priority)} · {facilityTitleCase(order.status)}{order.assignedTo ? ` · ${order.assignedTo}` : ""}</p>
+                    </div>
+                    <div className="flex shrink-0 gap-2">
+                      <Button variant="secondary" className="min-h-9 px-3" onClick={() => { setEditingWo(order); setWoForm(workOrderToForm(order)); setShowWoForm(true); }}>Edit</Button>
+                      <Button variant="ghost" className="min-h-9 px-3 text-danger" onClick={() => void removeWo(order)}><Trash2 className="h-4 w-4" /></Button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">No work orders yet. Tap &quot;New work order&quot;.</p>
+            )}
+          </Card>
+
+          {showWoForm ? (
+            <Card className="mt-4">
+              <CardHeader
+                title={editingWo ? "Edit work order" : "New work order"}
+                description="Maintenance request details."
+                action={<Button variant="ghost" onClick={() => setShowWoForm(false)}><X className="h-4 w-4" />Close</Button>}
+              />
+              <form className="grid gap-4" onSubmit={submitWo}>
+                <Field label="Title"><Input value={woForm.title} onChange={(event) => updateWoField("title", event.target.value)} required /></Field>
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <Field label="Facility">
+                    <Select value={woForm.facilityName} onChange={(event) => updateWoField("facilityName", event.currentTarget.value)}>
+                      <option value="">— General / none —</option>
+                      {facilities.map((facility) => <option key={facility.id} value={facility.name}>{facility.name}</option>)}
+                    </Select>
+                  </Field>
+                  <Field label="Category"><Input value={woForm.category} onChange={(event) => updateWoField("category", event.target.value)} placeholder="e.g. Electrical" /></Field>
+                  <Field label="Priority">
+                    <Select value={woForm.priority} onChange={(event) => updateWoField("priority", event.currentTarget.value as WorkOrder["priority"])}>
+                      <option value="low">Low</option>
+                      <option value="medium">Medium</option>
+                      <option value="high">High</option>
+                      <option value="urgent">Urgent</option>
+                    </Select>
+                  </Field>
+                  <Field label="Status">
+                    <Select value={woForm.status} onChange={(event) => updateWoField("status", event.currentTarget.value as WorkOrder["status"])}>
+                      <option value="open">Open</option>
+                      <option value="assigned">Assigned</option>
+                      <option value="in_progress">In progress</option>
+                      <option value="on_hold">On hold</option>
+                      <option value="resolved">Resolved</option>
+                      <option value="closed">Closed</option>
+                    </Select>
+                  </Field>
+                  <Field label="Assigned to"><Input value={woForm.assignedTo} onChange={(event) => updateWoField("assignedTo", event.target.value)} placeholder="Staff or vendor" /></Field>
+                  <Field label="Due date"><Input type="date" value={woForm.dueDate} onChange={(event) => updateWoField("dueDate", event.target.value)} /></Field>
+                  <Field label="Cost"><Input type="number" value={woForm.cost} onChange={(event) => updateWoField("cost", event.target.value)} placeholder="0" /></Field>
+                </div>
+                <Field label="Description"><Textarea value={woForm.description} onChange={(event) => updateWoField("description", event.target.value)} /></Field>
+                <Field label="Notes"><Textarea value={woForm.notes} onChange={(event) => updateWoField("notes", event.target.value)} /></Field>
+                <div className="flex gap-2">
+                  <Button type="submit" disabled={saving}>{saving ? "Saving..." : editingWo ? "Save changes" : "Create work order"}</Button>
+                  <Button type="button" variant="secondary" onClick={() => setShowWoForm(false)}>Cancel</Button>
+                </div>
+              </form>
+            </Card>
+          ) : null}
+        </>
+      )}
     </>
   );
 }
@@ -8596,7 +9407,9 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
   const [scannerOpen, setScannerOpen] = useState(false);
   const autoVerifiedVisitors = useRef(new Set<string>());
   const lastAutoSearchCode = useRef("");
+  const resultRef = useRef<HTMLDivElement | null>(null);
   const found = code.length === 6 ? findVisitorForCode(code) : undefined;
+  const foundKey = found ? `${found.id}:${found.status}` : "";
   const residentsDirectory = lookupResident
     ? [lookupResident, ...state.residents.filter((resident) => resident.id !== lookupResident.id)]
     : state.residents;
@@ -8623,6 +9436,12 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
   }, [code, found]);
 
   useEffect(() => installGuardTourSync(), []);
+
+  useEffect(() => {
+    if (foundKey) {
+      resultRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+    }
+  }, [foundKey]);
 
   function handleCodeChange(value: string) {
     const nextCode = value.replace(/\D/g, "").slice(0, 6);
@@ -8855,9 +9674,9 @@ export function VerifyVisitorPage({ compact = false }: { compact?: boolean }) {
           onResult={(value) => void handleVisitorQrScan(value)}
           onClose={() => setScannerOpen(false)}
         />
-        <div className="mt-5">
+        <div ref={resultRef} className="mt-5">
           {tourMessage ? <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${guardTourMessageClassName(tourMessageTone)}`}>{tourMessage}</p> : null}
-          {message ? <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${visitorLookupMessageClassName(message)}`}>{message}</p> : null}
+          {message && !found ? <p className={`mb-4 rounded-lg px-3 py-2 text-sm ${visitorLookupMessageClassName(message)}`}>{message}</p> : null}
           {found ? (
           <VisitorVerificationCard
               visitor={found}
@@ -8950,6 +9769,391 @@ export function GuardTourPage({ compact = false }: { compact?: boolean }) {
   );
 }
 
+function parseNigerianPlate(rawText: string) {
+  const cleaned = (rawText ?? "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+  const match = cleaned.match(/([A-Z]{3})(\d{3})([A-Z]{2})/);
+  if (match) {
+    return { plate: `${match[1]}-${match[2]}${match[3]}`, matched: true };
+  }
+  return { plate: cleaned.slice(0, 12), matched: false };
+}
+
+function mapVehicleClass(vehicleType: string) {
+  const value = (vehicleType || "").toLowerCase();
+  if (value.includes("suv")) return "SUV";
+  if (value.includes("bus")) return "Bus";
+  if (value.includes("truck") || value.includes("pickup") || value.includes("van") || value.includes("lorry")) return "Truck";
+  if (value.includes("motor") || value.includes("bike")) return "Motorcycle";
+  if (value.includes("sedan") || value.includes("car") || value.includes("hatch") || value.includes("wagon")) return "Car";
+  return "";
+}
+
+export function ScanPlatePage({ compact = false }: { compact?: boolean }) {
+  const [scannerOpen, setScannerOpen] = useState(false);
+  const [plate, setPlate] = useState("");
+  const [rawText, setRawText] = useState("");
+  const [matched, setMatched] = useState(true);
+  const [vehicleClass, setVehicleClass] = useState("Car");
+  const [direction, setDirection] = useState<"in" | "out">("in");
+  const [logs, setLogs] = useState<VehicleLog[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    readAppwriteVehicleLogs()
+      .then((rows) => { if (active) setLogs(rows); })
+      .catch((error) => { if (active) setMessage(error instanceof Error ? error.message : "Unable to load vehicle logs."); })
+      .finally(() => { if (active) setLoading(false); });
+    return () => { active = false; };
+  }, []);
+
+  function handlePlateResult(detected: string, raw: string, didMatch: boolean, suggestedClass?: string) {
+    setPlate(detected);
+    setRawText(raw);
+    setMatched(didMatch);
+    if (suggestedClass) {
+      setVehicleClass(suggestedClass);
+    }
+  }
+
+  async function logPlate() {
+    const value = plate.trim().toUpperCase();
+    if (!value) return;
+    setSaving(true);
+    try {
+      const saved = await saveAppwriteVehicleLog({
+        plate: value,
+        vehicleClass,
+        direction,
+        rawRead: rawText,
+        matchStatus: "unknown"
+      });
+      setLogs((current) => [saved, ...current].slice(0, 100));
+      setPlate("");
+      setRawText("");
+      setMatched(true);
+      setVehicleClass("Car");
+      setMessage("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to save vehicle log.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <>
+      {!compact ? <PageHeader title="Scan number plate" description="Capture a vehicle plate at the gate, then confirm." /> : null}
+      {message ? <p className="mb-4 rounded-lg border border-gold/30 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
+      <Card>
+        <CardHeader title="Plate capture" description="Point the camera at the plate from 1-3m, capture, then confirm or edit before logging." />
+        <div className="mb-3 flex gap-2">
+          <Button variant={direction === "in" ? "primary" : "secondary"} className="min-h-9 px-4" onClick={() => setDirection("in")}>Entry</Button>
+          <Button variant={direction === "out" ? "primary" : "secondary"} className="min-h-9 px-4" onClick={() => setDirection("out")}>Exit</Button>
+        </div>
+        <Button className="w-full sm:w-auto" onClick={() => setScannerOpen(true)}>
+          <Camera className="h-4 w-4" />
+          Scan plate
+        </Button>
+        <PlateScannerPanel active={scannerOpen} onResult={handlePlateResult} onClose={() => setScannerOpen(false)} />
+        {plate ? (
+          <div className="mt-5 rounded-lg border border-smart/30 bg-smart/10 p-4">
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.12em] text-smart">
+              {matched ? "Plate detected - confirm" : "Best read - please check"}
+            </p>
+            <Field label="Plate number">
+              <Input value={plate} onChange={(event) => setPlate(event.target.value.toUpperCase())} className="font-mono text-lg" />
+            </Field>
+            <Field label="Vehicle class">
+              <Select value={vehicleClass} onChange={(event) => setVehicleClass(event.currentTarget.value)}>
+                <option value="Car">Car</option>
+                <option value="SUV">SUV</option>
+                <option value="Bus">Bus</option>
+                <option value="Truck">Truck</option>
+                <option value="Motorcycle">Motorcycle</option>
+                <option value="Tricycle">Tricycle (Keke)</option>
+                <option value="Other">Other</option>
+              </Select>
+            </Field>
+            {rawText ? <p className="mt-2 text-xs text-slate-400">Raw read: {rawText.replace(/\s+/g, " ").trim()}</p> : null}
+            <div className="mt-3 flex flex-wrap gap-2">
+              <Button onClick={() => void logPlate()} disabled={saving}>{saving ? "Saving..." : `Confirm & log ${direction === "in" ? "entry" : "exit"}`}</Button>
+              <Button variant="secondary" onClick={() => { setPlate(""); setRawText(""); }}>Discard</Button>
+            </div>
+          </div>
+        ) : null}
+      </Card>
+      <Card>
+        <CardHeader title="Recent vehicles" description="Saved vehicle entries and exits." />
+        {loading ? (
+          <p className="text-sm text-slate-300">Loading...</p>
+        ) : logs.length > 0 ? (
+          <div className="mt-4 grid gap-2">
+            {logs.map((log) => (
+              <div key={log.id} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                <span className="flex items-center gap-2">
+                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${log.direction === "out" ? "bg-gold/20 text-gold" : "bg-smart/20 text-smart"}`}>{log.direction === "out" ? "OUT" : "IN"}</span>
+                  <span className="font-mono text-base font-semibold text-white">{log.plate}</span>
+                </span>
+                <span className="flex items-center gap-2 text-xs text-slate-400">
+                  {log.vehicleClass ? <span className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-slate-200">{log.vehicleClass}</span> : null}
+                  {formatClockTime(log.scannedAt)}
+                </span>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <p className="mt-4 rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+            No vehicles logged yet. Set Entry/Exit, tap Scan plate, then Confirm &amp; log.
+          </p>
+        )}
+      </Card>
+    </>
+  );
+}
+
+function PlateScannerPanel({
+  active,
+  onResult,
+  onClose
+}: {
+  active: boolean;
+  onResult: (plate: string, raw: string, matched: boolean, vehicleClass?: string) => void;
+  onClose: () => void;
+}) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const [message, setMessage] = useState("Point the camera at the number plate, then tap Capture.");
+  const [needsManualPlay, setNeedsManualPlay] = useState(false);
+  const [reading, setReading] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [active]);
+
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+
+    let cancelled = false;
+
+    async function startCamera() {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setMessage("Camera access is not available in this browser.");
+        return;
+      }
+
+      setNeedsManualPlay(false);
+      setMessage("Starting camera...");
+
+      try {
+        const stream = await openQrCamera();
+
+        if (cancelled) {
+          stream.getTracks().forEach((track) => track.stop());
+          return;
+        }
+
+        streamRef.current = stream;
+
+        if (videoRef.current) {
+          const video = videoRef.current;
+          video.muted = true;
+          video.autoplay = true;
+          video.playsInline = true;
+          video.setAttribute("playsinline", "true");
+          video.setAttribute("webkit-playsinline", "true");
+          video.srcObject = stream;
+          await waitForVideoMetadata(video);
+          try {
+            await video.play();
+          } catch {
+            setNeedsManualPlay(true);
+          }
+        }
+
+        setMessage("Point the camera at the number plate, then tap Capture.");
+      } catch (error) {
+        streamRef.current?.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
+        setMessage(cameraStartErrorMessage(error));
+      }
+    }
+
+    void startCamera();
+
+    return () => {
+      cancelled = true;
+      streamRef.current?.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    };
+  }, [active]);
+
+  if (!active || !mounted) {
+    return null;
+  }
+
+  function startVideoPlayback() {
+    const video = videoRef.current;
+    if (!video) return;
+    void video.play().then(() => setNeedsManualPlay(false)).catch(() => setNeedsManualPlay(true));
+  }
+
+  async function capturePlate() {
+    const video = videoRef.current;
+    const canvas = canvasRef.current;
+    if (!video || !canvas || reading) return;
+
+    if (video.readyState < HTMLMediaElement.HAVE_CURRENT_DATA) {
+      setMessage("Camera still warming up. Try again in a moment.");
+      return;
+    }
+
+    setReading(true);
+    setMessage("Reading plate...");
+
+    try {
+      const vw = video.videoWidth;
+      const vh = video.videoHeight;
+      // Crop to the centred guide-box band so we OCR only the plate, not the whole frame.
+      const cropX = Math.round(vw * 0.05);
+      const cropY = Math.round(vh * 0.34);
+      const cropW = Math.round(vw * 0.90);
+      const cropH = Math.round(vh * 0.30);
+      const targetW = 1000;
+      const targetH = Math.max(1, Math.round((cropH / cropW) * targetW));
+      canvas.width = targetW;
+      canvas.height = targetH;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) {
+        setReading(false);
+        return;
+      }
+      ctx.drawImage(video, cropX, cropY, cropW, cropH, 0, 0, targetW, targetH);
+
+      // Cloud ANPR (Plate Recognizer) is authoritative when reachable. Only fall back to
+      // on-device OCR when the cloud is unavailable (offline or not configured).
+      try {
+        const colorBlob = await new Promise<Blob | null>((resolve) => canvas.toBlob((value) => resolve(value), "image/jpeg", 0.9));
+        if (colorBlob) {
+          const cloud = await recognizePlateCloud(colorBlob);
+          if (cloud) {
+            if (cloud.plate) {
+              const parsedCloud = parseNigerianPlate(cloud.plate);
+              const finalPlate = parsedCloud.matched ? parsedCloud.plate : cloud.plate.toUpperCase().replace(/\s+/g, "");
+              const confidence = cloud.score ? ` (${Math.round(cloud.score * 100)}%)` : "";
+              onResult(finalPlate, `Cloud read: ${cloud.plate}${confidence}`, true, mapVehicleClass(cloud.vehicleType));
+              onClose();
+              return;
+            }
+            // Cloud is active but saw no plate — don't fall back to the weaker reader.
+            setMessage("No plate detected. Move closer so the plate fills the box, hold steady, and try again.");
+            setReading(false);
+            return;
+          }
+        }
+      } catch {
+        // Network/parse error — fall through to on-device OCR (offline mode).
+      }
+
+      // Grayscale + adaptive threshold to isolate the dark characters from the plate background.
+      const imageData = ctx.getImageData(0, 0, targetW, targetH);
+      const pixels = imageData.data;
+      let graySum = 0;
+      for (let i = 0; i < pixels.length; i += 4) {
+        const gray = 0.299 * pixels[i] + 0.587 * pixels[i + 1] + 0.114 * pixels[i + 2];
+        pixels[i] = pixels[i + 1] = pixels[i + 2] = gray;
+        graySum += gray;
+      }
+      const meanGray = graySum / (pixels.length / 4);
+      const threshold = meanGray * 0.82;
+      for (let i = 0; i < pixels.length; i += 4) {
+        const value = pixels[i] < threshold ? 0 : 255;
+        pixels[i] = pixels[i + 1] = pixels[i + 2] = value;
+      }
+      ctx.putImageData(imageData, 0, 0);
+
+      const { createWorker, PSM } = await import("tesseract.js");
+      const worker = await createWorker("eng");
+      await worker.setParameters({
+        tessedit_pageseg_mode: PSM.SINGLE_LINE,
+        tessedit_char_whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-"
+      });
+      const result = await worker.recognize(canvas);
+      await worker.terminate();
+      const text = result?.data?.text ?? "";
+      const parsed = parseNigerianPlate(text);
+
+      if (!parsed.plate) {
+        setMessage("Couldn't read the plate. Fill the green box with the plate, hold steady, and try again.");
+        setReading(false);
+        return;
+      }
+
+      onResult(parsed.plate, text, parsed.matched);
+      onClose();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Plate could not be read. Try again.");
+    } finally {
+      setReading(false);
+    }
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[120] flex flex-col bg-black p-4 shadow-glow">
+      <div className="flex shrink-0 items-center justify-between gap-3">
+        <h3 className="text-base font-semibold text-white">Scan number plate</h3>
+        <Button type="button" variant="ghost" className="min-h-9 px-3" onClick={onClose}>
+          <X className="h-4 w-4" />
+          Close
+        </Button>
+      </div>
+      <div
+        className="relative mt-4 min-h-0 flex-1 overflow-hidden rounded-lg border border-white/15 bg-ink"
+        role="button"
+        tabIndex={0}
+        onClick={startVideoPlayback}
+        onKeyDown={(event) => {
+          if (event.key === "Enter" || event.key === " ") {
+            event.preventDefault();
+            startVideoPlayback();
+          }
+        }}
+      >
+        <video ref={videoRef} className="h-full w-full object-cover" muted playsInline autoPlay disablePictureInPicture />
+        <canvas ref={canvasRef} className="hidden" />
+        <div className="pointer-events-none absolute inset-x-[5%] top-1/2 h-[30%] -translate-y-1/2 rounded-lg border-2 border-smart/70" />
+        <div className="pointer-events-none absolute inset-x-0 bottom-3 text-center text-xs font-medium text-white/80">Fill the box with the number plate</div>
+        {needsManualPlay ? (
+          <div className="absolute inset-0 grid place-items-center bg-black/55 p-4 text-center text-sm font-semibold text-white">
+            Tap to start camera preview
+          </div>
+        ) : null}
+      </div>
+      {message ? <p className="mt-3 shrink-0 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
+      <Button type="button" className="mt-3 min-h-12 w-full shrink-0 justify-center text-base" onClick={() => void capturePlate()} disabled={reading}>
+        <Camera className="h-5 w-5" />
+        {reading ? "Reading..." : "Capture plate"}
+      </Button>
+    </div>,
+    document.body
+  );
+}
+
 function QrScannerPanel({
   active,
   title,
@@ -8969,6 +10173,20 @@ function QrScannerPanel({
   const frameRef = useRef<number | null>(null);
   const [message, setMessage] = useState(helper);
   const [needsManualPlay, setNeedsManualPlay] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => setMounted(true), []);
+
+  useEffect(() => {
+    if (!active) {
+      return;
+    }
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [active]);
 
   useEffect(() => {
     if (!active) {
@@ -9059,7 +10277,7 @@ function QrScannerPanel({
     };
   }, [active, helper, onClose, onResult]);
 
-  if (!active) {
+  if (!active || !mounted) {
     return null;
   }
 
@@ -9077,9 +10295,9 @@ function QrScannerPanel({
       });
   }
 
-  return (
-    <div className="fixed inset-0 z-[80] overflow-y-auto bg-black p-4 shadow-glow sm:static sm:mt-4 sm:rounded-lg sm:border sm:border-smart/30">
-      <div className="flex items-center justify-between gap-3">
+  return createPortal(
+    <div className="fixed inset-0 z-[120] flex flex-col bg-black p-4 shadow-glow">
+      <div className="flex shrink-0 items-center justify-between gap-3">
         <h3 className="text-base font-semibold text-white">{title}</h3>
         <Button type="button" variant="ghost" className="min-h-9 px-3" onClick={onClose}>
           <X className="h-4 w-4" />
@@ -9087,7 +10305,7 @@ function QrScannerPanel({
         </Button>
       </div>
       <div
-        className="relative mt-4 overflow-hidden rounded-lg border border-white/15 bg-ink"
+        className="relative mt-4 min-h-0 flex-1 overflow-hidden rounded-lg border border-white/15 bg-ink"
         role="button"
         tabIndex={0}
         onClick={startVideoPlayback}
@@ -9098,15 +10316,16 @@ function QrScannerPanel({
           }
         }}
       >
-        <video ref={videoRef} className="h-[62vh] w-full object-cover sm:aspect-[4/3] sm:h-auto" muted playsInline autoPlay disablePictureInPicture />
+        <video ref={videoRef} className="h-full w-full object-cover" muted playsInline autoPlay disablePictureInPicture />
         {needsManualPlay ? (
           <div className="absolute inset-0 grid place-items-center bg-black/55 p-4 text-center text-sm font-semibold text-white">
             Tap to start camera preview
           </div>
         ) : null}
       </div>
-      {message ? <p className="mt-3 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
-    </div>
+      {message ? <p className="mt-3 shrink-0 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
+    </div>,
+    document.body
   );
 }
 

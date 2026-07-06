@@ -25,6 +25,11 @@ export const APPWRITE_TABLE_KNOWLEDGE_BASE = "knowledge_base";
 export const APPWRITE_TABLE_HOUSEHOLD_MEMBERS = "household_members";
 export const APPWRITE_TABLE_SUBSCRIPTION_RATES = "subscription_rates";
 export const APPWRITE_TABLE_MONTHLY_BILLING_RUNS = "monthly_billing_runs";
+export const APPWRITE_TABLE_STAFF = "staff";
+export const APPWRITE_TABLE_STAFF_ATTENDANCE = "staff_attendance";
+export const APPWRITE_TABLE_FACILITIES = "facilities";
+export const APPWRITE_TABLE_WORK_ORDERS = "work_orders";
+export const APPWRITE_TABLE_VEHICLE_LOGS = "vehicle_logs";
 
 export const APPWRITE_TABLE_IDS = {
   estates: APPWRITE_TABLE_ESTATES,
@@ -52,7 +57,12 @@ export const APPWRITE_TABLE_IDS = {
   knowledgeBase: APPWRITE_TABLE_KNOWLEDGE_BASE,
   householdMembers: APPWRITE_TABLE_HOUSEHOLD_MEMBERS,
   subscriptionRates: APPWRITE_TABLE_SUBSCRIPTION_RATES,
-  monthlyBillingRuns: APPWRITE_TABLE_MONTHLY_BILLING_RUNS
+  monthlyBillingRuns: APPWRITE_TABLE_MONTHLY_BILLING_RUNS,
+  staff: APPWRITE_TABLE_STAFF,
+  staffAttendance: APPWRITE_TABLE_STAFF_ATTENDANCE,
+  facilities: APPWRITE_TABLE_FACILITIES,
+  workOrders: APPWRITE_TABLE_WORK_ORDERS,
+  vehicleLogs: APPWRITE_TABLE_VEHICLE_LOGS
 } as const;
 
 export type AppwriteColumnDefinition = {
@@ -697,6 +707,133 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
       { key: "billing_run_unique", type: "unique", attributes: ["estateId", "billingMonth"] },
       { key: "billing_run_status_idx", type: "key", attributes: ["status"] },
       { key: "billing_run_date_idx", type: "key", attributes: ["runDate"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_STAFF,
+    name: "Staff",
+    columns: [
+      ...baseColumns,
+      { key: "staffId", type: "string", size: 64, required: false },
+      { key: "fullName", type: "string", size: 160, required: true },
+      { key: "roleTitle", type: "string", size: 64, required: true },
+      { key: "phone", type: "string", size: 64, required: false },
+      { key: "email", type: "string", size: 160, required: false },
+      { key: "photoUrl", type: "string", size: 512, required: false },
+      { key: "employmentStatus", type: "string", size: 32, required: false },
+      { key: "employmentType", type: "string", size: 32, required: false },
+      { key: "hireDate", type: "string", size: 32, required: false },
+      { key: "endDate", type: "string", size: 32, required: false },
+      { key: "assignedPost", type: "string", size: 160, required: false },
+      { key: "checkpointId", type: "string", size: 64, required: false },
+      { key: "onDuty", type: "boolean", required: false, default: false },
+      { key: "currentShiftLabel", type: "string", size: 64, required: false },
+      { key: "idType", type: "string", size: 64, required: false },
+      { key: "idNumber", type: "string", size: 64, required: false },
+      { key: "emergencyContactName", type: "string", size: 160, required: false },
+      { key: "emergencyContactPhone", type: "string", size: 64, required: false },
+      { key: "address", type: "string", size: 512, required: false },
+      { key: "notes", type: "string", size: 1024, required: false }
+    ],
+    indexes: [
+      { key: "staff_estate_idx", type: "key", attributes: ["estateId"] },
+      { key: "staff_role_idx", type: "key", attributes: ["roleTitle"] },
+      { key: "staff_status_idx", type: "key", attributes: ["employmentStatus"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_STAFF_ATTENDANCE,
+    name: "Staff Attendance",
+    columns: [
+      ...baseColumns,
+      { key: "staffId", type: "string", size: 64, required: true },
+      { key: "staffName", type: "string", size: 160, required: false },
+      { key: "attendanceDate", type: "string", size: 16, required: true },
+      { key: "clockIn", type: "string", size: 40, required: false },
+      { key: "clockOut", type: "string", size: 40, required: false },
+      { key: "status", type: "string", size: 32, required: false },
+      { key: "source", type: "string", size: 32, required: false },
+      { key: "note", type: "string", size: 512, required: false }
+    ],
+    indexes: [
+      { key: "attendance_estate_idx", type: "key", attributes: ["estateId"] },
+      { key: "attendance_staff_idx", type: "key", attributes: ["staffId"] },
+      { key: "attendance_date_idx", type: "key", attributes: ["attendanceDate"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_FACILITIES,
+    name: "Facilities",
+    columns: [
+      ...baseColumns,
+      { key: "name", type: "string", size: 160, required: true },
+      { key: "category", type: "string", size: 32, required: false },
+      { key: "location", type: "string", size: 160, required: false },
+      { key: "status", type: "string", size: 32, required: false },
+      { key: "purchaseDate", type: "string", size: 32, required: false },
+      { key: "warrantyExpiry", type: "string", size: 32, required: false },
+      { key: "vendorId", type: "string", size: 64, required: false },
+      { key: "vendorName", type: "string", size: 160, required: false },
+      { key: "photoUrl", type: "string", size: 512, required: false },
+      { key: "notes", type: "string", size: 1024, required: false }
+    ],
+    indexes: [
+      { key: "facility_estate_idx", type: "key", attributes: ["estateId"] },
+      { key: "facility_status_idx", type: "key", attributes: ["status"] },
+      { key: "facility_category_idx", type: "key", attributes: ["category"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_WORK_ORDERS,
+    name: "Work Orders",
+    columns: [
+      ...baseColumns,
+      { key: "facilityId", type: "string", size: 64, required: false },
+      { key: "facilityName", type: "string", size: 160, required: false },
+      { key: "title", type: "string", size: 200, required: true },
+      { key: "description", type: "string", size: 2048, required: false },
+      { key: "category", type: "string", size: 64, required: false },
+      { key: "priority", type: "string", size: 16, required: false },
+      { key: "status", type: "string", size: 24, required: false },
+      { key: "reportedByRole", type: "string", size: 32, required: false },
+      { key: "assignedTo", type: "string", size: 160, required: false },
+      { key: "dueDate", type: "string", size: 32, required: false },
+      { key: "resolvedAt", type: "string", size: 40, required: false },
+      { key: "cost", type: "float", required: false, default: 0 },
+      { key: "notes", type: "string", size: 2048, required: false }
+    ],
+    indexes: [
+      { key: "wo_estate_idx", type: "key", attributes: ["estateId"] },
+      { key: "wo_status_idx", type: "key", attributes: ["status"] },
+      { key: "wo_priority_idx", type: "key", attributes: ["priority"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_VEHICLE_LOGS,
+    name: "Vehicle Logs",
+    columns: [
+      ...baseColumns,
+      { key: "plate", type: "string", size: 32, required: true },
+      { key: "vehicleClass", type: "string", size: 32, required: false },
+      { key: "direction", type: "string", size: 8, required: false },
+      { key: "postLabel", type: "string", size: 120, required: false },
+      { key: "guardId", type: "string", size: 64, required: false },
+      { key: "guardName", type: "string", size: 160, required: false },
+      { key: "scannedAt", type: "datetime", required: false },
+      { key: "visitorId", type: "string", size: 64, required: false },
+      { key: "visitorCode", type: "string", size: 16, required: false },
+      { key: "residentId", type: "string", size: 64, required: false },
+      { key: "knownVehicleId", type: "string", size: 64, required: false },
+      { key: "matchStatus", type: "string", size: 24, required: false },
+      { key: "region", type: "string", size: 16, required: false },
+      { key: "score", type: "float", required: false, default: 0 },
+      { key: "rawRead", type: "string", size: 512, required: false },
+      { key: "note", type: "string", size: 512, required: false }
+    ],
+    indexes: [
+      { key: "vehicle_log_estate_idx", type: "key", attributes: ["estateId"] },
+      { key: "vehicle_log_plate_idx", type: "key", attributes: ["plate"] },
+      { key: "vehicle_log_scanned_idx", type: "key", attributes: ["scannedAt"] }
     ]
   }
 ];
