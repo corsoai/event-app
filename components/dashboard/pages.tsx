@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   AlertTriangle,
@@ -5667,20 +5667,13 @@ export function ResidentDashboard() {
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              className="resident-top-action inline-flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm"
-              onClick={() => void refreshAccounting({ bypassCache: true })}
-              aria-label="Refresh account"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </button>
             <Link
               href="/resident/invite-visitor"
-              className="resident-top-action inline-flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm"
+              className="resident-top-action inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-semibold shadow-sm"
               aria-label="Invite visitor"
             >
               <QrCode className="h-4 w-4" />
+              <span>Invite</span>
             </Link>
           </div>
         </div>

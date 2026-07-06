@@ -63,6 +63,7 @@ type AppwriteAuditRow = {
 };
 
 type AppwriteAccountingResidentRow = {
+  $id?: string;
   expectedMonthly?: number;
 };
 
@@ -276,11 +277,21 @@ export async function getAppwriteAccountingSummary(
   const payments = paymentRows.map(mapPaymentRow);
   const bills = normalizeBillsWithPayments(billRows.map((row) => mapBillRow(row)), payments);
   const confirmedPayments = payments.filter((payment) => payment.status === "confirmed" && payment.channel !== "credit_applied");
-  const expectedRevenue = bills.reduce((sum, bill) => sum + bill.amount, 0);
+  const residentBalances = residentRows.map((resident) => {
+    const residentId = String(resident.$id ?? "").trim();
+    const residentBills = residentId ? bills.filter((bill) => bill.residentId === residentId) : [];
+    const residentPayments = residentId ? payments.filter((payment) => payment.residentId === residentId) : [];
+
+    return buildResidentBillingProjection({
+      bills: residentBills,
+      payments: residentPayments,
+      monthlyRate: numberOrZero(resident.expectedMonthly)
+    });
+  });
+  const expectedRevenue = residentBalances.reduce((sum, balance) => sum + balance.totalBilled, 0);
   const paidAmount = confirmedPayments.reduce((sum, payment) => sum + payment.amount, 0);
-  const outstandingBalance = bills.reduce((sum, bill) => sum + Math.max(0, bill.amount - numberOrZero(bill.paidAmount)), 0);
-  const creditBalance = bills.reduce((sum, bill) => sum + Math.max(0, numberOrZero(bill.paidAmount) - bill.amount), 0);
-  const residentBalances = residentBalanceMap(bills);
+  const outstandingBalance = residentBalances.reduce((sum, balance) => sum + balance.outstandingBalance, 0);
+  const creditBalance = residentBalances.reduce((sum, balance) => sum + balance.advanceCredit, 0);
   const pendingReviewAmount = payments
     .filter((payment) => payment.status === "pending")
     .reduce((sum, payment) => sum + payment.amount, 0);
@@ -315,8 +326,8 @@ export async function getAppwriteAccountingSummary(
     creditBalance,
     netReceivable: Math.max(0, outstandingBalance - creditBalance),
     pendingReviewAmount,
-    debtorsCount: [...residentBalances.values()].filter((balance) => balance.outstanding > balance.credit).length,
-    residentsInCredit: [...residentBalances.values()].filter((balance) => balance.credit > balance.outstanding).length,
+    debtorsCount: residentBalances.filter((balance) => balance.outstandingBalance > 0).length,
+    residentsInCredit: residentBalances.filter((balance) => balance.advanceCredit > 0).length,
     monthlyExpected: residentRows.reduce((sum, resident) => sum + numberOrZero(resident.expectedMonthly), 0),
     residentsCount: residentRows.length,
     billsCount: bills.length,
@@ -481,20 +492,6 @@ function normalizeBillsWithPayments(bills: Bill[], payments: Payment[]) {
   });
 }
 
-function residentBalanceMap(bills: Bill[]) {
-  const balances = new Map<string, { outstanding: number; credit: number }>();
-
-  for (const bill of bills) {
-    const current = balances.get(bill.residentId) ?? { outstanding: 0, credit: 0 };
-    const paidAmount = numberOrZero(bill.paidAmount);
-    balances.set(bill.residentId, {
-      outstanding: current.outstanding + Math.max(0, bill.amount - paidAmount),
-      credit: current.credit + Math.max(0, paidAmount - bill.amount)
-    });
-  }
-
-  return balances;
-}
 
 function findAccountingResident(residents: Resident[], identity: AppwriteResidentAccountingIdentity) {
   const residentId = identity.residentId?.trim() ?? "";
@@ -552,22 +549,57 @@ function mapBillRow(row: AppwriteBillRow, resident?: Resident): Bill {
 }
 
 function buildResidentAccountingSummary(resident: Resident, bills: Bill[], payments: Payment[]): ResidentAccountingSummary {
-  const totalBilled = bills.reduce((sum, bill) => sum + bill.amount, 0);
-  const realPayments = payments.filter((payment) => payment.status === "confirmed" && payment.channel !== "credit_applied");
+  const balance = buildResidentBillingProjection({
+    bills,
+    payments,
+    monthlyRate: numberOrZero(resident.expectedMonthly)
+  });
+
+  return {
+    totalBilled: balance.totalBilled,
+    totalPaid: balance.totalPaid,
+    outstandingBalance: balance.outstandingBalance,
+    advanceCredit: balance.advanceCredit,
+    monthlyRate: balance.monthlyRate,
+    monthsCreditCovers: balance.monthsCreditCovers,
+    coverageThroughDate: isoDate(balance.coverageThroughDate),
+    nextDueDate: isoDate(balance.nextDueDate),
+    accountStatus: balance.accountStatus,
+    statusBannerText: residentStatusBannerText({
+      accountStatus: balance.accountStatus,
+      outstandingBalance: balance.outstandingBalance,
+      advanceCredit: balance.advanceCredit,
+      monthlyRate: balance.monthlyRate,
+      monthsCreditCovers: balance.monthsCreditCovers,
+      coverageThroughDate: balance.coverageThroughDate,
+      nextDueDate: balance.nextDueDate
+    }),
+    lastPaymentDate: balance.lastPayment?.date ?? null,
+    lastPaymentAmount: balance.lastPayment?.amount ?? 0
+  };
+}
+
+function buildResidentBillingProjection(input: { bills: Bill[]; payments: Payment[]; monthlyRate: number }) {
+  const totalHistoricalBilled = input.bills.reduce((sum, bill) => sum + bill.amount, 0);
+  const realPayments = input.payments.filter((payment) => payment.status === "confirmed" && payment.channel !== "credit_applied");
   const totalPaid = realPayments.reduce((sum, payment) => sum + payment.amount, 0);
-  const outstandingBalance = Math.max(0, totalBilled - totalPaid);
-  const advanceCredit = Math.max(0, totalPaid - totalBilled);
-  const monthlyRate = numberOrZero(resident.expectedMonthly);
-  const monthsCreditCovers = monthlyRate > 0 ? Math.floor(advanceCredit / monthlyRate) : 0;
-  const latestPaidBill = [...bills]
+  const monthlyRate = numberOrZero(input.monthlyRate);
+  const latestPaidBill = [...input.bills]
     .filter((bill) => bill.status === "paid")
     .sort((left, right) => dateSortValue(right.dueDate) - dateSortValue(left.dueDate))[0];
-  const latestBill = [...bills].sort((left, right) => dateSortValue(right.dueDate) - dateSortValue(left.dueDate))[0];
-  const baseCoverageDate = parseIsoDate(latestPaidBill?.dueDate) ?? parseIsoDate(latestBill?.dueDate) ?? firstDayOfCurrentMonth();
-  const coverageThrough = addMonths(baseCoverageDate, monthsCreditCovers);
-  const nextDueDate = firstDayOfNextMonth(coverageThrough);
-  const lastPayment = realPayments[realPayments.length - 1] ?? null;
+  const latestBill = [...input.bills].sort((left, right) => dateSortValue(right.dueDate) - dateSortValue(left.dueDate))[0];
+  const baseCoverageDate = parseIsoDate(latestPaidBill?.dueDate) ?? parseIsoDate(latestBill?.dueDate) ?? addMonths(firstDayOfCurrentMonth(), -1);
+  const firstUnbilledDueDate = firstDayOfNextMonth(baseCoverageDate);
+  const projectedDueMonths = monthlyRate > 0 ? dueMonthCount(firstUnbilledDueDate, new Date()) : 0;
+  const totalBilled = totalHistoricalBilled + projectedDueMonths * monthlyRate;
+  const outstandingBalance = Math.max(0, totalBilled - totalPaid);
+  const advanceCredit = Math.max(0, totalPaid - totalBilled);
+  const monthsCreditCovers = monthlyRate > 0 ? Math.floor(advanceCredit / monthlyRate) : 0;
+  const paidCoverageMonths = outstandingBalance > 0 ? 0 : projectedDueMonths + monthsCreditCovers;
+  const coverageThroughDate = addMonths(baseCoverageDate, paidCoverageMonths);
+  const nextDueDate = outstandingBalance > 0 ? firstUnbilledDueDate : firstDayOfNextMonth(coverageThroughDate);
   const accountStatus = residentAccountStatus(totalPaid, outstandingBalance, advanceCredit);
+  const lastPayment = realPayments[realPayments.length - 1] ?? null;
 
   return {
     totalBilled,
@@ -576,23 +608,12 @@ function buildResidentAccountingSummary(resident: Resident, bills: Bill[], payme
     advanceCredit,
     monthlyRate,
     monthsCreditCovers,
-    coverageThroughDate: isoDate(coverageThrough),
-    nextDueDate: isoDate(nextDueDate),
+    coverageThroughDate,
+    nextDueDate,
     accountStatus,
-    statusBannerText: residentStatusBannerText({
-      accountStatus,
-      outstandingBalance,
-      advanceCredit,
-      monthlyRate,
-      monthsCreditCovers,
-      coverageThroughDate: coverageThrough,
-      nextDueDate
-    }),
-    lastPaymentDate: lastPayment?.date ?? null,
-    lastPaymentAmount: lastPayment?.amount ?? 0
+    lastPayment
   };
 }
-
 function residentAccountStatus(totalPaid: number, outstandingBalance: number, advanceCredit: number): ResidentAccountStatus {
   if (advanceCredit > 0) return "in_credit";
   if (outstandingBalance === 0) return "fully_paid";
@@ -637,6 +658,20 @@ function parseIsoDate(value?: string) {
 function firstDayOfCurrentMonth() {
   const now = new Date();
   return new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+}
+
+function dueMonthCount(nextDueDate: Date, asOf: Date) {
+  const dueMonth = firstDayOfMonth(nextDueDate);
+  const currentMonth = firstDayOfMonth(asOf);
+  if (currentMonth.getTime() < dueMonth.getTime()) return 0;
+
+  return (currentMonth.getUTCFullYear() - dueMonth.getUTCFullYear()) * 12
+    + currentMonth.getUTCMonth() - dueMonth.getUTCMonth()
+    + 1;
+}
+
+function firstDayOfMonth(date: Date) {
+  return new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), 1));
 }
 
 function addMonths(date: Date, months: number) {

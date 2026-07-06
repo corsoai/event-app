@@ -10,11 +10,9 @@ import {
   CreditCard,
   Home,
   LayoutDashboard,
-  MapPin,
   QrCode,
   ReceiptText,
   Shield,
-  ShieldCheck,
   Users,
   WalletCards
 } from "lucide-react";
@@ -162,19 +160,20 @@ export function MobileBottomNav({ role }: { role: MobileRole }) {
               href={item.href}
               className={cn(
                 "relative grid min-h-12 place-items-center content-center gap-0.5 rounded-2xl px-1 text-[10px] font-semibold text-slate-500 transition",
-                danger && "text-red-600",
-                active && (danger ? "bg-red-600/10 text-red-700" : `${estateGreen} bg-[#1a7c4a]/10`)
+                danger && "bg-red-600 text-white shadow-[0_12px_24px_rgba(220,38,38,0.28)]",
+                danger && active && "bg-red-700 text-white",
+                !danger && active && `${estateGreen} bg-[#1a7c4a]/10`
               )}
             >
               <span className="relative">
-                <Icon className="h-5 w-5" />
+                <Icon className={cn("h-5 w-5", danger && "h-6 w-6")} />
                 {item.badge && item.badge > 0 ? (
-                  <span className="absolute -right-2 -top-2 min-w-4 rounded-full bg-red-600 px-1 text-center text-[9px] leading-4 text-white">
+                  <span className={cn("absolute -right-2 -top-2 min-w-4 rounded-full px-1 text-center text-[9px] leading-4", danger ? "bg-white text-red-700" : "bg-red-600 text-white")}>
                     {item.badge > 9 ? "9+" : item.badge}
                   </span>
                 ) : null}
               </span>
-              <span className="leading-3">{item.label}</span>
+              <span className="max-w-full truncate leading-3">{item.label}</span>
             </Link>
           );
         })}
@@ -188,34 +187,33 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
     return [
       { label: "Home", href: "/resident", icon: Home },
       { label: "Bills", href: "/resident/bills", icon: ReceiptText, badge: outstandingBalance > 0 ? 1 : 0 },
+      { label: "SOS", href: "/resident/sos", icon: AlertTriangle, tone: "danger" },
       { label: "Pay", href: "/resident/payments", icon: CreditCard },
-      { label: "Visitors", href: "/resident/visitors", icon: Users },
-      { label: "SOS", href: "/resident/sos", icon: AlertTriangle, tone: "danger" }
+      { label: "Visitors", href: "/resident/visitors", icon: Users }
     ];
   }
 
   if (role === "security_guard") {
     return [
-      { label: "Dashboard", href: "/security", icon: Shield },
+      { label: "Dash", href: "/security", icon: Shield },
       { label: "Verify", href: "/security/verify-visitor", icon: QrCode },
-      { label: "Tour", href: "/security/guard-tour", icon: ShieldCheck },
+      { label: "SOS", href: "/security/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
       { label: "Expected", href: "/security/expected-visitors", icon: Users },
-      { label: "Logs", href: "/security/logs", icon: ClipboardList },
-      { label: "SOS", href: "/security/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" }
+      { label: "Logs", href: "/security/logs", icon: ClipboardList }
     ];
   }
 
   if (role === "cso") {
     return [
       { label: "Dashboard", href: "/cso", icon: Shield },
+      { label: "Staff", href: "/cso/personnel", icon: Users },
       { label: "SOS", href: "/cso/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
-      { label: "Checkpoints", href: "/cso#checkpoints", icon: MapPin },
       { label: "Patrol", href: "/cso#patrol-feed", icon: Activity }
     ];
   }
 
   return [
-    { label: "Dashboard", href: role === "super_admin" ? "/super-admin" : "/admin", icon: LayoutDashboard },
+    { label: "Dash", href: role === "super_admin" ? "/super-admin" : "/admin", icon: LayoutDashboard },
     { label: "Residents", href: "/admin/residents", icon: Users },
     { label: "SOS", href: "/admin/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
     { label: "Payments", href: "/admin/payments", icon: WalletCards },
@@ -253,3 +251,4 @@ function isTextEntryElement(element: Element | null) {
   const type = (element.getAttribute("type") ?? "text").toLowerCase();
   return !["button", "checkbox", "color", "file", "hidden", "image", "radio", "range", "reset", "submit"].includes(type);
 }
+
