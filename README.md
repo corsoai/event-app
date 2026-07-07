@@ -151,7 +151,7 @@ The importer writes only approved rows. Rows flagged for review, unknown propert
 
 ## Demo Accounts
 
-All default accounts use `Admin247#`.
+All default accounts use `Corso@2026!`.
 
 - Super Admin: `super@corso.ng`
 - Estate Admin: `admin@corso.ng`
@@ -168,7 +168,7 @@ Approval flow:
 1. Resident opens `/signup`.
 2. Resident enters name, phone number, password, role, and estate.
 3. Resident submits the access request.
-4. Estate admin logs in with `admin@corso.ng / Admin247#`.
+4. Estate admin logs in with `admin@corso.ng / Corso@2026!`.
 5. Admin opens `/admin/residents`.
 6. Admin approves the pending access request.
 7. The resident can now log in with the phone number and password they submitted.

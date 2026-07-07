@@ -159,7 +159,7 @@ const stanleyAuth = await ensureAuthUser({
   fullName: "Stanley Agbonifo",
   email: "07033992255@corso.ng",
   phone: "07033992255",
-  password: "Admin247#",
+  password: "Corso@2026!",
   role: "resident",
   houseNumber: "LDI-03-A",
   residentId: stanley.residentId
@@ -179,7 +179,7 @@ console.log(JSON.stringify({
   stanleyAuthUserId: stanleyAuth.userId,
   stanleyProfileId: stanleyAuth.profileId,
   stanleyLogin: "07033992255",
-  stanleyPassword: "Admin247#"
+  stanleyPassword: "Corso@2026!"
 }, null, 2));
 
 function buildPlan(rows) {
