@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import {
   AlertTriangle,
@@ -5684,20 +5684,13 @@ export function ResidentDashboard() {
             </p>
           </div>
           <div className="flex shrink-0 items-center gap-2">
-            <button
-              type="button"
-              className="resident-top-action inline-flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm"
-              onClick={() => void refreshAccounting({ bypassCache: true })}
-              aria-label="Refresh account"
-            >
-              <RefreshCw className="h-4 w-4" />
-            </button>
             <Link
               href="/resident/invite-visitor"
-              className="resident-top-action inline-flex h-9 w-9 items-center justify-center rounded-xl border shadow-sm"
+              className="resident-top-action inline-flex h-10 items-center gap-2 rounded-xl border px-3 text-sm font-semibold shadow-sm"
               aria-label="Invite visitor"
             >
               <QrCode className="h-4 w-4" />
+              <span>Invite</span>
             </Link>
           </div>
         </div>
@@ -9933,10 +9926,13 @@ function PlateScannerPanel({
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const videoTrackRef = useRef<MediaStreamTrack | null>(null);
   const [message, setMessage] = useState("Point the camera at the number plate, then tap Capture.");
   const [needsManualPlay, setNeedsManualPlay] = useState(false);
   const [reading, setReading] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [zoomRange, setZoomRange] = useState<{ min: number; max: number; step: number } | null>(null);
+  const [zoomValue, setZoomValue] = useState(1);
 
   useEffect(() => setMounted(true), []);
 
@@ -9976,6 +9972,7 @@ function PlateScannerPanel({
         }
 
         streamRef.current = stream;
+        const zoomApplied = await configurePlateCameraZoom(stream);
 
         if (videoRef.current) {
           const video = videoRef.current;
@@ -9993,7 +9990,11 @@ function PlateScannerPanel({
           }
         }
 
-        setMessage("Point the camera at the number plate, then tap Capture.");
+        setMessage(
+          zoomApplied
+            ? "Auto zoom is on. Fill the box with the plate, adjust zoom if needed, then tap Capture."
+            : "Point the camera at the number plate, then tap Capture."
+        );
       } catch (error) {
         streamRef.current?.getTracks().forEach((track) => track.stop());
         streamRef.current = null;
@@ -10007,6 +10008,9 @@ function PlateScannerPanel({
       cancelled = true;
       streamRef.current?.getTracks().forEach((track) => track.stop());
       streamRef.current = null;
+      videoTrackRef.current = null;
+      setZoomRange(null);
+      setZoomValue(1);
     };
   }, [active]);
 
@@ -10018,6 +10022,57 @@ function PlateScannerPanel({
     const video = videoRef.current;
     if (!video) return;
     void video.play().then(() => setNeedsManualPlay(false)).catch(() => setNeedsManualPlay(true));
+  }
+
+  async function applyPlateCameraZoom(value: number, track: MediaStreamTrack) {
+    await track.applyConstraints({ advanced: [{ zoom: value } as unknown as MediaTrackConstraintSet] } as MediaTrackConstraints);
+  }
+
+  async function configurePlateCameraZoom(stream: MediaStream) {
+    const track = stream.getVideoTracks()[0] ?? null;
+    videoTrackRef.current = track;
+
+    const capabilities = track?.getCapabilities?.() as
+      | (MediaTrackCapabilities & { zoom?: { min?: number; max?: number; step?: number } })
+      | undefined;
+    const zoom = capabilities?.zoom;
+
+    if (!track || !zoom || typeof zoom.max !== "number" || zoom.max <= 1) {
+      setZoomRange(null);
+      setZoomValue(1);
+      return false;
+    }
+
+    const min = typeof zoom.min === "number" ? zoom.min : 1;
+    const max = zoom.max;
+    const step = typeof zoom.step === "number" && zoom.step > 0 ? zoom.step : 0.1;
+    const preferred = Math.min(max, Math.max(min, Math.min(1.8, max)));
+
+    setZoomRange({ min, max, step });
+    setZoomValue(preferred);
+
+    try {
+      await applyPlateCameraZoom(preferred, track);
+      return true;
+    } catch {
+      setZoomRange(null);
+      setZoomValue(1);
+      return false;
+    }
+  }
+
+  async function updatePlateZoom(value: number) {
+    const track = videoTrackRef.current;
+    if (!track || !zoomRange) return;
+
+    const clamped = Math.min(zoomRange.max, Math.max(zoomRange.min, value));
+    setZoomValue(clamped);
+
+    try {
+      await applyPlateCameraZoom(clamped, track);
+    } catch {
+      setMessage("This camera rejected the zoom setting. Move closer and try again.");
+    }
   }
 
   async function capturePlate() {
@@ -10151,6 +10206,24 @@ function PlateScannerPanel({
           </div>
         ) : null}
       </div>
+      {zoomRange ? (
+        <div className="mt-3 shrink-0 rounded-lg border border-white/15 bg-white/10 px-3 py-2 text-white shadow-glow">
+          <div className="flex items-center justify-between gap-3 text-xs font-semibold uppercase tracking-wide text-white/80">
+            <span>Camera zoom</span>
+            <span>{zoomValue.toFixed(1)}x</span>
+          </div>
+          <input
+            type="range"
+            min={zoomRange.min}
+            max={zoomRange.max}
+            step={zoomRange.step}
+            value={zoomValue}
+            onChange={(event) => void updatePlateZoom(Number(event.target.value))}
+            className="mt-2 h-2 w-full accent-smart"
+            aria-label="Camera zoom"
+          />
+        </div>
+      ) : null}
       {message ? <p className="mt-3 shrink-0 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
       <Button type="button" className="mt-3 min-h-12 w-full shrink-0 justify-center text-base" onClick={() => void capturePlate()} disabled={reading}>
         <Camera className="h-5 w-5" />
@@ -10330,6 +10403,7 @@ function QrScannerPanel({
           </div>
         ) : null}
       </div>
+
       {message ? <p className="mt-3 shrink-0 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-sm text-gold">{message}</p> : null}
     </div>,
     document.body

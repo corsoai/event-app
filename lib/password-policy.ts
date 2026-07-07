@@ -1,4 +1,4 @@
-export const DEMO_PASSWORD = "Admin247#";
+export const DEMO_PASSWORD = "Corso@2026!";
 
 const commonWeakPasswords = new Set([
   "password",
