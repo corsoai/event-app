@@ -1434,17 +1434,21 @@ export function readLocalSessionUser() {
   }
 }
 
+export function getFallbackResident(state: LocalEstateState) {
+  return state.residents[0] ?? makeResidentProfile({
+    fullName: "Resident User",
+    email: "resident@corso.ng",
+    phone: "Not provided",
+    estate: "LBS View Estate",
+    residentId: "res-local-demo"
+  });
+}
+
 export function getCurrentResident(state: LocalEstateState) {
   const session = readLocalSessionUser();
 
   if (!session || session.role !== "resident") {
-    return state.residents[0] ?? makeResidentProfile({
-      fullName: "Resident User",
-      email: "resident@corso.ng",
-      phone: "Not provided",
-      estate: "LBS View Estate",
-      residentId: "res-local-demo"
-    });
+    return getFallbackResident(state);
   }
 
   const normalizedEmail = session.email.trim().toLowerCase();

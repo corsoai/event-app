@@ -81,6 +81,7 @@ import {
   billOutstandingAmount,
   billPaidAmount,
   getCurrentResident,
+  getFallbackResident,
   getResidentProperty,
   getResidentUnit,
   residentBillingBalance,
@@ -596,13 +597,16 @@ export function PageHeader({
 }
 
 function useCurrentResidentProfile(state: LocalEstateState) {
-  const [resident, setResident] = useState(() => getCurrentResident(state));
+  // Start from the deterministic fallback on both server and client to avoid
+  // hydration mismatches (the real session lives in localStorage, which the
+  // server cannot see). The effect swaps in the logged-in resident after mount.
+  const [resident, setResident] = useState<ReturnType<typeof getCurrentResident> | null>(null);
 
   useEffect(() => {
     setResident(getCurrentResident(state));
   }, [state]);
 
-  return resident ?? getCurrentResident(state);
+  return resident ?? getFallbackResident(state);
 }
 
 function mergeRecordsById<T extends { id: string }>(localRecords: T[], liveRecords: T[]) {
