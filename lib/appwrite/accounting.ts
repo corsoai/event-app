@@ -621,13 +621,21 @@ function residentAccountStatus(totalPaid: number, outstandingBalance: number, ad
   return "partially_paid";
 }
 
-function billingDueStatus(date: Date) {
-  const now = new Date();
-  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
-  const dueDate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+function lagosDayKey(date: Date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Lagos",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(date);
+}
 
-  if (dueDate.getTime() < today.getTime()) return "overdue";
-  if (dueDate.getTime() === today.getTime()) return "today";
+function billingDueStatus(date: Date) {
+  const today = lagosDayKey(new Date());
+  const dueDay = lagosDayKey(date);
+
+  if (dueDay < today) return "overdue";
+  if (dueDay === today) return "today";
   return "upcoming";
 }
 

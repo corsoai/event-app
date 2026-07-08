@@ -6293,7 +6293,7 @@ function ResidentStatusBanner({
   paying?: boolean;
 }) {
   const isOverdue = summary.outstandingBalance > 0
-    && summary.nextDueDate < new Date().toISOString().slice(0, 10);
+    && summary.nextDueDate < dateInputValue();
   const toneClass = summary.accountStatus === "fully_paid" || summary.accountStatus === "in_credit"
     ? "border-smart/30 bg-smart/10 text-emerald-700"
     : summary.accountStatus === "partially_paid" && !isOverdue
