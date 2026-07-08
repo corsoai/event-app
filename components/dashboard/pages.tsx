@@ -6327,6 +6327,7 @@ function ResidentSummaryCards({ summary }: { summary: ResidentAccountingSummary 
   const creditHelper = summary.advanceCredit > 0
     ? `${summary.monthsCreditCovers} months ahead`
     : "No advance credit";
+  const nextDueOverdue = summary.outstandingBalance > 0 && summary.nextDueDate < dateInputValue();
   const nextDueHelper = summary.outstandingBalance > 0
     ? "Overdue - pay now"
     : `${money(summary.monthlyRate)} subscription`;
@@ -6343,7 +6344,7 @@ function ResidentSummaryCards({ summary }: { summary: ResidentAccountingSummary 
           </div>
           <ChevronRight className="h-4 w-4 text-slate-400" aria-hidden="true" />
         </div>
-        <p className="mt-5 text-sm text-slate-300">Next billing due</p>
+        <p className="mt-5 text-sm text-slate-300">{nextDueOverdue ? "Payment overdue since" : "Next billing due"}</p>
         <p className="mt-1 text-2xl font-semibold text-white">{formatResidentDate(summary.nextDueDate)}</p>
         <p className={`mt-2 text-xs ${summary.outstandingBalance > 0 ? "text-danger" : "text-slate-400"}`}>{nextDueHelper}</p>
       </Card>
