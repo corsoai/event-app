@@ -56,7 +56,7 @@ import { FormEvent, ReactNode, useEffect, useMemo, useRef, useState } from "reac
 import { createPortal } from "react-dom";
 import { Button } from "@/components/ui/button";
 import { Card, CardHeader } from "@/components/ui/card";
-import { DataTable } from "@/components/ui/data-table";
+import { DataTable, type DataTableRow } from "@/components/ui/data-table";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { StatCard } from "@/components/ui/stat-card";
 import { StatusBadge } from "@/components/ui/status-badge";
@@ -695,6 +695,7 @@ function LiveVisitorCards({
   loading,
   error,
   showResident = false,
+  groupByDate = false,
   actionFor,
   onRetry
 }: {
@@ -703,9 +704,17 @@ function LiveVisitorCards({
   loading: boolean;
   error: string;
   showResident?: boolean;
+  groupByDate?: boolean;
   actionFor?: (visitor: Visitor) => ReactNode;
   onRetry?: () => void;
 }) {
+  const visitorGroups = groupByDate
+    ? groupItemsByDay(
+      [...visitorViews].sort((left, right) => visitorSortTime(right.visitor) - visitorSortTime(left.visitor)),
+      (view) => view.visitor.visitDate
+    )
+    : [{ label: "", items: visitorViews }];
+
   return (
     <Card className="mb-6">
       <CardHeader
@@ -741,8 +750,13 @@ function LiveVisitorCards({
           No visitor records found for this account.
         </div>
       ) : null}
-      <div className="grid gap-3">
-        {visitorViews.map(({ visitor, residentName, unitCode }) => (
+      {visitorGroups.map((group, groupIndex) => (
+        <div key={group.label || `group-${groupIndex}`} className={groupIndex > 0 ? "mt-4" : undefined}>
+          {group.label ? (
+            <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{group.label}</p>
+          ) : null}
+          <div className="grid gap-3">
+            {group.items.map(({ visitor, residentName, unitCode }) => (
           <div key={visitor.id} className="visitor-card rounded-lg border border-line bg-white/90 p-4 shadow-sm">
             <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="min-w-0">
@@ -762,8 +776,10 @@ function LiveVisitorCards({
             </div>
             {actionFor ? <div className="mt-4">{actionFor(visitor)}</div> : null}
           </div>
-        ))}
-      </div>
+            ))}
+          </div>
+        </div>
+      ))}
     </Card>
   );
 }
@@ -779,6 +795,51 @@ function isTodayVisitor(visitor: Visitor) {
 function visitorSortTime(visitor: Visitor) {
   const parsed = Date.parse(`${visitor.visitDate}T${visitor.arrivalTime || "00:00"}`);
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function logDayKey(value: string) {
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? "" : dateInputValue(date);
+}
+
+function logTimeLabel(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return formatClockTime(value);
+  return new Intl.DateTimeFormat("en-NG", {
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+    timeZone: LAGOS_TIME_ZONE
+  }).format(date);
+}
+
+function logDateGroupLabel(isoDay: string) {
+  if (!isoDay) return "Undated";
+  const now = Date.now();
+  const today = dateInputValue();
+  const yesterday = dateInputValue(new Date(now - 24 * 60 * 60 * 1000));
+  const weekStart = dateInputValue(new Date(now - 6 * 24 * 60 * 60 * 1000));
+  if (isoDay > today) return "Upcoming";
+  if (isoDay === today) return "Today";
+  if (isoDay === yesterday) return "Yesterday";
+  if (isoDay >= weekStart) return "Earlier this week";
+  const parsed = new Date(`${isoDay}T00:00:00`);
+  if (Number.isNaN(parsed.getTime())) return "Undated";
+  return new Intl.DateTimeFormat("en-NG", { day: "numeric", month: "short", year: "numeric" }).format(parsed);
+}
+
+function groupItemsByDay<T>(items: T[], dayOf: (item: T) => string) {
+  const groups: { label: string; items: T[] }[] = [];
+  for (const item of items) {
+    const label = logDateGroupLabel(dayOf(item));
+    const lastGroup = groups[groups.length - 1];
+    if (lastGroup && lastGroup.label === label) {
+      lastGroup.items.push(item);
+    } else {
+      groups.push({ label, items: [item] });
+    }
+  }
+  return groups;
 }
 
 function visitorLoadingRows(columns: number) {
@@ -3308,6 +3369,7 @@ export function VisitorLogsPage() {
         loading={loadingVisitors}
         error={visitorError}
         showResident
+        groupByDate
       />
     </>
   );
@@ -4473,6 +4535,30 @@ function formatPaymentDate(value: string) {
   }).format(new Date(timestamp));
 }
 
+const NAME_FILTER_LETTERS = Array.from({ length: 26 }, (_, index) => String.fromCharCode(65 + index));
+
+function filterResidentsByInitial<T extends { resident: Resident }>(entries: T[], letter: string) {
+  const sorted = [...entries].sort((left, right) => left.resident.name.localeCompare(right.resident.name));
+  if (!letter) return sorted;
+  return sorted.filter((entry) => entry.resident.name.trim().charAt(0).toUpperCase() === letter);
+}
+
+function AlphabetFilter({ value, onChange, label }: { value: string; onChange: (value: string) => void; label: string }) {
+  return (
+    <Select
+      value={value}
+      onChange={(event) => onChange(event.currentTarget.value)}
+      aria-label={label}
+      className="min-h-10 w-auto min-w-24 px-2 py-1 text-sm"
+    >
+      <option value="">All A-Z</option>
+      {NAME_FILTER_LETTERS.map((letter) => (
+        <option key={letter} value={letter}>{letter}</option>
+      ))}
+    </Select>
+  );
+}
+
 export function ReportsPage() {
   const { state } = useLocalEstateStore();
   const { accountingState, summary, accountingStatus, loadingAccounting, loadingAccountingDetails, refreshAccounting, lastUpdated } = useAdminAccountingState(state);
@@ -4490,6 +4576,10 @@ export function ReportsPage() {
   }));
   const debtorResidents = residentBalances.filter(({ balance }) => balance.netReceivable > 0);
   const creditResidents = residentBalances.filter(({ balance }) => balance.availableCredit > 0);
+  const [debtorLetter, setDebtorLetter] = useState("");
+  const [creditLetter, setCreditLetter] = useState("");
+  const debtorRows = filterResidentsByInitial(debtorResidents, debtorLetter);
+  const creditRows = filterResidentsByInitial(creditResidents, creditLetter);
   const reportDataset = useMemo<ReportDataset>(() => ({
     residents: accountingState.residents,
     bills: accountingState.bills,
@@ -4589,8 +4679,9 @@ export function ReportsPage() {
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <DataTable
           title="Debtors"
+          action={<AlphabetFilter value={debtorLetter} onChange={setDebtorLetter} label="Filter debtors by first letter" />}
           headers={["Resident", "Unit", "Outstanding", "Credit", "Net due"]}
-          rows={debtorResidents.map(({ resident, balance }) => [
+          rows={debtorRows.map(({ resident, balance }) => [
             resident.name,
             residentUnitLabel(accountingState, resident),
             money(balance.outstandingBalance),
@@ -4601,8 +4692,9 @@ export function ReportsPage() {
         <DataTable
           title="Residents in credit"
           description="Advance payments available to offset the next subscription bill."
+          action={<AlphabetFilter value={creditLetter} onChange={setCreditLetter} label="Filter residents in credit by first letter" />}
           headers={["Resident", "Unit", "Paid", "Expected", "Credit"]}
-          rows={creditResidents.map(({ resident, balance }) => [
+          rows={creditRows.map(({ resident, balance }) => [
             resident.name,
             residentUnitLabel(accountingState, resident),
             money(balance.paidAmount),
@@ -6200,9 +6292,11 @@ function ResidentStatusBanner({
   onPayNow?: () => void;
   paying?: boolean;
 }) {
+  const isOverdue = summary.outstandingBalance > 0
+    && summary.nextDueDate < new Date().toISOString().slice(0, 10);
   const toneClass = summary.accountStatus === "fully_paid" || summary.accountStatus === "in_credit"
     ? "border-smart/30 bg-smart/10 text-emerald-700"
-    : summary.accountStatus === "partially_paid"
+    : summary.accountStatus === "partially_paid" && !isOverdue
       ? "border-warn/40 bg-warn/10 text-amber-700"
       : "border-danger/30 bg-danger/10 text-danger";
 
@@ -9890,17 +9984,27 @@ export function ScanPlatePage({ compact = false }: { compact?: boolean }) {
         {loading ? (
           <p className="text-sm text-slate-300">Loading...</p>
         ) : logs.length > 0 ? (
-          <div className="mt-4 grid gap-2">
-            {logs.map((log) => (
-              <div key={log.id} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
-                <span className="flex items-center gap-2">
-                  <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${log.direction === "out" ? "bg-gold/20 text-gold" : "bg-smart/20 text-smart"}`}>{log.direction === "out" ? "OUT" : "IN"}</span>
-                  <span className="font-mono text-base font-semibold text-white">{log.plate}</span>
-                </span>
-                <span className="flex items-center gap-2 text-xs text-slate-400">
-                  {log.vehicleClass ? <span className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-slate-200">{log.vehicleClass}</span> : null}
-                  {formatClockTime(log.scannedAt)}
-                </span>
+          <div className="mt-4 grid gap-4">
+            {groupItemsByDay(
+              [...logs].sort((left, right) => (Date.parse(right.scannedAt) || 0) - (Date.parse(left.scannedAt) || 0)),
+              (log) => logDayKey(log.scannedAt)
+            ).map((group, groupIndex) => (
+              <div key={group.label || `group-${groupIndex}`}>
+                <p className="mb-2 text-xs font-semibold uppercase tracking-[0.14em] text-slate-400">{group.label}</p>
+                <div className="grid gap-2">
+                  {group.items.map((log) => (
+                    <div key={log.id} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 px-3 py-2">
+                      <span className="flex items-center gap-2">
+                        <span className={`rounded-full px-2 py-0.5 text-[11px] font-semibold ${log.direction === "out" ? "bg-gold/20 text-gold" : "bg-smart/20 text-smart"}`}>{log.direction === "out" ? "OUT" : "IN"}</span>
+                        <span className="font-mono text-base font-semibold text-white">{log.plate}</span>
+                      </span>
+                      <span className="flex items-center gap-2 text-xs text-slate-400">
+                        {log.vehicleClass ? <span className="rounded-full border border-white/15 px-2 py-0.5 text-[11px] text-slate-200">{log.vehicleClass}</span> : null}
+                        {logTimeLabel(log.scannedAt)}
+                      </span>
+                    </div>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
@@ -10686,16 +10790,19 @@ export function ExpectedVisitorsPage() {
 export function EntryLogsPage() {
   const { visitorViews, loadingVisitors, visitorError, refreshVisitors } = useLiveVisitorViews(readAppwriteSecurityVisitorHistory);
   const sortedVisitorViews = [...visitorViews].sort((left, right) => visitorSortTime(right.visitor) - visitorSortTime(left.visitor));
-  const movementRows = loadingVisitors
+  const movementRows: DataTableRow[] = loadingVisitors
     ? visitorLoadingRows(6)
     : sortedVisitorViews.length
-      ? sortedVisitorViews.map(({ visitor, residentName, unitCode }) => [
-        visitor.visitorName,
-        <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
-        `${visitor.visitDate} ${formatClockTime(visitor.arrivalTime)}`,
-        residentName,
-        cleanUnitCodeDisplay(unitCode),
-        <StatusBadge key={visitor.status} status={visitor.status} />
+      ? groupItemsByDay(sortedVisitorViews, (view) => view.visitor.visitDate).flatMap((group) => [
+        { groupLabel: group.label },
+        ...group.items.map(({ visitor, residentName, unitCode }) => [
+          visitor.visitorName,
+          <span key={visitor.code} className="font-mono text-smart">{visitor.code}</span>,
+          formatClockTime(visitor.arrivalTime),
+          residentName,
+          cleanUnitCodeDisplay(unitCode),
+          <StatusBadge key={visitor.status} status={visitor.status} />
+        ])
       ])
       : [["No visitor records yet", "—", "—", "—", "—", "—"]];
 

@@ -621,6 +621,16 @@ function residentAccountStatus(totalPaid: number, outstandingBalance: number, ad
   return "partially_paid";
 }
 
+function billingDueStatus(date: Date) {
+  const now = new Date();
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const dueDate = new Date(Date.UTC(date.getUTCFullYear(), date.getUTCMonth(), date.getUTCDate()));
+
+  if (dueDate.getTime() < today.getTime()) return "overdue";
+  if (dueDate.getTime() === today.getTime()) return "today";
+  return "upcoming";
+}
+
 function residentStatusBannerText(input: {
   accountStatus: ResidentAccountStatus;
   outstandingBalance: number;
@@ -643,7 +653,21 @@ function residentStatusBannerText(input: {
   }
 
   if (input.accountStatus === "partially_paid") {
+    const dueStatus = billingDueStatus(input.nextDueDate);
+
+    if (dueStatus === "overdue") {
+      return `Your account is overdue. You have ${currencyText(input.outstandingBalance)} outstanding. Please pay now to keep your account current.`;
+    }
+
+    if (dueStatus === "today") {
+      return `You have ${currencyText(input.outstandingBalance)} outstanding. Payment is due today. Please pay now to keep your account current.`;
+    }
+
     return `You have ${currencyText(input.outstandingBalance)} outstanding. Please pay by ${nextDueDate} to keep your account current.`;
+  }
+
+  if (input.outstandingBalance > 0 && billingDueStatus(input.nextDueDate) === "overdue") {
+    return `Your account is overdue. You have ${currencyText(input.outstandingBalance)} outstanding. Please pay now to keep your account current.`;
   }
 
   return `Your account has ${currencyText(input.outstandingBalance)} outstanding. Please make payment as soon as possible.`;
