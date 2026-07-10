@@ -2910,7 +2910,8 @@ function AppwriteOnboardingPanel() {
     const response = await fetch("/api/appwrite/onboarding/import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dryRun, offset, limit, rows: previewRows })
+      // TODO(multi-estate): replace with an estate selector for super admins.
+      body: JSON.stringify({ dryRun, offset, limit, estateId: "lbsview-estate", rows: previewRows })
     });
     const payload = await readJsonResponse<AppwriteImportResponse>(response);
     if (!response.ok) {
@@ -2925,7 +2926,8 @@ function AppwriteOnboardingPanel() {
     const response = await fetch("/api/appwrite/onboarding/billing-import", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ dryRun, offset, limit, rows: previewRows })
+      // TODO(multi-estate): replace with an estate selector for super admins.
+      body: JSON.stringify({ dryRun, offset, limit, estateId: "lbsview-estate", rows: previewRows })
     });
     const payload = await readJsonResponse<AppwriteBillingImportResponse>(response);
     if (!response.ok) {
