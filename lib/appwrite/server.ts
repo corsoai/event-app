@@ -100,6 +100,40 @@ export async function setupAppwriteOnboardingSchema(): Promise<AppwriteSetupResu
   return appwriteSetupPromise;
 }
 
+let appwriteSchemaReadyPromise: Promise<void> | null = null;
+
+/**
+ * Cheap request-path guard for hot API routes. The full
+ * setupAppwriteOnboardingSchema verifies all tables/columns/indexes (dozens of
+ * REST round-trips) and belongs in the explicit setup flow, not on every
+ * request. This checks once per server instance that the database exists and
+ * only falls back to the full setup on a fresh environment.
+ */
+export async function ensureAppwriteSchemaReady(): Promise<void> {
+  if (!appwriteSchemaReadyPromise) {
+    appwriteSchemaReadyPromise = (async () => {
+      const config = getAppwriteServerConfig();
+      if (!config.configured) {
+        return;
+      }
+
+      const database = await appwriteRequest<unknown>(`/tablesdb/${config.databaseId}`, {
+        method: "GET",
+        allowNotFound: true
+      });
+
+      if (!database) {
+        await setupAppwriteOnboardingSchema();
+      }
+    })().catch((error) => {
+      appwriteSchemaReadyPromise = null;
+      throw error;
+    });
+  }
+
+  return appwriteSchemaReadyPromise;
+}
+
 async function setupAppwriteOnboardingSchemaUncached(): Promise<AppwriteSetupResult> {
   const config = getAppwriteServerConfig();
   const result: AppwriteSetupResult = {
@@ -196,6 +230,51 @@ export async function appwriteUpsertRow<T>(
     // The existence check above can miss (e.g. a stale/cached 404 from the API
     // proxy). If the create collides with an existing row, update it instead so
     // the upsert stays idempotent.
+    if (error instanceof AppwriteRestError && error.status === 409) {
+      return appwriteRequest<T>(
+        `/tablesdb/${config.databaseId}/tables/${tableId}/rows/${rowId}`,
+        {
+          method: "PATCH",
+          body: payload
+        }
+      );
+    }
+    throw error;
+  }
+}
+
+/**
+ * Insert a brand-new row without the exists-check round trip that
+ * appwriteUpsertRow performs. Falls back to an update if the ID already
+ * exists, so retries stay safe.
+ */
+export async function appwriteInsertRow<T>(
+  tableId: string,
+  rowId: string,
+  data: Record<string, unknown>
+): Promise<T> {
+  const config = getAppwriteServerConfig();
+  if (!config.configured) {
+    throw new Error(`Appwrite server configuration is missing: ${config.missing.join(", ")}`);
+  }
+
+  const payload = {
+    data: compactRecord(data),
+    permissions: []
+  };
+
+  try {
+    return await appwriteRequest<T>(
+      `/tablesdb/${config.databaseId}/tables/${tableId}/rows`,
+      {
+        method: "POST",
+        body: {
+          rowId,
+          ...payload
+        }
+      }
+    );
+  } catch (error) {
     if (error instanceof AppwriteRestError && error.status === 409) {
       return appwriteRequest<T>(
         `/tablesdb/${config.databaseId}/tables/${tableId}/rows/${rowId}`,

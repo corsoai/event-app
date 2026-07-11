@@ -1,7 +1,7 @@
 import type { VehicleLog } from "@/lib/types";
 import {
   APPWRITE_LBSVIEW_ESTATE_ID,
-  appwriteUpsertRow,
+  appwriteInsertRow,
   safeAppwriteId
 } from "@/lib/appwrite/server";
 import { listAppwriteTableRows, type AppwriteEstateScope } from "@/lib/appwrite/residents";
@@ -127,6 +127,6 @@ export async function saveVehicleLog(input: VehicleLogSaveInput) {
     updatedAt: now
   };
 
-  const row = await appwriteUpsertRow<AppwriteVehicleLogRow>(VEHICLE_LOGS_TABLE, rowId, payload);
+  const row = await appwriteInsertRow<AppwriteVehicleLogRow>(VEHICLE_LOGS_TABLE, rowId, payload);
   return mapVehicleLogRow(row);
 }

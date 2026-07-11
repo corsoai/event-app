@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { UserRole } from "@/lib/types";
-import { AppwriteRestError, setupAppwriteOnboardingSchema } from "@/lib/appwrite/server";
+import { AppwriteRestError, ensureAppwriteSchemaReady } from "@/lib/appwrite/server";
 import { resolveSessionContext, SessionContextError, type SessionContext } from "@/lib/appwrite/session-context";
 import { deleteWorkOrder, listWorkOrders, saveWorkOrder } from "@/lib/appwrite/facilities";
 
@@ -9,7 +9,7 @@ const allowedRoles: UserRole[] = ["estate_admin", "super_admin"];
 export async function GET(request: NextRequest) {
   try {
     const context = await resolveSessionContext(request, { allowedRoles });
-    await setupAppwriteOnboardingSchema();
+    await ensureAppwriteSchemaReady();
     const workOrders = await listWorkOrders(estateScopeFor(context));
     return NextResponse.json({ workOrders });
   } catch (error) {
@@ -25,7 +25,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const context = await resolveSessionContext(request, { allowedRoles });
-    await setupAppwriteOnboardingSchema();
+    await ensureAppwriteSchemaReady();
     const workOrder = await saveWorkOrder({
       id: body.id ? String(body.id) : undefined,
       facilityId: String(body.facilityId ?? ""),

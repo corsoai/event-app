@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { UserRole } from "@/lib/types";
-import { AppwriteRestError, setupAppwriteOnboardingSchema } from "@/lib/appwrite/server";
+import { AppwriteRestError, ensureAppwriteSchemaReady } from "@/lib/appwrite/server";
 import { resolveSessionContext, SessionContextError, type SessionContext } from "@/lib/appwrite/session-context";
 import { listVehicleLogs, saveVehicleLog } from "@/lib/appwrite/vehicles";
 
@@ -10,7 +10,7 @@ const writerRoles: UserRole[] = ["security_guard", "cso", "estate_admin", "super
 export async function GET(request: NextRequest) {
   try {
     const context = await resolveSessionContext(request, { allowedRoles: readerRoles });
-    await setupAppwriteOnboardingSchema();
+    await ensureAppwriteSchemaReady();
     const logs = await listVehicleLogs(100, estateScopeFor(context));
     return NextResponse.json({ logs });
   } catch (error) {
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const context = await resolveSessionContext(request, { allowedRoles: writerRoles });
-    await setupAppwriteOnboardingSchema();
+    await ensureAppwriteSchemaReady();
     const log = await saveVehicleLog({
       plate: String(body.plate ?? ""),
       vehicleClass: String(body.vehicleClass ?? ""),
