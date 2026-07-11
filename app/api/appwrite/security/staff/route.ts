@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { UserRole } from "@/lib/types";
-import { AppwriteRestError, setupAppwriteOnboardingSchema } from "@/lib/appwrite/server";
+import { AppwriteRestError, ensureAppwriteSchemaReady } from "@/lib/appwrite/server";
 import { resolveSessionContext, SessionContextError, type SessionContext } from "@/lib/appwrite/session-context";
 import { deleteStaff, listStaff, saveStaff } from "@/lib/appwrite/staff";
 
@@ -10,7 +10,7 @@ const writerRoles: UserRole[] = ["cso", "estate_admin", "super_admin"];
 export async function GET(request: NextRequest) {
   try {
     const context = await resolveSessionContext(request, { allowedRoles: readerRoles });
-    await setupAppwriteOnboardingSchema();
+    await ensureAppwriteSchemaReady();
     const staff = await listStaff(estateScopeFor(context));
     return NextResponse.json({ staff });
   } catch (error) {
@@ -26,7 +26,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const context = await resolveSessionContext(request, { allowedRoles: writerRoles });
-    await setupAppwriteOnboardingSchema();
+    await ensureAppwriteSchemaReady();
     const staff = await saveStaff({
       id: body.id ? String(body.id) : undefined,
       fullName: String(body.fullName ?? ""),

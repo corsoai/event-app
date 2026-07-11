@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { APPWRITE_LBSVIEW_ESTATE_ID, appwriteUpsertRow, setupAppwriteOnboardingSchema } from "@/lib/appwrite/server";
+import { APPWRITE_LBSVIEW_ESTATE_ID, appwriteUpsertRow, ensureAppwriteSchemaReady } from "@/lib/appwrite/server";
 import { listAppwriteTableRows } from "@/lib/appwrite/residents";
 import { DEFAULT_ESTATE_NAME, sortEstatesWithDefaultFirst } from "@/lib/utils";
 
@@ -10,7 +10,7 @@ type AppwriteEstateRow = {
 
 export async function GET() {
   try {
-    await setupAppwriteOnboardingSchema();
+    await ensureAppwriteSchemaReady();
     await appwriteUpsertRow("estates", APPWRITE_LBSVIEW_ESTATE_ID, {
       name: DEFAULT_ESTATE_NAME,
       address: "LBS View Estate, Lagos",
