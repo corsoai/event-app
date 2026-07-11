@@ -1,4 +1,4 @@
-const CACHE_NAME = "corso-v2026-06-21-mobile-visitor-2";
+const CACHE_NAME = "corso-v2026-07-11-anpr-instant-log-1";
 const OFFLINE_URL = "/offline.html";
 const APP_SHELL = [
   OFFLINE_URL,
