@@ -64,6 +64,20 @@ type BillingPlanRow = {
   residentId: string;
   openingBillId?: string;
   legacyPaymentId?: string;
+  legacyPaymentReference?: string;
+};
+
+type ExistingLegacyBillRow = {
+  $id: string;
+  residentId?: string;
+  category?: string;
+};
+
+type ExistingLegacyPaymentRow = {
+  $id: string;
+  residentId?: string;
+  reference?: string;
+  confirmedBy?: string;
 };
 
 type BillingPlan = {
@@ -154,7 +168,7 @@ export async function importBillingPreviewRows(rows: LbsviewOnboardingPreviewRow
         residentId: row.residentId,
         billId: row.openingBillId,
         amount: amountPaid,
-        reference: `LEGACY-${source.sourceRow}`,
+        reference: row.legacyPaymentReference ?? `LEGACY-${row.residentId}`,
         processor: "manual",
         channel: "bank_transfer",
         providerReference: `legacy-excel-row-${source.sourceRow}`,
@@ -196,8 +210,28 @@ export async function importBillingPreviewRows(rows: LbsviewOnboardingPreviewRow
 }
 
 async function buildBillingPlan(rows: LbsviewOnboardingPreviewRow[], scope: AppwriteEstateScope): Promise<BillingPlan> {
-  const residents = await listAppwriteTableRows<AppwriteResidentRow>("residents", scope);
+  const [residents, existingBills, existingPayments] = await Promise.all([
+    listAppwriteTableRows<AppwriteResidentRow>("residents", scope),
+    listAppwriteTableRows<ExistingLegacyBillRow>("bills", scope),
+    listAppwriteTableRows<ExistingLegacyPaymentRow>("payments", scope)
+  ]);
   const residentLookup = buildResidentLookup(residents);
+  // Reuse rows created by earlier imports so re-imports update in place instead
+  // of colliding with the unique payment reference index (sheet row numbers
+  // shift between exports, so row-number-derived IDs are not stable).
+  const openingBillByResident = new Map<string, string>();
+  for (const bill of existingBills) {
+    if (bill.residentId && bill.category === "Opening balance" && !openingBillByResident.has(bill.residentId)) {
+      openingBillByResident.set(bill.residentId, bill.$id);
+    }
+  }
+  const legacyPaymentByResident = new Map<string, ExistingLegacyPaymentRow>();
+  for (const payment of existingPayments) {
+    const isLegacy = payment.confirmedBy === "legacy billing import" || String(payment.reference ?? "").startsWith("LEGACY-");
+    if (payment.residentId && isLegacy && !legacyPaymentByResident.has(payment.residentId)) {
+      legacyPaymentByResident.set(payment.residentId, payment);
+    }
+  }
   const skippedReasonCounts = new Map<string, number>();
   const planRows: BillingPlanRow[] = [];
 
@@ -216,12 +250,20 @@ async function buildBillingPlan(rows: LbsviewOnboardingPreviewRow[], scope: Appw
 
     const hasBill = numberOrZero(row.expectedPayment) > 0 || numberOrZero(row.openingOutstanding) > 0;
     const hasPayment = numberOrZero(row.amountPaid) > 0;
+    const existingPayment = legacyPaymentByResident.get(resident.$id);
     planRows.push({
       source: row,
       resident,
       residentId: resident.$id,
-      openingBillId: hasBill ? openingBillIdFor(row) : undefined,
-      legacyPaymentId: hasPayment ? legacyPaymentIdFor(row) : undefined
+      openingBillId: hasBill
+        ? openingBillByResident.get(resident.$id) ?? safeAppwriteId("bill", `legacy-opening:${resident.$id}`)
+        : undefined,
+      legacyPaymentId: hasPayment
+        ? existingPayment?.$id ?? safeAppwriteId("pay", `legacy-total:${resident.$id}`)
+        : undefined,
+      legacyPaymentReference: hasPayment
+        ? existingPayment?.reference ?? `LEGACY-${resident.$id}`
+        : undefined
     });
   }
 
@@ -266,7 +308,14 @@ function findMatchingResident(
   row: LbsviewOnboardingPreviewRow,
   lookup: ReturnType<typeof buildResidentLookup>
 ) {
-  return lookup.bySourceRow.get(row.sourceRow)
+  // Sheet row numbers shift between exports (inserted rows push everyone down),
+  // so only trust a source-row match when the resident's name also agrees.
+  const bySourceRow = lookup.bySourceRow.get(row.sourceRow);
+  const sourceRowMatch = bySourceRow && normalizedName(bySourceRow.fullName ?? "") === normalizedName(row.fullName)
+    ? bySourceRow
+    : undefined;
+
+  return sourceRowMatch
     ?? lookup.byId.get(residentIdFor(row))
     ?? lookup.byPhone.get(normalizedPhone(row.phone))
     ?? lookup.byEmail.get(normalizedEmail(row.email))

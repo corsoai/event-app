@@ -6,12 +6,14 @@ import {
   Activity,
   AlertTriangle,
   BarChart3,
+  Building2,
   ClipboardList,
   CreditCard,
   Home,
   LayoutDashboard,
   QrCode,
   ReceiptText,
+  Settings,
   Shield,
   Users,
   WalletCards
@@ -212,12 +214,22 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
     ];
   }
 
+  if (role === "super_admin") {
+    return [
+      { label: "Dash", href: "/super-admin", icon: LayoutDashboard },
+      { label: "Estates", href: "/super-admin/estates", icon: Building2 },
+      { label: "Users", href: "/super-admin/users", icon: Users },
+      { label: "Reports", href: "/super-admin/reports", icon: BarChart3 },
+      { label: "Settings", href: "/super-admin/settings", icon: Settings }
+    ];
+  }
+
   return [
-    { label: "Dash", href: role === "super_admin" ? "/super-admin" : "/admin", icon: LayoutDashboard },
+    { label: "Dash", href: "/admin", icon: LayoutDashboard },
     { label: "Residents", href: "/admin/residents", icon: Users },
     { label: "SOS", href: "/admin/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
     { label: "Payments", href: "/admin/payments", icon: WalletCards },
-    { label: "Reports", href: role === "super_admin" ? "/super-admin/reports" : "/admin/reports", icon: BarChart3 }
+    { label: "Reports", href: "/admin/reports", icon: BarChart3 }
   ];
 }
 

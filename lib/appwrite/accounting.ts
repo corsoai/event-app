@@ -621,6 +621,24 @@ function residentAccountStatus(totalPaid: number, outstandingBalance: number, ad
   return "partially_paid";
 }
 
+function lagosDayKey(date: Date) {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Africa/Lagos",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit"
+  }).format(date);
+}
+
+function billingDueStatus(date: Date) {
+  const today = lagosDayKey(new Date());
+  const dueDay = lagosDayKey(date);
+
+  if (dueDay < today) return "overdue";
+  if (dueDay === today) return "today";
+  return "upcoming";
+}
+
 function residentStatusBannerText(input: {
   accountStatus: ResidentAccountStatus;
   outstandingBalance: number;
@@ -643,7 +661,21 @@ function residentStatusBannerText(input: {
   }
 
   if (input.accountStatus === "partially_paid") {
+    const dueStatus = billingDueStatus(input.nextDueDate);
+
+    if (dueStatus === "overdue") {
+      return `Your account is overdue. You have ${currencyText(input.outstandingBalance)} outstanding. Please pay now to keep your account current.`;
+    }
+
+    if (dueStatus === "today") {
+      return `You have ${currencyText(input.outstandingBalance)} outstanding. Payment is due today. Please pay now to keep your account current.`;
+    }
+
     return `You have ${currencyText(input.outstandingBalance)} outstanding. Please pay by ${nextDueDate} to keep your account current.`;
+  }
+
+  if (input.outstandingBalance > 0 && billingDueStatus(input.nextDueDate) === "overdue") {
+    return `Your account is overdue. You have ${currencyText(input.outstandingBalance)} outstanding. Please pay now to keep your account current.`;
   }
 
   return `Your account has ${currencyText(input.outstandingBalance)} outstanding. Please make payment as soon as possible.`;

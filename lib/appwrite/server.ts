@@ -181,16 +181,32 @@ export async function appwriteUpsertRow<T>(
     );
   }
 
-  return appwriteRequest<T>(
-    `/tablesdb/${config.databaseId}/tables/${tableId}/rows`,
-    {
-      method: "POST",
-      body: {
-        rowId,
-        ...payload
+  try {
+    return await appwriteRequest<T>(
+      `/tablesdb/${config.databaseId}/tables/${tableId}/rows`,
+      {
+        method: "POST",
+        body: {
+          rowId,
+          ...payload
+        }
       }
+    );
+  } catch (error) {
+    // The existence check above can miss (e.g. a stale/cached 404 from the API
+    // proxy). If the create collides with an existing row, update it instead so
+    // the upsert stays idempotent.
+    if (error instanceof AppwriteRestError && error.status === 409) {
+      return appwriteRequest<T>(
+        `/tablesdb/${config.databaseId}/tables/${tableId}/rows/${rowId}`,
+        {
+          method: "PATCH",
+          body: payload
+        }
+      );
     }
-  );
+    throw error;
+  }
 }
 
 export async function appwriteDeleteRow<T>(tableId: string, rowId: string): Promise<T> {
