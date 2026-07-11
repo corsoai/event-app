@@ -9931,7 +9931,18 @@ export function ScanPlatePage({ compact = false }: { compact?: boolean }) {
         rawRead: rawText,
         matchStatus: "unknown"
       });
-      setLogs((current) => [saved, ...current].slice(0, 100));
+      // Build the on-screen entry from local values so the new log always
+      // appears at the top of today's group, even if the server response is
+      // missing fields (the list sorts and groups by scannedAt).
+      const optimistic: VehicleLog = {
+        ...saved,
+        id: saved.id || `local-${Date.now()}`,
+        plate: saved.plate || value,
+        vehicleClass: saved.vehicleClass || vehicleClass,
+        direction: saved.direction === "out" || saved.direction === "in" ? saved.direction : direction,
+        scannedAt: saved.scannedAt || new Date().toISOString()
+      };
+      setLogs((current) => [optimistic, ...current.filter((log) => log.id !== optimistic.id)].slice(0, 100));
       setPlate("");
       setRawText("");
       setMatched(true);
