@@ -831,8 +831,13 @@ async function findExistingResidentForLogin(
   });
 }
 
+// Estates that user accounts may be assigned to. Everything else falls back
+// to the primary estate so junk/legacy form values cannot orphan a user.
+// TODO(multi-estate): validate against the live estates table instead.
+const ASSIGNABLE_ESTATE_IDS = new Set([APPWRITE_LBSVIEW_ESTATE_ID, "platform", "corso-demo-estate"]);
+
 function canonicalEstateId(estateId: string) {
-  return estateId === APPWRITE_LBSVIEW_ESTATE_ID || estateId === "platform" ? estateId : APPWRITE_LBSVIEW_ESTATE_ID;
+  return ASSIGNABLE_ESTATE_IDS.has(estateId) ? estateId : APPWRITE_LBSVIEW_ESTATE_ID;
 }
 
 function assertEstateScope(rowEstateId: string | undefined, scope: AppwriteEstateScope, message: string) {

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
-import { FormEvent, useEffect, useState } from "react";
+import { FormEvent, useEffect, useRef, useState } from "react";
 import { ArrowRight, Eye, EyeOff, Loader2 } from "lucide-react";
 import { BrandMark } from "@/components/layout/brand-mark";
 import { Button } from "@/components/ui/button";
@@ -29,6 +29,15 @@ import { DEFAULT_ESTATE_NAME, normalizePhoneNumber, sortEstatesWithDefaultFirst 
 
 type Mode = "login" | "signup" | "forgot";
 
+// Public exhibition tour accounts for the Africa Secured Estate demo.
+// These credentials are intentionally public (printed on banners/QR codes)
+// and are scoped to the demo estate only.
+const EXHIBITION_DEMO_LOGINS: Record<string, { identifier: string; password: string; label: string; blurb: string }> = {
+  resident: { identifier: "demo.resident@corso.ng", password: "AfricaDemo@2026", label: "Resident", blurb: "Invite visitors, bills, SOS" },
+  security: { identifier: "demo.guard@corso.ng", password: "AfricaDemo@2026", label: "Security", blurb: "Verify codes, scan plates" },
+  manager: { identifier: "demo.manager@corso.ng", password: "AfricaDemo@2026", label: "Manager", blurb: "Residents, billing, reports" }
+};
+
 export function AuthCard({ mode }: { mode: Mode }) {
   const router = useRouter();
   const params = useSearchParams();
@@ -50,6 +59,37 @@ export function AuthCard({ mode }: { mode: Mode }) {
   const [submittedEmail, setSubmittedEmail] = useState("");
   const [loading, setLoading] = useState(false);
   const [loginProgress, setLoginProgress] = useState("");
+  const formRef = useRef<HTMLFormElement>(null);
+  const [demoAutoLoginDone, setDemoAutoLoginDone] = useState(false);
+
+  // One-tap demo entry: /login?demo=resident|security|manager pre-fills the
+  // exhibition tour account and submits the existing login form untouched.
+  const demoParam = mode === "login" ? params.get("demo") : null;
+  useEffect(() => {
+    if (!demoParam || demoAutoLoginDone || mode !== "login") {
+      return;
+    }
+    const account = EXHIBITION_DEMO_LOGINS[demoParam.toLowerCase()];
+    if (!account) {
+      return;
+    }
+    setEmail(account.identifier);
+    setPassword(account.password);
+    setDemoAutoLoginDone(true);
+    const timer = setTimeout(() => formRef.current?.requestSubmit(), 450);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [demoParam, demoAutoLoginDone, mode]);
+
+  function startDemoLogin(key: string) {
+    const account = EXHIBITION_DEMO_LOGINS[key];
+    if (!account || loading) {
+      return;
+    }
+    setEmail(account.identifier);
+    setPassword(account.password);
+    setTimeout(() => formRef.current?.requestSubmit(), 60);
+  }
   const selectedEstate = estateOptions.find((item) => item.id === estateId) ?? estateOptions[0];
   const estateName = selectedEstate?.name ?? DEFAULT_ESTATE_NAME;
 
@@ -389,7 +429,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
         </div>
       ) : null}
 
-      <form className="grid gap-4" onSubmit={submit} autoComplete={mode === "signup" ? "off" : "on"}>
+      <form ref={formRef} className="grid gap-4" onSubmit={submit} autoComplete={mode === "signup" ? "off" : "on"}>
         {mode === "signup" ? (
           <Field label="Full name">
             <Input
@@ -486,6 +526,29 @@ export function AuthCard({ mode }: { mode: Mode }) {
           <div className={messageClassName(messageTone)}>{message}</div>
         ) : null}
       </form>
+
+      {mode === "login" ? (
+        <div className="mt-6 rounded-lg border border-smart/25 bg-smart/10 p-4">
+          <p className="text-sm font-semibold text-white">Explore the demo estate</p>
+          <p className="mt-1 text-xs leading-5 text-slate-400">
+            Take a one-tap tour of Africa Secured Estate. No signup needed.
+          </p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            {Object.entries(EXHIBITION_DEMO_LOGINS).map(([key, account]) => (
+              <button
+                key={key}
+                type="button"
+                disabled={loading}
+                onClick={() => startDemoLogin(key)}
+                className="rounded-lg border border-smart/30 bg-ink/40 px-3 py-2 text-left transition hover:border-smart hover:bg-smart/15 disabled:opacity-60"
+              >
+                <span className="block text-sm font-semibold text-smart">{account.label}</span>
+                <span className="mt-0.5 block text-[11px] leading-4 text-slate-400">{account.blurb}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {mode === "login" && localDemoEnabled ? (
         <div className="mt-6 rounded-lg border border-line bg-ink/50 p-4 text-sm text-slate-400">
