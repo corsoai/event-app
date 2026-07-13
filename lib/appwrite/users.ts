@@ -29,6 +29,19 @@ const roleLabels: Record<UserRole, string> = {
   vendor: "Vendor / Domestic Staff"
 };
 
+// Display names for estates that are not the default. Used for user prefs so
+// demo-estate users see their own estate name instead of LBS View.
+const ESTATE_DISPLAY_NAMES: Record<string, string> = {
+  "corso-demo-estate": "Africa Secured Estate"
+};
+
+function estateDisplayName(role: UserRole, estateId: string) {
+  if (role === "super_admin") {
+    return "All estates";
+  }
+  return ESTATE_DISPLAY_NAMES[estateId] ?? DEFAULT_ESTATE_NAME;
+}
+
 export type AppwriteManagedUserInput = {
   fullName: string;
   email: string;
@@ -245,7 +258,7 @@ export async function createAppwriteManagedUser(input: AppwriteManagedUserInput)
     phone,
     role,
     estateId,
-    estateName: role === "super_admin" ? "All estates" : DEFAULT_ESTATE_NAME,
+    estateName: estateDisplayName(role, estateId),
     houseNumber,
     loginIdentifier: rawEmail || phone
   });
@@ -298,7 +311,7 @@ export async function createAppwriteManagedUser(input: AppwriteManagedUserInput)
       email,
       phone,
       role,
-      estate: role === "super_admin" ? "All estates" : DEFAULT_ESTATE_NAME,
+      estate: estateDisplayName(role, estateId),
       houseNumber,
       active: true,
       createdAt: now
@@ -374,7 +387,7 @@ async function ensureAppwriteDefaultUser(input: AppwriteManagedUserInput) {
     phone,
     role,
     estateId,
-    estateName: role === "super_admin" ? "All estates" : DEFAULT_ESTATE_NAME,
+    estateName: estateDisplayName(role, estateId),
     houseNumber,
     loginIdentifier: rawEmail
   });
@@ -477,10 +490,20 @@ export async function updateAppwriteManagedUser(
     method: "PATCH",
     body: { name: fullName.slice(0, 128) }
   });
-  await appwriteRequest<AppwriteUser>(`/users/${encodeURIComponent(userId)}/phone`, {
-    method: "PATCH",
-    body: { number: appwritePhone(phone) }
-  });
+  // Only push the phone to Appwrite Auth when it actually changed —
+  // re-applying the same number trips Appwrite's duplicate-target check.
+  if (appwritePhone(phone) !== appwritePhone(String(target.phone ?? ""))) {
+    try {
+      await appwriteRequest<AppwriteUser>(`/users/${encodeURIComponent(userId)}/phone`, {
+        method: "PATCH",
+        body: { number: appwritePhone(phone) }
+      });
+    } catch (error) {
+      if (!(error instanceof AppwriteRestError && error.status === 409)) {
+        throw error;
+      }
+    }
+  }
   await appwriteRequest<AppwriteUser>(`/users/${encodeURIComponent(userId)}/status`, {
     method: "PATCH",
     body: { status: active }
@@ -490,7 +513,7 @@ export async function updateAppwriteManagedUser(
     phone,
     role,
     estateId,
-    estateName: role === "super_admin" ? "All estates" : DEFAULT_ESTATE_NAME,
+    estateName: estateDisplayName(role, estateId),
     houseNumber,
     loginIdentifier: target.email && !isPhoneAuthEmail(target.email) ? target.email : phone
   });
