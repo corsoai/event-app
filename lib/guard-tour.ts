@@ -20,6 +20,7 @@ type PendingTourLog = {
   scannedAt: string;
   deviceLatitude?: number;
   deviceLongitude?: number;
+  deviceAccuracy?: number;
   isOfflineLog: boolean;
   deviceLabel: string;
 };
@@ -39,6 +40,7 @@ export async function submitGuardCheckpointScan(rawValue: string): Promise<Guard
     scannedAt: new Date().toISOString(),
     deviceLatitude: position.latitude,
     deviceLongitude: position.longitude,
+    deviceAccuracy: position.accuracy,
     isOfflineLog: true,
     deviceLabel: navigator.userAgent ? "Mobile guard device" : "Guard device"
   };
@@ -201,11 +203,12 @@ async function readCurrentPosition() {
     return {};
   }
 
-  return new Promise<{ latitude?: number; longitude?: number }>((resolve) => {
+  return new Promise<{ latitude?: number; longitude?: number; accuracy?: number }>((resolve) => {
     navigator.geolocation.getCurrentPosition(
       (position) => resolve({
         latitude: position.coords.latitude,
-        longitude: position.coords.longitude
+        longitude: position.coords.longitude,
+        accuracy: Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : undefined
       }),
       () => resolve({}),
       {

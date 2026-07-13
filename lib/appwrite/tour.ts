@@ -90,6 +90,7 @@ export type PatrolCreateInput = {
   includeAllEstates?: boolean;
   deviceLatitude?: number;
   deviceLongitude?: number;
+  deviceAccuracy?: number;
   scannedAt?: string;
   isOfflineLog?: boolean;
   deviceLabel?: string;
@@ -157,7 +158,7 @@ export async function createGuardCheckpoint(input: CheckpointCreateInput) {
     qrToken,
     latitude: finiteNumber(input.latitude),
     longitude: finiteNumber(input.longitude),
-    allowedRadius: Math.max(5, Math.round(finiteNumber(input.allowedRadius) ?? 25)),
+    allowedRadius: Math.max(5, Math.round(finiteNumber(input.allowedRadius) ?? 60)),
     status: input.status ?? "active",
     sortOrder: 0,
     createdAt: now,
@@ -222,13 +223,27 @@ export async function createGuardPatrolEvent(input: PatrolCreateInput) {
   const distanceMeters = checkpoint && hasDeviceLocation && hasCheckpointLocation
     ? haversineMeters(deviceLatitude, deviceLongitude, checkpoint.latitude!, checkpoint.longitude!)
     : undefined;
-  const allowedRadius = checkpoint?.allowedRadius ?? 25;
-  const isGpsVerified = Boolean(distanceMeters !== undefined && distanceMeters <= allowedRadius);
+  const allowedRadius = checkpoint?.allowedRadius ?? 60;
+  // Phone GPS is rarely exact: widen the acceptance window by the device's
+  // reported accuracy (capped) so honest scans at the checkpoint pass even
+  // with a weak fix, while far-away scans still fail.
+  const deviceAccuracy = finiteNumber(input.deviceAccuracy);
+  const effectiveAllowance = allowedRadius + Math.min(Math.max(deviceAccuracy ?? 0, 0), 100);
+  const isGpsVerified = Boolean(distanceMeters !== undefined && distanceMeters <= effectiveAllowance);
   const status: GuardPatrolEvent["status"] = checkpoint
     ? isGpsVerified
       ? "verified"
       : "gps_violation"
     : "checkpoint_missing";
+  const gpsNote = !checkpoint
+    ? "Scanned checkpoint token did not match a configured checkpoint."
+    : isGpsVerified
+      ? "Checkpoint scan verified."
+      : !hasCheckpointLocation
+        ? "This checkpoint has no pinned GPS location. Re-pin it at the physical spot using a phone."
+        : !hasDeviceLocation
+          ? "This device did not share its location. Enable GPS/location permission to verify patrols."
+          : `Device appears ${Math.round(distanceMeters ?? 0)}m from the checkpoint (allowed ${Math.round(effectiveAllowance)}m).`;
   const rowId = safeAppwriteId("patrol", `${guardId}:${qrToken}:${scannedAt}`);
 
   const row = await appwriteUpsertRow<AppwritePatrolRow>("guard_patrol_events", rowId, {
@@ -252,11 +267,7 @@ export async function createGuardPatrolEvent(input: PatrolCreateInput) {
     isGpsVerified,
     isOfflineLog: Boolean(input.isOfflineLog),
     deviceLabel: input.deviceLabel?.trim() || "Mobile guard device",
-    note: checkpoint
-      ? isGpsVerified
-        ? "Checkpoint scan verified."
-        : "GPS distance is outside allowed checkpoint radius."
-      : "Scanned checkpoint token did not match a configured checkpoint.",
+    note: gpsNote,
     createdAt: scannedAt,
     updatedAt: new Date().toISOString()
   });

@@ -1,4 +1,4 @@
-const CACHE_NAME = "corso-v2026-07-12-demo-estate-1";
+const CACHE_NAME = "corso-v2026-07-12-guard-tour-gps-1";
 const OFFLINE_URL = "/offline.html";
 const APP_SHELL = [
   OFFLINE_URL,
