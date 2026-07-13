@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
       guardName: String(body.guardName ?? ""),
       deviceLatitude: Number(body.deviceLatitude),
       deviceLongitude: Number(body.deviceLongitude),
+      deviceAccuracy: body.deviceAccuracy === undefined ? undefined : Number(body.deviceAccuracy),
       scannedAt: String(body.scannedAt ?? ""),
       isOfflineLog: Boolean(body.isOfflineLog),
       deviceLabel: String(body.deviceLabel ?? ""),
