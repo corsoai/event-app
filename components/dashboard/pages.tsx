@@ -7970,6 +7970,70 @@ function facilityTitleCase(value: string) {
   return value ? value.replace(/_/g, " ").replace(/\b\w/g, (char) => char.toUpperCase()) : "—";
 }
 
+const WO_PRIORITY_STYLES: Record<WorkOrder["priority"], string> = {
+  urgent: "border-red-500/40 bg-red-500/15 text-red-300",
+  high: "border-amber-500/40 bg-amber-500/15 text-amber-300",
+  medium: "border-sky-500/40 bg-sky-500/15 text-sky-300",
+  low: "border-slate-500/40 bg-slate-500/15 text-slate-300"
+};
+
+const WO_STATUS_STYLES: Record<WorkOrder["status"], string> = {
+  open: "border-amber-500/40 bg-amber-500/15 text-amber-300",
+  assigned: "border-sky-500/40 bg-sky-500/15 text-sky-300",
+  in_progress: "border-blue-500/40 bg-blue-500/15 text-blue-300",
+  on_hold: "border-slate-500/40 bg-slate-500/15 text-slate-300",
+  resolved: "border-emerald-500/40 bg-emerald-500/15 text-emerald-300",
+  closed: "border-slate-500/40 bg-slate-600/15 text-slate-400"
+};
+
+const WO_PRIORITY_RANK: Record<WorkOrder["priority"], number> = { urgent: 0, high: 1, medium: 2, low: 3 };
+
+function isWorkOrderOpen(order: WorkOrder) {
+  return order.status !== "resolved" && order.status !== "closed";
+}
+
+function isWorkOrderOverdue(order: WorkOrder) {
+  return isWorkOrderOpen(order) && Boolean(order.dueDate) && order.dueDate.slice(0, 10) < dateInputValue();
+}
+
+function workOrderAgeLabel(iso: string) {
+  if (!iso) {
+    return "";
+  }
+  const ms = Date.now() - new Date(iso).getTime();
+  if (!Number.isFinite(ms) || ms < 0) {
+    return "";
+  }
+  const days = Math.floor(ms / 86400000);
+  if (days === 0) {
+    return "opened today";
+  }
+  return days === 1 ? "opened 1 day ago" : `opened ${days} days ago`;
+}
+
+function compareWorkOrders(left: WorkOrder, right: WorkOrder) {
+  const leftOverdue = isWorkOrderOverdue(left) ? 0 : 1;
+  const rightOverdue = isWorkOrderOverdue(right) ? 0 : 1;
+  if (leftOverdue !== rightOverdue) {
+    return leftOverdue - rightOverdue;
+  }
+  const leftOpen = isWorkOrderOpen(left) ? 0 : 1;
+  const rightOpen = isWorkOrderOpen(right) ? 0 : 1;
+  if (leftOpen !== rightOpen) {
+    return leftOpen - rightOpen;
+  }
+  const priorityDiff = WO_PRIORITY_RANK[left.priority] - WO_PRIORITY_RANK[right.priority];
+  if (priorityDiff !== 0) {
+    return priorityDiff;
+  }
+  const leftDue = left.dueDate || "9999-12-31";
+  const rightDue = right.dueDate || "9999-12-31";
+  if (leftDue !== rightDue) {
+    return leftDue.localeCompare(rightDue);
+  }
+  return (right.createdAt || "").localeCompare(left.createdAt || "");
+}
+
 export function AdminFacilitiesPage() {
   const [tab, setTab] = useState<"facilities" | "workorders">("facilities");
   const [facilities, setFacilities] = useState<Facility[]>([]);
@@ -7985,6 +8049,13 @@ export function AdminFacilitiesPage() {
   const [woForm, setWoForm] = useState<WorkOrderFormState>(emptyWorkOrderForm());
   const [editingWo, setEditingWo] = useState<WorkOrder | null>(null);
   const [showWoForm, setShowWoForm] = useState(false);
+  const [woFilter, setWoFilter] = useState<"todo" | "doing" | "done" | "all">("todo");
+  const facilityFormRef = useRef<HTMLDivElement>(null);
+  const woFormRef = useRef<HTMLDivElement>(null);
+
+  function scrollFormIntoView(ref: { current: HTMLDivElement | null }) {
+    setTimeout(() => ref.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 80);
+  }
 
   useEffect(() => {
     let active = true;
@@ -8098,8 +8169,44 @@ export function AdminFacilitiesPage() {
     }
   }
 
-  const openWorkOrders = workOrders.filter((order) => order.status !== "resolved" && order.status !== "closed").length;
+  // One-tap status moves so a manager never needs to open the edit form just
+  // to progress a job: Open -> Start work -> Mark done.
+  async function quickSetWoStatus(order: WorkOrder, status: WorkOrder["status"]) {
+    setSaving(true);
+    try {
+      await saveAppwriteWorkOrder({ id: order.id, ...workOrderToForm(order), cost: order.cost || 0, status });
+      await reloadWorkOrders();
+      setMessage("");
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Unable to update work order.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  const openWorkOrders = workOrders.filter(isWorkOrderOpen).length;
+  const overdueWorkOrders = workOrders.filter(isWorkOrderOverdue).length;
   const attentionFacilities = facilities.filter((facility) => facility.status !== "operational").length;
+  const woCounts = {
+    todo: workOrders.filter((order) => order.status === "open" || order.status === "assigned").length,
+    doing: workOrders.filter((order) => order.status === "in_progress" || order.status === "on_hold").length,
+    done: workOrders.filter((order) => !isWorkOrderOpen(order)).length,
+    all: workOrders.length
+  };
+  const visibleWorkOrders = workOrders
+    .filter((order) => {
+      if (woFilter === "todo") return order.status === "open" || order.status === "assigned";
+      if (woFilter === "doing") return order.status === "in_progress" || order.status === "on_hold";
+      if (woFilter === "done") return !isWorkOrderOpen(order);
+      return true;
+    })
+    .sort(compareWorkOrders);
+  const woFilterChips: Array<{ key: typeof woFilter; label: string }> = [
+    { key: "todo", label: `To do (${woCounts.todo})` },
+    { key: "doing", label: `Doing (${woCounts.doing})` },
+    { key: "done", label: `Done (${woCounts.done})` },
+    { key: "all", label: `All (${woCounts.all})` }
+  ];
 
   return (
     <>
@@ -8109,8 +8216,8 @@ export function AdminFacilitiesPage() {
       <div className="mb-4 grid grid-cols-2 gap-3 sm:grid-cols-4">
         <StatCard label="Facilities" value={String(facilities.length)} helper="Registered" icon={<Building2 className="h-5 w-5" />} />
         <StatCard label="Needs attention" value={String(attentionFacilities)} helper="Not operational" icon={<AlertTriangle className="h-5 w-5" />} />
-        <StatCard label="Work orders" value={String(workOrders.length)} helper="All time" icon={<ClipboardList className="h-5 w-5" />} />
-        <StatCard label="Open" value={String(openWorkOrders)} helper="Unresolved" icon={<Wrench className="h-5 w-5" />} />
+        <StatCard label="Open jobs" value={String(openWorkOrders)} helper="Not yet done" icon={<Wrench className="h-5 w-5" />} />
+        <StatCard label="Overdue" value={String(overdueWorkOrders)} helper={overdueWorkOrders > 0 ? "Past due date" : "Nothing late"} icon={<ClipboardList className="h-5 w-5" />} />
       </div>
 
       <div className="mb-4 flex gap-2">
@@ -8124,7 +8231,7 @@ export function AdminFacilitiesPage() {
             <CardHeader
               title="Facility register"
               description="Estate assets, equipment and amenities."
-              action={<Button onClick={() => { setEditingFacility(null); setFacilityForm(emptyFacilityForm()); setShowFacilityForm(true); }}><Plus className="h-4 w-4" />Add facility</Button>}
+              action={<Button onClick={() => { setEditingFacility(null); setFacilityForm(emptyFacilityForm()); setShowFacilityForm(true); scrollFormIntoView(facilityFormRef); }}><Plus className="h-4 w-4" />Add facility</Button>}
             />
             {loading ? (
               <p className="text-sm text-slate-300">Loading...</p>
@@ -8137,7 +8244,7 @@ export function AdminFacilitiesPage() {
                       <p className="mt-0.5 truncate text-xs text-slate-400">{facilityTitleCase(facility.category)}{facility.location ? ` · ${facility.location}` : ""} · {facilityTitleCase(facility.status)}</p>
                     </div>
                     <div className="flex shrink-0 gap-2">
-                      <Button variant="secondary" className="min-h-9 px-3" onClick={() => { setEditingFacility(facility); setFacilityForm(facilityToForm(facility)); setShowFacilityForm(true); }}>Edit</Button>
+                      <Button variant="secondary" className="min-h-9 px-3" onClick={() => { setEditingFacility(facility); setFacilityForm(facilityToForm(facility)); setShowFacilityForm(true); scrollFormIntoView(facilityFormRef); }}>Edit</Button>
                       <Button variant="ghost" className="min-h-9 px-3 text-danger" onClick={() => void removeFacility(facility)}><Trash2 className="h-4 w-4" /></Button>
                     </div>
                   </div>
@@ -8149,6 +8256,7 @@ export function AdminFacilitiesPage() {
           </Card>
 
           {showFacilityForm ? (
+            <div ref={facilityFormRef}>
             <Card className="mt-4">
               <CardHeader
                 title={editingFacility ? `Edit ${editingFacility.name}` : "Add facility"}
@@ -8187,6 +8295,7 @@ export function AdminFacilitiesPage() {
                 </div>
               </form>
             </Card>
+            </div>
           ) : null}
         </>
       ) : (
@@ -8195,31 +8304,75 @@ export function AdminFacilitiesPage() {
             <CardHeader
               title="Work orders"
               description="Maintenance requests and their status."
-              action={<Button onClick={() => { setEditingWo(null); setWoForm(emptyWorkOrderForm()); setShowWoForm(true); }}><Plus className="h-4 w-4" />New work order</Button>}
+              action={<Button onClick={() => { setEditingWo(null); setWoForm(emptyWorkOrderForm()); setShowWoForm(true); scrollFormIntoView(woFormRef); }}><Plus className="h-4 w-4" />New work order</Button>}
             />
+            <div className="mb-3 flex flex-wrap gap-2">
+              {woFilterChips.map((chip) => (
+                <button
+                  key={chip.key}
+                  type="button"
+                  onClick={() => setWoFilter(chip.key)}
+                  className={`min-h-9 rounded-full border px-4 text-sm font-semibold transition ${
+                    woFilter === chip.key
+                      ? "border-smart bg-smart/20 text-smart"
+                      : "border-white/15 bg-white/5 text-slate-300"
+                  }`}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
             {loading ? (
               <p className="text-sm text-slate-300">Loading...</p>
-            ) : workOrders.length ? (
+            ) : visibleWorkOrders.length ? (
               <div className="grid gap-2">
-                {workOrders.map((order) => (
-                  <div key={order.id} className="flex items-center justify-between gap-3 rounded-lg border border-white/10 bg-white/5 p-3">
-                    <div className="min-w-0">
-                      <p className="truncate font-semibold text-white">{order.title}</p>
-                      <p className="mt-0.5 truncate text-xs text-slate-400">{order.facilityName ? `${order.facilityName} · ` : ""}{facilityTitleCase(order.priority)} · {facilityTitleCase(order.status)}{order.assignedTo ? ` · ${order.assignedTo}` : ""}</p>
+                {visibleWorkOrders.map((order) => {
+                  const overdue = isWorkOrderOverdue(order);
+                  const quickAction = order.status === "open" || order.status === "assigned"
+                    ? { label: "Start work", next: "in_progress" as const }
+                    : order.status === "in_progress" || order.status === "on_hold"
+                      ? { label: "Mark done", next: "resolved" as const }
+                      : null;
+                  return (
+                    <div key={order.id} className={`rounded-lg border p-3 ${overdue ? "border-red-500/40 bg-red-500/5" : "border-white/10 bg-white/5"}`}>
+                      <div className="flex flex-wrap items-start justify-between gap-2">
+                        <p className="min-w-0 flex-1 font-semibold text-white">{order.title}</p>
+                        <div className="flex shrink-0 flex-wrap gap-1.5">
+                          {overdue ? (
+                            <span className="rounded-full border border-red-500/40 bg-red-500/15 px-2 py-0.5 text-[11px] font-semibold text-red-300">Overdue</span>
+                          ) : null}
+                          <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${WO_PRIORITY_STYLES[order.priority]}`}>{facilityTitleCase(order.priority)}</span>
+                          <span className={`rounded-full border px-2 py-0.5 text-[11px] font-semibold ${WO_STATUS_STYLES[order.status]}`}>{facilityTitleCase(order.status)}</span>
+                        </div>
+                      </div>
+                      <p className="mt-1.5 text-xs text-slate-400">
+                        {order.facilityName ? `${order.facilityName} · ` : ""}
+                        {order.assignedTo ? `${order.assignedTo} · ` : ""}
+                        {workOrderAgeLabel(order.createdAt)}
+                        {order.dueDate ? ` · due ${order.dueDate}` : ""}
+                      </p>
+                      <div className="mt-3 flex flex-wrap items-center gap-2">
+                        {quickAction ? (
+                          <Button className="min-h-9 px-4" disabled={saving} onClick={() => void quickSetWoStatus(order, quickAction.next)}>
+                            {quickAction.label}
+                          </Button>
+                        ) : null}
+                        <Button variant="secondary" className="min-h-9 px-3" onClick={() => { setEditingWo(order); setWoForm(workOrderToForm(order)); setShowWoForm(true); scrollFormIntoView(woFormRef); }}>Edit</Button>
+                        <Button variant="ghost" className="min-h-9 px-3 text-danger" onClick={() => void removeWo(order)}><Trash2 className="h-4 w-4" /></Button>
+                      </div>
                     </div>
-                    <div className="flex shrink-0 gap-2">
-                      <Button variant="secondary" className="min-h-9 px-3" onClick={() => { setEditingWo(order); setWoForm(workOrderToForm(order)); setShowWoForm(true); }}>Edit</Button>
-                      <Button variant="ghost" className="min-h-9 px-3 text-danger" onClick={() => void removeWo(order)}><Trash2 className="h-4 w-4" /></Button>
-                    </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             ) : (
-              <p className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">No work orders yet. Tap &quot;New work order&quot;.</p>
+              <p className="rounded-lg border border-white/10 bg-white/5 p-4 text-sm text-slate-300">
+                {workOrders.length ? "Nothing in this view. Tap another tab above." : "No work orders yet. Tap “New work order”."}
+              </p>
             )}
           </Card>
 
           {showWoForm ? (
+            <div ref={woFormRef}>
             <Card className="mt-4">
               <CardHeader
                 title={editingWo ? "Edit work order" : "New work order"}
@@ -8266,6 +8419,7 @@ export function AdminFacilitiesPage() {
                 </div>
               </form>
             </Card>
+            </div>
           ) : null}
         </>
       )}
