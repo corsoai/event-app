@@ -109,7 +109,7 @@ export default function LandingPage() {
           </nav>
           <Link
             href="/login"
-            className="rounded-full bg-[#1d1d1f] px-4 py-1.5 text-[13px] font-medium text-white transition hover:bg-black"
+            className="rounded-full bg-[#1d1d1f] px-4 py-1.5 text-[13px] font-medium text-[#fff] transition hover:bg-black"
           >
             Sign in
           </Link>
@@ -128,7 +128,7 @@ export default function LandingPage() {
         <div className="mt-9 flex flex-col items-center justify-center gap-4 sm:flex-row">
           <a
             href="#contact"
-            className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-7 py-3.5 text-[15px] font-semibold text-white shadow-sm transition hover:bg-emerald-500"
+            className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-7 py-3.5 text-[15px] font-semibold text-[#fff] shadow-sm transition hover:bg-emerald-500"
           >
             Book a free demo <ArrowRight className="h-4 w-4" />
           </a>
@@ -223,7 +223,7 @@ export default function LandingPage() {
         <div className="mt-12 grid gap-4 md:grid-cols-3">
           {steps.map(([title, body], index) => (
             <div key={title} className="rounded-2xl bg-[#f5f5f7] p-6">
-              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600 text-sm font-semibold text-white">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600 text-sm font-semibold text-[#fff]">
                 {index + 1}
               </span>
               <h3 className="mt-4 text-[17px] font-semibold text-[#1d1d1f]">{title}</h3>
