@@ -102,14 +102,14 @@ export default function LandingPage() {
             <BrandMark className="h-8 w-8" />
             <span className="text-[17px] font-semibold tracking-tight text-[#1d1d1f]">Corso</span>
           </Link>
-          <nav className="hidden items-center gap-8 text-[13px] text-[#424245] md:flex">
+          <nav className="hidden items-center gap-8 text-sm text-[#424245] md:flex">
             <a href="#features" className="transition hover:text-black">What it does</a>
             <a href="#how" className="transition hover:text-black">How it works</a>
             <a href="#contact" className="transition hover:text-black">Get started</a>
           </nav>
           <Link
             href="/login"
-            className="rounded-full bg-[#1d1d1f] px-4 py-1.5 text-[13px] font-medium text-[#fff] transition hover:bg-black"
+            className="rounded-full bg-[#1d1d1f] px-4 py-2 text-sm font-medium text-[#fff] transition hover:bg-black"
           >
             Sign in
           </Link>
@@ -117,11 +117,11 @@ export default function LandingPage() {
       </header>
 
       <section className="px-5 pb-16 pt-20 text-center sm:px-6 sm:pt-28">
-        <p className="text-[15px] font-semibold text-emerald-700">For gated communities and estates</p>
+        <p className="text-base font-semibold text-emerald-700">For gated communities and estates</p>
         <h1 className="mx-auto mt-4 max-w-3xl text-[2.6rem] font-semibold leading-[1.08] tracking-tight text-[#1d1d1f] sm:text-6xl">
           Run your estate without the chaos.
         </h1>
-        <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-[#6e6e73]">
+        <p className="mx-auto mt-6 max-w-2xl text-xl leading-9 text-[#6e6e73]">
           Gate security, visitor passes, service charge, maintenance and resident records —
           in one simple app. Whether you manage twenty homes or two thousand.
         </p>
@@ -139,7 +139,7 @@ export default function LandingPage() {
             Try the demo estate <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
-        <p className="mt-5 text-[13px] text-[#86868b]">No card needed. The demo estate is open — tap in and look around.</p>
+        <p className="mt-5 text-sm text-[#86868b]">No card needed. The demo estate is open — tap in and look around.</p>
 
         <div className="mx-auto mt-16 max-w-3xl">
           <div className="rounded-3xl bg-[#f5f5f7] p-4 sm:p-6">
@@ -195,7 +195,7 @@ export default function LandingPage() {
             <h2 className="text-3xl font-semibold tracking-tight text-[#1d1d1f] sm:text-[2.5rem] sm:leading-tight">
               The everyday work of an estate, handled.
             </h2>
-            <p className="mt-4 text-[17px] leading-7 text-[#6e6e73]">
+            <p className="mt-4 text-lg leading-8 text-[#6e6e73]">
               Corso covers the jobs that eat your week: the gate, the money, the maintenance,
               and keeping residents informed.
             </p>
@@ -206,8 +206,8 @@ export default function LandingPage() {
                 <div className="inline-flex rounded-xl bg-emerald-100/70 p-2.5">
                   <Icon className="h-5 w-5 text-emerald-700" />
                 </div>
-                <h3 className="mt-4 text-[15px] font-semibold text-[#1d1d1f]">{title}</h3>
-                <p className="mt-2 text-sm leading-6 text-[#6e6e73]">{body}</p>
+                <h3 className="mt-4 text-[17px] font-semibold text-[#1d1d1f]">{title}</h3>
+                <p className="mt-2 text-[15px] leading-7 text-[#6e6e73]">{body}</p>
               </div>
             ))}
           </div>
@@ -227,7 +227,7 @@ export default function LandingPage() {
                 {index + 1}
               </span>
               <h3 className="mt-4 text-[17px] font-semibold text-[#1d1d1f]">{title}</h3>
-              <p className="mt-2 text-sm leading-6 text-[#6e6e73]">{body}</p>
+              <p className="mt-2 text-[15px] leading-7 text-[#6e6e73]">{body}</p>
             </div>
           ))}
         </div>
@@ -239,7 +239,7 @@ export default function LandingPage() {
             <h2 className="text-3xl font-semibold tracking-tight text-[#1d1d1f] sm:text-[2.5rem] sm:leading-tight">
               One platform. Every estate.
             </h2>
-            <p className="mt-4 text-[17px] leading-7 text-[#6e6e73]">
+            <p className="mt-4 text-lg leading-8 text-[#6e6e73]">
               Every estate on Corso gets its own secure space — its own residents, gates, billing and reports.
               Nothing crosses over. Each role sees only its own world.
             </p>
@@ -249,7 +249,7 @@ export default function LandingPage() {
               <div key={title} className="rounded-2xl bg-white p-6">
                 <Icon className="h-6 w-6 text-emerald-700" />
                 <h3 className="mt-4 text-[17px] font-semibold text-[#1d1d1f]">{title}</h3>
-                <p className="mt-2 text-sm leading-6 text-[#6e6e73]">{body}</p>
+                <p className="mt-2 text-[15px] leading-7 text-[#6e6e73]">{body}</p>
               </div>
             ))}
           </div>
@@ -259,7 +259,7 @@ export default function LandingPage() {
               "Installs like an app, no app store needed",
               "Built and supported in Nigeria"
             ].map((point) => (
-              <p key={point} className="flex items-center gap-2 text-sm text-[#424245]">
+              <p key={point} className="flex items-center gap-2 text-[15px] text-[#424245]">
                 <CheckCircle2 className="h-4 w-4 text-emerald-600" /> {point}
               </p>
             ))}
@@ -298,7 +298,7 @@ export default function LandingPage() {
               <p className="text-xs text-[#86868b]">Estate management for African communities</p>
             </div>
           </div>
-          <nav className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px] text-[#6e6e73]">
+          <nav className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-[#6e6e73]">
             <a href="#features" className="hover:text-black">What it does</a>
             <a href="#how" className="hover:text-black">How it works</a>
             <Link href="/demo" className="hover:text-black">Demo</Link>

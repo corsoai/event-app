@@ -963,7 +963,16 @@ async function findExistingResidentForLogin(
 const ASSIGNABLE_ESTATE_IDS = new Set([APPWRITE_LBSVIEW_ESTATE_ID, "platform", "corso-demo-estate"]);
 
 function canonicalEstateId(estateId: string) {
-  return ASSIGNABLE_ESTATE_IDS.has(estateId) ? estateId : APPWRITE_LBSVIEW_ESTATE_ID;
+  const trimmed = estateId.trim();
+  if (ASSIGNABLE_ESTATE_IDS.has(trimmed)) {
+    return trimmed;
+  }
+  // Estates created from the super-admin Estates page use lowercase slug IDs.
+  // Accept them so users can be assigned to any live estate.
+  if (/^[a-z0-9][a-z0-9-]{2,35}$/.test(trimmed)) {
+    return trimmed;
+  }
+  return APPWRITE_LBSVIEW_ESTATE_ID;
 }
 
 function assertEstateScope(rowEstateId: string | undefined, scope: AppwriteEstateScope, message: string) {
