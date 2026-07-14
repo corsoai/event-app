@@ -119,6 +119,9 @@ import {
   readAppwriteSecurityVisitorHistory,
   updateAppwriteSosIncident,
   updateAppwriteVisitorStatus as saveAppwriteVisitorStatus,
+  readAppwriteSuperEstates,
+  createAppwriteSuperEstate,
+  type SuperEstateView,
   type SosCreateInput,
   type SosUpdateInput,
   type AppwriteVisitorView
@@ -639,6 +642,30 @@ function mergeAccountingState(state: LocalEstateState, accounting: AppwriteAccou
     payments: accounting?.payments.length ? accounting.payments : state.payments,
     auditLogs: accounting?.auditLogs.length ? accounting.auditLogs : state.auditLogs
   };
+}
+
+function useLiveEstates() {
+  const [liveEstates, setLiveEstates] = useState<SuperEstateView[]>([]);
+  const [loadingEstates, setLoadingEstates] = useState(true);
+  const [estatesError, setEstatesError] = useState("");
+
+  async function reloadEstates() {
+    try {
+      setLiveEstates(await readAppwriteSuperEstates());
+      setEstatesError("");
+    } catch (error) {
+      setEstatesError(error instanceof Error ? error.message : "Estates could not be loaded.");
+    } finally {
+      setLoadingEstates(false);
+    }
+  }
+
+  useEffect(() => {
+    void reloadEstates();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return { liveEstates, loadingEstates, estatesError, reloadEstates };
 }
 
 function useLiveVisitorViews(loader: () => Promise<AppwriteVisitorView[]>, options: { refreshIntervalMs?: number } = {}) {
@@ -4913,6 +4940,7 @@ export function SuperAdminDashboard() {
   const { state } = useLocalEstateStore();
   const { visitorViews, loadingVisitors } = useLiveVisitorViews(readAppwriteAdminVisitors);
   const { summary, loadingSummary } = useAdminAccountingSummaryOnly();
+  const { liveEstates, loadingEstates } = useLiveEstates();
   const platformResidents = summary?.residentsCount ?? state.residents.length;
 
   return (
@@ -4923,7 +4951,7 @@ export function SuperAdminDashboard() {
         </Link>
       </PageHeader>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Managed estates" value={String(state.estates.length)} helper="Platform communities" icon={<Building2 className="h-5 w-5" />} />
+        <StatCard label="Managed estates" value={loadingEstates ? "..." : String(liveEstates.length)} helper="Platform communities" icon={<Building2 className="h-5 w-5" />} />
         <StatCard label="Platform residents" value={loadingSummary ? "..." : String(platformResidents)} helper="Live resident records" icon={<Users className="h-5 w-5" />} />
         <StatCard label="Visitor events" value={loadingVisitors ? "..." : String(visitorViews.length)} helper="Across estates today" icon={<DoorOpen className="h-5 w-5" />} />
         <StatCard label="Open tickets" value={String(state.complaints.filter((item) => item.status !== "resolved").length)} helper="Needs estate admin action" icon={<ClipboardList className="h-5 w-5" />} />
@@ -4936,22 +4964,31 @@ export function SuperAdminDashboard() {
 }
 
 export function EstateDirectoryPage({ compact = false }: { compact?: boolean }) {
-  const { state, addEstate } = useLocalEstateStore();
+  const { liveEstates, loadingEstates, estatesError, reloadEstates } = useLiveEstates();
+
+  async function createEstate(input: { name: string; address: string; contactEmail: string; contactPhone: string; gateName: string }) {
+    const estate = await createAppwriteSuperEstate(input);
+    await reloadEstates();
+    return estate;
+  }
 
   return (
     <>
       {!compact ? <PageHeader title="Estates" description="Create and manage gated estates on the Corso platform. Click an estate name to open its full profile." /> : null}
-      {!compact ? <EstateComposer onCreateEstate={addEstate} /> : null}
+      {!compact ? <EstateComposer onCreateEstate={createEstate} /> : null}
+      {estatesError ? <p className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{estatesError}</p> : null}
       <DataTable
         title="Estate directory"
-        description="A simple directory for scanning estates quickly."
+        description="Live estates on the Corso platform."
         headers={["Estate name", "Location"]}
-        rows={state.estates.map((estate) => [
-          <Link key={estate.id} href={`/super-admin/estates/${encodeURIComponent(estate.id)}`} className="font-medium text-white hover:text-smart">
-            {estate.name}
-          </Link>,
-          estate.address
-        ])}
+        rows={loadingEstates
+          ? [["Loading estates...", ""]]
+          : liveEstates.map((estate) => [
+              <Link key={estate.id} href={`/super-admin/estates/${encodeURIComponent(estate.id)}`} className="font-medium text-white hover:text-smart">
+                {estate.name}
+              </Link>,
+              estate.address
+            ])}
       />
     </>
   );
@@ -4963,7 +5000,8 @@ export function EstateDetailPage({ estateId }: { estateId: string }) {
   const [editingResident, setEditingResident] = useState<Resident | null>(null);
   const [savingResident, setSavingResident] = useState(false);
   const [residentMessage, setResidentMessage] = useState("");
-  const estate = state.estates.find((item) => item.id === estateId);
+  const { liveEstates, loadingEstates } = useLiveEstates();
+  const estate = liveEstates.find((item) => item.id === estateId) ?? state.estates.find((item) => item.id === estateId);
 
   async function saveEstateResident(resident: Resident, input: ResidentEditInput) {
     setSavingResident(true);
@@ -4978,6 +5016,17 @@ export function EstateDetailPage({ estateId }: { estateId: string }) {
     } finally {
       setSavingResident(false);
     }
+  }
+
+  if (!estate && loadingEstates) {
+    return (
+      <>
+        <PageHeader title="Loading estate..." description="Fetching the estate profile." />
+        <Card>
+          <CardHeader title="One moment" description="Loading live estate records." />
+        </Card>
+      </>
+    );
   }
 
   if (!estate) {
@@ -5130,6 +5179,8 @@ type TemporaryCredential = {
 
 export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }) {
   const { state, approveAccessRequest, rejectAccessRequest, refreshEstateState } = useLocalEstateStore();
+  const { liveEstates } = useLiveEstates();
+  const estateOptions = liveEstates.length ? liveEstates : state.estates;
   const [users, setUsers] = useState<ManagedAppUser[]>([]);
   const [role, setRole] = useState<UserRole>(scope === "super-admin" ? "estate_admin" : "resident");
   const [message, setMessage] = useState("");
@@ -5463,7 +5514,7 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
             {role !== "super_admin" ? (
               <Field label="Estate">
                 <Select name="estateId" required>
-                  {state.estates.map((estate) => (
+                  {estateOptions.map((estate) => (
                     <option key={estate.id} value={estate.id}>
                       {estate.name}
                     </option>
@@ -5531,8 +5582,8 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
               </Field>
               {editRole !== "super_admin" ? (
                 <Field label="Estate">
-                  <Select name="estateId" defaultValue={editingUser.estateId ?? state.estates[0]?.id} required>
-                    {state.estates.map((estate) => (
+                  <Select name="estateId" defaultValue={editingUser.estateId ?? estateOptions[0]?.id} required>
+                    {estateOptions.map((estate) => (
                       <option key={estate.id} value={estate.id}>
                         {estate.name}
                       </option>
@@ -11080,22 +11131,32 @@ export function MarketplacePage() {
   );
 }
 
-function EstateComposer({ onCreateEstate }: { onCreateEstate: (input: Omit<Estate, "id">) => Estate }) {
+function EstateComposer({ onCreateEstate }: { onCreateEstate: (input: Omit<Estate, "id">) => Promise<{ name: string }> }) {
   const [message, setMessage] = useState("");
+  const [savingEstate, setSavingEstate] = useState(false);
 
-  function submitEstate(event: FormEvent<HTMLFormElement>) {
+  async function submitEstate(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const estate = onCreateEstate({
-      name: String(form.get("name") ?? ""),
-      address: String(form.get("address") ?? ""),
-      contactEmail: String(form.get("contactEmail") ?? ""),
-      contactPhone: String(form.get("contactPhone") ?? ""),
-      gateName: String(form.get("gateName") ?? "Main Gate")
-    });
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
+    setSavingEstate(true);
 
-    setMessage(`${estate.name} has been created. You can now assign admins, residents, billing, and access rules to it.`);
-    event.currentTarget.reset();
+    try {
+      const estate = await onCreateEstate({
+        name: String(form.get("name") ?? ""),
+        address: String(form.get("address") ?? ""),
+        contactEmail: String(form.get("contactEmail") ?? ""),
+        contactPhone: String(form.get("contactPhone") ?? ""),
+        gateName: String(form.get("gateName") ?? "Main Gate")
+      });
+
+      setMessage(`${estate.name} has been created. You can now assign admins, residents, billing, and access rules to it.`);
+      formElement.reset();
+    } catch (error) {
+      setMessage(error instanceof Error ? error.message : "Estate could not be created.");
+    } finally {
+      setSavingEstate(false);
+    }
   }
 
   return (
@@ -11110,7 +11171,7 @@ function EstateComposer({ onCreateEstate }: { onCreateEstate: (input: Omit<Estat
         </div>
         <Field label="Address"><Textarea name="address" placeholder="Estate address" required /></Field>
         {message ? <p className="rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{message}</p> : null}
-        <Button className="w-fit"><Building2 className="h-4 w-4" />Create estate</Button>
+        <Button className="w-fit" disabled={savingEstate}><Building2 className="h-4 w-4" />{savingEstate ? "Creating..." : "Create estate"}</Button>
       </form>
     </Card>
   );
