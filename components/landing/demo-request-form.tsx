@@ -49,7 +49,7 @@ export function DemoRequestForm() {
         ) : null}
         <button
           type="submit"
-          className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-emerald-600 px-7 py-3.5 text-[15px] font-semibold text-white transition hover:bg-emerald-500 sm:w-auto"
+          className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-emerald-600 px-7 py-3.5 text-[15px] font-semibold text-[#fff] transition hover:bg-emerald-500 sm:w-auto"
         >
           Request a demo
         </button>
