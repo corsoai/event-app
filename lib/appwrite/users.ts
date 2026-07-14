@@ -19,6 +19,37 @@ import {
   setupAppwriteOnboardingSchema
 } from "@/lib/appwrite/server";
 import { listAppwriteTableRows, type AppwriteEstateScope } from "@/lib/appwrite/residents";
+import { corsoEmailHtml, isCorsoEmailEnabled, sendCorsoEmail } from "@/lib/email/resend";
+
+const APP_LOGIN_URL = "https://app.corso.ng/login";
+
+async function sendLoginDetailsEmail(input: {
+  email: string;
+  fullName: string;
+  estateName: string;
+  loginIdentifier: string;
+  temporaryPassword: string;
+  heading: string;
+  intro: string;
+}) {
+  return sendCorsoEmail({
+    to: input.email,
+    subject: `${input.heading} — Corso`,
+    html: corsoEmailHtml({
+      heading: input.heading,
+      greeting: `Hello ${input.fullName},`,
+      lines: [input.intro, "Use the details below to sign in. You will be able to change your password after logging in."],
+      details: [
+        { label: "Estate", value: input.estateName },
+        { label: "Login (phone or email)", value: input.loginIdentifier },
+        { label: "Temporary password", value: input.temporaryPassword }
+      ],
+      ctaLabel: "Open Corso",
+      ctaUrl: APP_LOGIN_URL,
+      footerNote: "If you did not expect this email, please contact your estate administrator."
+    })
+  });
+}
 
 const roleLabels: Record<UserRole, string> = {
   super_admin: "Super Admin",
@@ -210,6 +241,7 @@ export async function createAppwriteManagedUser(input: AppwriteManagedUserInput)
   const estateId = role === "super_admin" ? "platform" : canonicalEstateId(input.estateId);
   const houseNumber = normalizeUnitCode(input.houseNumber);
   const email = rawEmail || phoneAuthEmail(phone);
+  const passwordWasGenerated = !input.password.trim();
   const password = input.password.trim() || makeTemporaryPassword();
   const passwordError = getPasswordQualityError(password);
 
@@ -299,8 +331,22 @@ export async function createAppwriteManagedUser(input: AppwriteManagedUserInput)
     updatedAt: now
   });
 
+  let emailNote = "";
+  if (rawEmail && passwordWasGenerated && isCorsoEmailEnabled()) {
+    const emailResult = await sendLoginDetailsEmail({
+      email: rawEmail,
+      fullName,
+      estateName: estateDisplayName(role, estateId),
+      loginIdentifier: rawEmail || phone,
+      temporaryPassword: password,
+      heading: "Welcome to Corso",
+      intro: `Your ${roleLabels[role]} account for ${estateDisplayName(role, estateId)} has been created.`
+    });
+    emailNote = emailResult.sent ? ` A welcome email with login details was sent to ${rawEmail}.` : "";
+  }
+
   return {
-    message: `${fullName} has been created as ${roleLabels[role]} in Corso.`,
+    message: `${fullName} has been created as ${roleLabels[role]} in Corso.${emailNote}`,
     temporaryPassword: password,
     loginIdentifier: rawEmail || phone,
     user: {
@@ -449,9 +495,51 @@ export async function updateAppwriteManagedUser(
   }
 
   if (input.action === "send_setup_email") {
+    const email = target.email && !isPhoneAuthEmail(target.email) ? target.email : "";
+    if (!email) {
+      return {
+        message: "This user has no email address on file. Add their email first, or use Reset password and share the temporary password privately.",
+        setupLink: ""
+      };
+    }
+    if (!isCorsoEmailEnabled()) {
+      return {
+        message: "Email is not configured yet. Use Reset password and share the temporary password privately.",
+        setupLink: ""
+      };
+    }
+
+    const password = makeTemporaryPassword();
+    await appwriteRequest<AppwriteUser>(`/users/${encodeURIComponent(userId)}/password`, {
+      method: "PATCH",
+      body: { password }
+    });
+    const loginIdentifier = target.phone || email;
+    const emailResult = await sendLoginDetailsEmail({
+      email,
+      fullName: target.fullName ?? "there",
+      estateName: estateDisplayName(target.role ?? "resident", String(target.estateId ?? "")),
+      loginIdentifier,
+      temporaryPassword: password,
+      heading: "Your Corso login details",
+      intro: "Your estate administrator has sent you fresh login details for Corso."
+    });
+
+    if (!emailResult.sent) {
+      return {
+        message: `The email could not be sent (${emailResult.error ?? "unknown error"}). Share the temporary password below privately instead.`,
+        temporaryPassword: password,
+        loginIdentifier,
+        setupLink: "",
+        user: profileRowToManagedUser(target)
+      };
+    }
+
     return {
-      message: "Appwrite email setup is not connected yet. Use Reset password and share the temporary password privately.",
-      setupLink: ""
+      message: `Setup email sent to ${email}. It contains their login and a temporary password.`,
+      loginIdentifier,
+      setupLink: "",
+      user: profileRowToManagedUser(target)
     };
   }
 
@@ -462,10 +550,25 @@ export async function updateAppwriteManagedUser(
       body: { password }
     });
 
+    const resetEmail = target.email && !isPhoneAuthEmail(target.email) ? target.email : "";
+    let resetEmailNote = "";
+    if (resetEmail && isCorsoEmailEnabled()) {
+      const emailResult = await sendLoginDetailsEmail({
+        email: resetEmail,
+        fullName: target.fullName ?? "there",
+        estateName: estateDisplayName(target.role ?? "resident", String(target.estateId ?? "")),
+        loginIdentifier: target.phone || resetEmail,
+        temporaryPassword: password,
+        heading: "Your Corso password was reset",
+        intro: "Your estate administrator has reset your Corso password."
+      });
+      resetEmailNote = emailResult.sent ? ` A copy was also emailed to ${resetEmail}.` : "";
+    }
+
     return {
-      message: `${target.fullName ?? "This user's"} password has been reset. Give the temporary password privately.`,
+      message: `${target.fullName ?? "This user's"} password has been reset. Give the temporary password privately.${resetEmailNote}`,
       temporaryPassword: password,
-      loginIdentifier: target.phone || (target.email && !isPhoneAuthEmail(target.email) ? target.email : ""),
+      loginIdentifier: target.phone || resetEmail,
       user: profileRowToManagedUser(target)
     };
   }
@@ -922,7 +1025,7 @@ function profileRowToManagedUser(row: AppwriteProfileRow): ManagedAppwriteUser {
     email: row.email ?? "",
     phone: row.phone ?? "",
     role: row.role ?? "resident",
-    estate: row.role === "super_admin" ? "All estates" : DEFAULT_ESTATE_NAME,
+    estate: estateDisplayName(row.role ?? "resident", row.estateId ?? APPWRITE_LBSVIEW_ESTATE_ID),
     houseNumber: row.houseNumber ?? "",
     active: row.status !== "inactive",
     createdAt: row.createdAt ?? ""
