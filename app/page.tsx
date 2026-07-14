@@ -30,7 +30,7 @@ const features: Array<[string, string, LucideIcon]> = [
   ],
   [
     "Service charge, tracked",
-    "Set charges per unit, record payments, and see who has paid, part-paid or is owing — with debtor and credit reports ready for your next EXCO meeting.",
+    "Set charges per unit, record payments, and see who has paid, part-paid or is owing — with reports ready for your next EXCO meeting.",
     CreditCard
   ],
   [
@@ -95,80 +95,61 @@ const audiences: Array<[string, string, LucideIcon]> = [
 
 export default function LandingPage() {
   return (
-    <main className="min-h-screen overflow-x-hidden bg-[#0c1315] text-slate-100">
-      <header className="sticky top-0 z-30 border-b border-white/10 bg-[#0c1315]/85 backdrop-blur-xl">
-        <div className="mx-auto flex h-16 w-full max-w-6xl items-center justify-between gap-4 px-5 sm:px-6 lg:px-8">
-          <Link href="/" className="flex items-center gap-3 text-white">
-            <BrandMark className="h-9 w-9" />
-            <span className="text-lg font-semibold tracking-tight">Corso</span>
+    <main className="min-h-screen overflow-x-hidden bg-white text-[#1d1d1f] antialiased">
+      <header className="sticky top-0 z-30 border-b border-black/[0.06] bg-white/70 backdrop-blur-xl">
+        <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between gap-4 px-5 sm:px-6">
+          <Link href="/" className="flex items-center gap-2.5">
+            <BrandMark className="h-8 w-8" />
+            <span className="text-[17px] font-semibold tracking-tight text-[#1d1d1f]">Corso</span>
           </Link>
-          <nav className="hidden items-center gap-7 text-sm text-slate-300 md:flex">
-            <a href="#features" className="transition hover:text-white">What it does</a>
-            <a href="#how" className="transition hover:text-white">How it works</a>
-            <a href="#contact" className="transition hover:text-white">Get started</a>
+          <nav className="hidden items-center gap-8 text-[13px] text-[#424245] md:flex">
+            <a href="#features" className="transition hover:text-black">What it does</a>
+            <a href="#how" className="transition hover:text-black">How it works</a>
+            <a href="#contact" className="transition hover:text-black">Get started</a>
           </nav>
-          <div className="flex items-center gap-3">
-            <Link
-              href="/login"
-              className="rounded-full border border-emerald-400/40 px-4 py-2 text-sm font-semibold text-emerald-300 transition hover:bg-emerald-400/10"
-            >
-              Sign in
-            </Link>
-          </div>
+          <Link
+            href="/login"
+            className="rounded-full bg-[#1d1d1f] px-4 py-1.5 text-[13px] font-medium text-white transition hover:bg-black"
+          >
+            Sign in
+          </Link>
         </div>
       </header>
 
-      <section className="relative border-b border-white/10">
-        <div
-          className="pointer-events-none absolute inset-0"
-          style={{
-            background:
-              "radial-gradient(60rem 28rem at 85% -10%, rgba(52, 211, 153, 0.14), transparent 60%), radial-gradient(40rem 22rem at 0% 110%, rgba(251, 191, 36, 0.08), transparent 60%)"
-          }}
-        />
-        <div className="relative mx-auto grid w-full max-w-6xl items-center gap-12 px-5 pb-16 pt-14 sm:px-6 lg:grid-cols-[1.05fr_0.95fr] lg:px-8 lg:pb-24 lg:pt-20">
-          <div className="min-w-0">
-            <p className="inline-flex items-center gap-2 rounded-full border border-emerald-400/30 bg-emerald-400/10 px-3 py-1 text-xs font-semibold text-emerald-300">
-              <span className="h-1.5 w-1.5 rounded-full bg-emerald-400" />
-              Running daily operations in Lagos estates
-            </p>
-            <h1 className="mt-6 max-w-2xl text-4xl font-semibold leading-[1.1] tracking-tight text-white sm:text-5xl lg:text-[3.4rem]">
-              Run your estate without the chaos
-            </h1>
-            <p className="mt-6 max-w-xl text-base leading-8 text-slate-300">
-              Corso puts gate security, visitor passes, service charge, maintenance and resident records
-              into one simple app. Built for gated communities and residential estates in Nigeria —
-              whether you manage twenty homes or two thousand.
-            </p>
-            <div className="mt-9 flex flex-col gap-3 sm:flex-row sm:items-center">
-              <a
-                href="#contact"
-                className="inline-flex items-center justify-center gap-2 rounded-xl bg-emerald-500 px-6 py-3.5 text-sm font-semibold text-[#0c1315] shadow-lg shadow-emerald-500/20 transition hover:bg-emerald-400"
-              >
-                Book a free demo <ArrowRight className="h-4 w-4" />
-              </a>
-              <Link
-                href="/demo"
-                className="inline-flex items-center justify-center gap-2 rounded-xl border border-white/15 bg-white/5 px-6 py-3.5 text-sm font-semibold text-white transition hover:bg-white/10"
-              >
-                Try the demo estate
-              </Link>
-            </div>
-            <p className="mt-5 text-xs text-slate-500">
-              No card needed. The demo estate is open — tap in and look around.
-            </p>
-          </div>
+      <section className="px-5 pb-16 pt-20 text-center sm:px-6 sm:pt-28">
+        <p className="text-[15px] font-semibold text-emerald-700">For gated communities and estates</p>
+        <h1 className="mx-auto mt-4 max-w-3xl text-[2.6rem] font-semibold leading-[1.08] tracking-tight text-[#1d1d1f] sm:text-6xl">
+          Run your estate without the chaos.
+        </h1>
+        <p className="mx-auto mt-6 max-w-2xl text-lg leading-8 text-[#6e6e73]">
+          Gate security, visitor passes, service charge, maintenance and resident records —
+          in one simple app. Whether you manage twenty homes or two thousand.
+        </p>
+        <div className="mt-9 flex flex-col items-center justify-center gap-4 sm:flex-row">
+          <a
+            href="#contact"
+            className="inline-flex items-center gap-2 rounded-full bg-emerald-600 px-7 py-3.5 text-[15px] font-semibold text-white shadow-sm transition hover:bg-emerald-500"
+          >
+            Book a free demo <ArrowRight className="h-4 w-4" />
+          </a>
+          <Link
+            href="/demo"
+            className="inline-flex items-center gap-1.5 text-[15px] font-medium text-emerald-700 transition hover:text-emerald-600"
+          >
+            Try the demo estate <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+        <p className="mt-5 text-[13px] text-[#86868b]">No card needed. The demo estate is open — tap in and look around.</p>
 
-          <div className="relative min-w-0">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4 shadow-2xl shadow-black/40 sm:p-5">
-              <div className="flex items-center justify-between rounded-xl border border-white/10 bg-white/[0.04] px-4 py-3">
+        <div className="mx-auto mt-16 max-w-3xl">
+          <div className="rounded-3xl bg-[#f5f5f7] p-4 sm:p-6">
+            <div className="rounded-2xl bg-white p-4 text-left shadow-[0_8px_40px_rgba(0,0,0,0.08)] sm:p-5">
+              <div className="flex items-center justify-between rounded-xl bg-[#f5f5f7] px-4 py-3">
                 <div>
-                  <p className="text-[11px] uppercase tracking-wider text-slate-400">Main Gate · Today</p>
-                  <p className="mt-1 text-sm font-semibold text-white">Gate activity is live</p>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-[#86868b]">Main Gate · Today</p>
+                  <p className="mt-0.5 text-sm font-semibold text-[#1d1d1f]">Gate activity is live</p>
                 </div>
-                <span className="rounded-full border border-emerald-400/40 bg-emerald-400/10 px-2.5 py-1 text-[11px] font-semibold text-emerald-300">
-                  On duty
-                </span>
+                <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-800">On duty</span>
               </div>
 
               <div className="mt-3 grid grid-cols-3 gap-3">
@@ -177,131 +158,128 @@ export default function LandingPage() {
                   ["Vehicles logged", "61"],
                   ["Open faults", "3"]
                 ].map(([label, value]) => (
-                  <div key={label} className="rounded-xl border border-white/10 bg-white/[0.04] p-3.5">
-                    <p className="text-[11px] leading-4 text-slate-400">{label}</p>
-                    <p className="mt-1.5 text-xl font-semibold text-white">{value}</p>
+                  <div key={label} className="rounded-xl bg-[#f5f5f7] p-3.5">
+                    <p className="text-[11px] leading-4 text-[#86868b]">{label}</p>
+                    <p className="mt-1 text-xl font-semibold text-[#1d1d1f]">{value}</p>
                   </div>
                 ))}
               </div>
 
-              <div className="mt-3 flex items-center justify-between gap-4 rounded-xl border border-amber-300/25 bg-amber-300/[0.07] p-4">
+              <div className="mt-3 flex items-center justify-between gap-4 rounded-xl bg-amber-50 p-4">
                 <div className="min-w-0">
-                  <p className="text-[11px] uppercase tracking-wider text-amber-200/90">Visitor code</p>
-                  <p className="mt-1.5 truncate text-lg font-semibold text-white">Adaeze O. — expected 4pm</p>
-                  <p className="mt-0.5 text-xs text-slate-400">One-time pass · Block C</p>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700">Visitor code</p>
+                  <p className="mt-1 truncate text-[17px] font-semibold text-[#1d1d1f]">Adaeze O. — expected 4pm</p>
+                  <p className="mt-0.5 text-xs text-[#86868b]">One-time pass · Block C</p>
                 </div>
-                <QrCode className="h-12 w-12 shrink-0 text-amber-200/90" />
+                <QrCode className="h-11 w-11 shrink-0 text-amber-600" />
               </div>
 
-              <div className="mt-3 rounded-xl border border-white/10 bg-white/[0.04] p-4">
+              <div className="mt-3 rounded-xl bg-[#f5f5f7] p-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-[11px] uppercase tracking-wider text-slate-400">Service charge · This quarter</p>
-                  <span className="text-[11px] font-semibold text-emerald-300">78% collected</span>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-[#86868b]">Service charge · This quarter</p>
+                  <span className="text-[11px] font-semibold text-emerald-700">78% collected</span>
                 </div>
-                <div className="mt-3 h-2 overflow-hidden rounded-full bg-white/10">
-                  <div className="h-full w-[78%] rounded-full bg-gradient-to-r from-emerald-500 to-emerald-300" />
+                <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-black/[0.08]">
+                  <div className="h-full w-[78%] rounded-full bg-emerald-500" />
                 </div>
-                <p className="mt-2.5 text-xs text-slate-400">Debtor list ready for the next EXCO meeting.</p>
+                <p className="mt-2 text-xs text-[#86868b]">Debtor list ready for the next EXCO meeting.</p>
               </div>
             </div>
           </div>
         </div>
       </section>
 
-      <section id="features" className="mx-auto w-full max-w-6xl px-5 py-16 sm:px-6 lg:px-8 lg:py-20">
-        <div className="max-w-2xl">
-          <p className="text-sm font-semibold text-emerald-300">What it does</p>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-            The everyday work of an estate, handled
-          </h2>
-          <p className="mt-4 text-base leading-7 text-slate-400">
-            Corso covers the jobs that eat your week: the gate, the money, the maintenance,
-            and keeping residents informed.
-          </p>
-        </div>
-        <div className="mt-10 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-          {features.map(([title, body, Icon]) => (
-            <div
-              key={title}
-              className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 transition hover:border-emerald-400/30 hover:bg-white/[0.05]"
-            >
-              <div className="inline-flex rounded-xl border border-emerald-400/25 bg-emerald-400/10 p-2.5">
-                <Icon className="h-5 w-5 text-emerald-300" />
-              </div>
-              <h3 className="mt-4 text-base font-semibold text-white">{title}</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-400">{body}</p>
-            </div>
-          ))}
-        </div>
-      </section>
-
-      <section id="how" className="border-y border-white/10 bg-white/[0.02]">
-        <div className="mx-auto w-full max-w-6xl px-5 py-16 sm:px-6 lg:px-8 lg:py-20">
-          <div className="max-w-2xl">
-            <p className="text-sm font-semibold text-amber-300">How it works</p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-              Live in days, not months
+      <section id="features" className="bg-[#f5f5f7]">
+        <div className="mx-auto w-full max-w-5xl px-5 py-20 sm:px-6 sm:py-24">
+          <div className="mx-auto max-w-2xl text-center">
+            <h2 className="text-3xl font-semibold tracking-tight text-[#1d1d1f] sm:text-[2.5rem] sm:leading-tight">
+              The everyday work of an estate, handled.
             </h2>
+            <p className="mt-4 text-[17px] leading-7 text-[#6e6e73]">
+              Corso covers the jobs that eat your week: the gate, the money, the maintenance,
+              and keeping residents informed.
+            </p>
           </div>
-          <div className="mt-10 grid gap-4 md:grid-cols-3">
-            {steps.map(([title, body], index) => (
-              <div key={title} className="relative rounded-2xl border border-white/10 bg-[#0c1315] p-6">
-                <span className="text-sm font-semibold text-amber-300">0{index + 1}</span>
-                <h3 className="mt-3 text-lg font-semibold text-white">{title}</h3>
-                <p className="mt-2 text-sm leading-6 text-slate-400">{body}</p>
+          <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+            {features.map(([title, body, Icon]) => (
+              <div key={title} className="rounded-2xl bg-white p-6 transition hover:shadow-[0_4px_24px_rgba(0,0,0,0.07)]">
+                <div className="inline-flex rounded-xl bg-emerald-100/70 p-2.5">
+                  <Icon className="h-5 w-5 text-emerald-700" />
+                </div>
+                <h3 className="mt-4 text-[15px] font-semibold text-[#1d1d1f]">{title}</h3>
+                <p className="mt-2 text-sm leading-6 text-[#6e6e73]">{body}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
-      <section className="mx-auto w-full max-w-6xl px-5 py-16 sm:px-6 lg:px-8 lg:py-20">
-        <div className="max-w-2xl">
-          <p className="text-sm font-semibold text-emerald-300">Who it&apos;s for</p>
-          <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-            One platform. Every estate. Each role sees its own world.
+      <section id="how" className="mx-auto w-full max-w-5xl px-5 py-20 sm:px-6 sm:py-24">
+        <div className="mx-auto max-w-2xl text-center">
+          <h2 className="text-3xl font-semibold tracking-tight text-[#1d1d1f] sm:text-[2.5rem]">
+            Live in days, not months.
           </h2>
-          <p className="mt-4 text-base leading-7 text-slate-400">
-            Every estate on Corso gets its own secure space — its own residents, gates, billing and reports.
-            Nothing crosses over.
-          </p>
         </div>
-        <div className="mt-10 grid gap-4 md:grid-cols-3">
-          {audiences.map(([title, body, Icon]) => (
-            <div key={title} className="rounded-2xl border border-white/10 bg-white/[0.03] p-6">
-              <Icon className="h-6 w-6 text-emerald-300" />
-              <h3 className="mt-4 text-lg font-semibold text-white">{title}</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-400">{body}</p>
+        <div className="mt-12 grid gap-4 md:grid-cols-3">
+          {steps.map(([title, body], index) => (
+            <div key={title} className="rounded-2xl bg-[#f5f5f7] p-6">
+              <span className="inline-flex h-8 w-8 items-center justify-center rounded-full bg-emerald-600 text-sm font-semibold text-white">
+                {index + 1}
+              </span>
+              <h3 className="mt-4 text-[17px] font-semibold text-[#1d1d1f]">{title}</h3>
+              <p className="mt-2 text-sm leading-6 text-[#6e6e73]">{body}</p>
             </div>
-          ))}
-        </div>
-        <div className="mt-8 flex flex-wrap gap-x-8 gap-y-3">
-          {[
-            "Works on any smartphone",
-            "Installs like an app, no app store needed",
-            "Built and supported in Nigeria"
-          ].map((point) => (
-            <p key={point} className="flex items-center gap-2 text-sm text-slate-300">
-              <CheckCircle2 className="h-4 w-4 text-emerald-400" /> {point}
-            </p>
           ))}
         </div>
       </section>
 
-      <section id="contact" className="border-t border-white/10 bg-white/[0.02]">
-        <div className="mx-auto grid w-full max-w-6xl gap-10 px-5 py-16 sm:px-6 lg:grid-cols-[0.85fr_1.15fr] lg:px-8 lg:py-20">
-          <div>
-            <p className="text-sm font-semibold text-amber-300">Get started</p>
-            <h2 className="mt-3 text-3xl font-semibold tracking-tight text-white sm:text-4xl">
-              See Corso on your own estate
+      <section className="bg-[#f5f5f7]">
+        <div className="mx-auto w-full max-w-5xl px-5 py-20 sm:px-6 sm:py-24">
+          <div className="mx-auto max-w-2xl text-center">
+            <h2 className="text-3xl font-semibold tracking-tight text-[#1d1d1f] sm:text-[2.5rem] sm:leading-tight">
+              One platform. Every estate.
             </h2>
-            <p className="mt-4 text-sm leading-7 text-slate-400">
+            <p className="mt-4 text-[17px] leading-7 text-[#6e6e73]">
+              Every estate on Corso gets its own secure space — its own residents, gates, billing and reports.
+              Nothing crosses over. Each role sees only its own world.
+            </p>
+          </div>
+          <div className="mt-12 grid gap-4 md:grid-cols-3">
+            {audiences.map(([title, body, Icon]) => (
+              <div key={title} className="rounded-2xl bg-white p-6">
+                <Icon className="h-6 w-6 text-emerald-700" />
+                <h3 className="mt-4 text-[17px] font-semibold text-[#1d1d1f]">{title}</h3>
+                <p className="mt-2 text-sm leading-6 text-[#6e6e73]">{body}</p>
+              </div>
+            ))}
+          </div>
+          <div className="mt-10 flex flex-wrap justify-center gap-x-8 gap-y-3">
+            {[
+              "Works on any smartphone",
+              "Installs like an app, no app store needed",
+              "Built and supported in Nigeria"
+            ].map((point) => (
+              <p key={point} className="flex items-center gap-2 text-sm text-[#424245]">
+                <CheckCircle2 className="h-4 w-4 text-emerald-600" /> {point}
+              </p>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section id="contact" className="mx-auto w-full max-w-5xl px-5 py-20 sm:px-6 sm:py-24">
+        <div className="grid gap-10 lg:grid-cols-[0.85fr_1.15fr]">
+          <div>
+            <h2 className="text-3xl font-semibold tracking-tight text-[#1d1d1f] sm:text-[2.5rem] sm:leading-tight">
+              See Corso on your own estate.
+            </h2>
+            <p className="mt-4 text-[15px] leading-7 text-[#6e6e73]">
               Tell us a little about your community and we&apos;ll walk you through a live demo,
               answer your questions, and give you an honest picture of what setup looks like.
             </p>
-            <p className="mt-6 text-sm leading-7 text-slate-400">
+            <p className="mt-6 text-[15px] leading-7 text-[#6e6e73]">
               Prefer to look around first?{" "}
-              <Link href="/demo" className="font-semibold text-emerald-300 hover:text-emerald-200">
+              <Link href="/demo" className="font-medium text-emerald-700 hover:text-emerald-600">
                 Open the demo estate
               </Link>{" "}
               — no signup required.
@@ -311,22 +289,22 @@ export default function LandingPage() {
         </div>
       </section>
 
-      <footer className="border-t border-white/10">
-        <div className="mx-auto flex w-full max-w-6xl flex-col items-start justify-between gap-6 px-5 py-10 sm:px-6 md:flex-row md:items-center lg:px-8">
+      <footer className="border-t border-black/[0.06] bg-[#f5f5f7]">
+        <div className="mx-auto flex w-full max-w-5xl flex-col items-start justify-between gap-6 px-5 py-10 sm:px-6 md:flex-row md:items-center">
           <div className="flex items-center gap-3">
-            <BrandMark className="h-8 w-8" />
+            <BrandMark className="h-7 w-7" />
             <div>
-              <p className="text-sm font-semibold text-white">Corso</p>
-              <p className="text-xs text-slate-500">Estate management for African communities</p>
+              <p className="text-sm font-semibold text-[#1d1d1f]">Corso</p>
+              <p className="text-xs text-[#86868b]">Estate management for African communities</p>
             </div>
           </div>
-          <nav className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-slate-400">
-            <a href="#features" className="hover:text-white">What it does</a>
-            <a href="#how" className="hover:text-white">How it works</a>
-            <Link href="/demo" className="hover:text-white">Demo</Link>
-            <Link href="/login" className="hover:text-white">Sign in</Link>
+          <nav className="flex flex-wrap items-center gap-x-6 gap-y-2 text-[13px] text-[#6e6e73]">
+            <a href="#features" className="hover:text-black">What it does</a>
+            <a href="#how" className="hover:text-black">How it works</a>
+            <Link href="/demo" className="hover:text-black">Demo</Link>
+            <Link href="/login" className="hover:text-black">Sign in</Link>
           </nav>
-          <p className="text-xs text-slate-500">© 2026 Corso. Lagos, Nigeria.</p>
+          <p className="text-xs text-[#86868b]">© 2026 Corso. Lagos, Nigeria.</p>
         </div>
       </footer>
     </main>

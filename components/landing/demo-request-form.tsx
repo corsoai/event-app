@@ -1,34 +1,59 @@
 "use client";
 
 import { FormEvent, useState } from "react";
-import { Button } from "@/components/ui/button";
-import { Card } from "@/components/ui/card";
-import { Field, Input, Textarea } from "@/components/ui/input";
+
+const inputClass =
+  "w-full rounded-xl border border-[#d2d2d7] bg-white px-4 py-3 text-[15px] text-[#1d1d1f] placeholder:text-[#86868b] outline-none transition focus:border-emerald-600 focus:ring-2 focus:ring-emerald-600/20";
 
 export function DemoRequestForm() {
   const [message, setMessage] = useState("");
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setMessage("Demo request saved. For now, continue by creating a resident access request or contacting the Corso team.");
+    setMessage("Thank you — your request has been noted. The Corso team will reach out to arrange your demo.");
     event.currentTarget.reset();
   }
 
   return (
-    <Card>
+    <div className="rounded-3xl bg-white p-6 shadow-[0_4px_24px_rgba(0,0,0,0.06)] sm:p-8">
       <form onSubmit={submit}>
-        <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Name"><Input name="name" placeholder="Estate manager" required /></Field>
-          <Field label="Email"><Input name="email" type="email" placeholder="manager@example.com" required /></Field>
-          <Field label="Estate name"><Input name="estateName" placeholder="LBS View Estate" required /></Field>
-          <Field label="Phone"><Input name="phone" placeholder="+234 800 000 0000" /></Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-[#1d1d1f]">Name</span>
+            <input name="name" placeholder="Your full name" required className={inputClass} />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-[#1d1d1f]">Email</span>
+            <input name="email" type="email" placeholder="you@example.com" required className={inputClass} />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-[#1d1d1f]">Estate name</span>
+            <input name="estateName" placeholder="e.g. Harmony Gardens Estate" required className={inputClass} />
+          </label>
+          <label className="block">
+            <span className="mb-1.5 block text-sm font-medium text-[#1d1d1f]">Phone</span>
+            <input name="phone" placeholder="+234 800 000 0000" className={inputClass} />
+          </label>
         </div>
-        <div className="mt-4">
-          <Field label="Message"><Textarea name="message" placeholder="Tell us about your estate size and current process." /></Field>
-        </div>
-        {message ? <p className="mt-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{message}</p> : null}
-        <Button className="mt-5">Request Demo</Button>
+        <label className="mt-4 block">
+          <span className="mb-1.5 block text-sm font-medium text-[#1d1d1f]">Message</span>
+          <textarea
+            name="message"
+            rows={4}
+            placeholder="How many homes, and how do you manage things today?"
+            className={inputClass}
+          />
+        </label>
+        {message ? (
+          <p className="mt-4 rounded-xl bg-emerald-50 px-4 py-3 text-sm text-emerald-800">{message}</p>
+        ) : null}
+        <button
+          type="submit"
+          className="mt-6 inline-flex w-full items-center justify-center rounded-full bg-emerald-600 px-7 py-3.5 text-[15px] font-semibold text-white transition hover:bg-emerald-500 sm:w-auto"
+        >
+          Request a demo
+        </button>
       </form>
-    </Card>
+    </div>
   );
 }
