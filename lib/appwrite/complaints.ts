@@ -227,9 +227,10 @@ export async function createResidentComplaint(input: ComplaintCreateInput, sessi
   const row = await appwriteUpsertRow<AppwriteComplaintRow>(APPWRITE_TABLE_COMPLAINTS, complaintId, {
     estateId: session.estateId,
     residentId: session.resident.id,
-    residentName: session.resident.name,
-    unitCode: session.unitCode,
-    propertyCode: session.propertyCode,
+    residentName: session.resident.name || "Resident",
+    // unitCode/propertyCode are required columns — never send empty strings.
+    unitCode: session.unitCode || session.resident.houseNumber || "N/A",
+    propertyCode: session.propertyCode || session.unitCode || session.resident.houseNumber || "N/A",
     category: normalizeCategory(input.category),
     priority: normalizePriority(input.priority),
     subject,

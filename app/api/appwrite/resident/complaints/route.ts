@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { AppwriteRestError } from "@/lib/appwrite/server";
+import { AppwriteRestError, ensureAppwriteSchemaReady } from "@/lib/appwrite/server";
 import { resolveSessionContext, SessionContextError } from "@/lib/appwrite/session-context";
 import {
   createResidentComplaint,
@@ -28,6 +28,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const context = await resolveSessionContext(request, { allowedRoles: ["resident"] });
+    await ensureAppwriteSchemaReady();
     const session = await resolveResidentComplaintSession(context);
     const complaint = await createResidentComplaint(toComplaintCreateInput(body), session);
 
