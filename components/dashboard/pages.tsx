@@ -7141,8 +7141,8 @@ export function SubmitComplaintPage() {
       setComplaintMessage("Your complaint has been submitted successfully.");
       event.currentTarget.reset();
       window.setTimeout(() => router.push("/resident/complaints"), 700);
-    } catch {
-      setComplaintMessage("Failed to submit complaint. Please try again.");
+    } catch (error) {
+      setComplaintMessage(error instanceof Error && error.message ? error.message : "Failed to submit complaint. Please try again.");
     } finally {
       setSubmittingComplaint(false);
     }
