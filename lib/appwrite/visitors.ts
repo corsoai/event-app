@@ -617,6 +617,7 @@ function mapVisitorRow(row: AppwriteVisitorRow): Visitor {
     code: row.code ?? "",
     createdAt: row.createdAt,
     expiresAt: row.expiresAt,
+    updatedAt: row.updatedAt,
     status: row.status ?? "pending"
   };
 }
