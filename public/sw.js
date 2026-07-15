@@ -1,4 +1,4 @@
-const CACHE_NAME = "corso-v2026-07-15-visitor-ux-1";
+const CACHE_NAME = "corso-v2026-07-15-sos-alarm-1";
 const OFFLINE_URL = "/offline.html";
 const APP_SHELL = [
   OFFLINE_URL,

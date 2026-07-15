@@ -1,6 +1,10 @@
 import type { Config } from "tailwindcss";
 
 const config: Config = {
+  // The app has its own Light/Dark toggle (data-theme on <html>). Without this,
+  // `dark:` classes followed the phone's system setting and made text invisible
+  // when system-dark met app-light.
+  darkMode: ["selector", '[data-theme="dark"]'],
   content: [
     "./app/**/*.{js,ts,jsx,tsx,mdx}",
     "./components/**/*.{js,ts,jsx,tsx,mdx}",
