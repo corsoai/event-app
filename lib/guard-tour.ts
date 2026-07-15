@@ -198,23 +198,55 @@ async function fetchWithTimeout(input: RequestInfo | URL, init?: RequestInit) {
   }
 }
 
+export type GpsReadiness = {
+  ready: boolean;
+  accuracy?: number;
+  reason?: "denied" | "timeout" | "unavailable" | "unsupported";
+};
+
+/**
+ * Warms up the GPS chip and reports whether this device can share its
+ * location. Call on page open so the browser permission prompt appears
+ * before the guard scans, and the fix is already warm at scan time.
+ */
+export async function checkGpsReadiness(): Promise<GpsReadiness> {
+  const position = await readCurrentPosition();
+  if (position.latitude !== undefined && position.longitude !== undefined) {
+    return { ready: true, accuracy: position.accuracy };
+  }
+  return { ready: false, reason: position.error ?? "unavailable" };
+}
+
 async function readCurrentPosition() {
-  if (!navigator.geolocation) {
-    return {};
+  if (typeof navigator === "undefined" || !navigator.geolocation) {
+    return { error: "unsupported" as const };
   }
 
-  return new Promise<{ latitude?: number; longitude?: number; accuracy?: number }>((resolve) => {
+  return new Promise<{
+    latitude?: number;
+    longitude?: number;
+    accuracy?: number;
+    error?: "denied" | "timeout" | "unavailable" | "unsupported";
+  }>((resolve) => {
     navigator.geolocation.getCurrentPosition(
       (position) => resolve({
         latitude: position.coords.latitude,
         longitude: position.coords.longitude,
         accuracy: Number.isFinite(position.coords.accuracy) ? position.coords.accuracy : undefined
       }),
-      () => resolve({}),
+      (error) => resolve({
+        error: error.code === error.PERMISSION_DENIED
+          ? "denied"
+          : error.code === error.TIMEOUT
+            ? "timeout"
+            : "unavailable"
+      }),
       {
+        // 20s tolerates cold GPS starts under a roof; a fix from the last 20s
+        // (e.g. the page-open warm-up) is accepted so scans stay fast.
         enableHighAccuracy: true,
-        timeout: 10000,
-        maximumAge: 0
+        timeout: 20000,
+        maximumAge: 20000
       }
     );
   });

@@ -61,12 +61,33 @@ export function AuthCard({ mode }: { mode: Mode }) {
   const [loginProgress, setLoginProgress] = useState("");
   const formRef = useRef<HTMLFormElement>(null);
   const [demoAutoLoginDone, setDemoAutoLoginDone] = useState(false);
+  const [demoLoginsEnabled, setDemoLoginsEnabled] = useState(false);
+
+  // The demo experience follows the demo accounts' status: suspending all
+  // demo users in Users & Roles hides these buttons; reactivating restores them.
+  useEffect(() => {
+    if (mode !== "login") {
+      return;
+    }
+    let active = true;
+    fetch("/api/public/demo-status", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((payload: { enabled?: boolean }) => {
+        if (active) setDemoLoginsEnabled(Boolean(payload?.enabled));
+      })
+      .catch(() => {
+        if (active) setDemoLoginsEnabled(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, [mode]);
 
   // One-tap demo entry: /login?demo=resident|security|manager pre-fills the
   // exhibition tour account and submits the existing login form untouched.
   const demoParam = mode === "login" ? params.get("demo") : null;
   useEffect(() => {
-    if (!demoParam || demoAutoLoginDone || mode !== "login") {
+    if (!demoParam || demoAutoLoginDone || mode !== "login" || !demoLoginsEnabled) {
       return;
     }
     const account = EXHIBITION_DEMO_LOGINS[demoParam.toLowerCase()];
@@ -79,11 +100,11 @@ export function AuthCard({ mode }: { mode: Mode }) {
     const timer = setTimeout(() => formRef.current?.requestSubmit(), 450);
     return () => clearTimeout(timer);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [demoParam, demoAutoLoginDone, mode]);
+  }, [demoParam, demoAutoLoginDone, mode, demoLoginsEnabled]);
 
   function startDemoLogin(key: string) {
     const account = EXHIBITION_DEMO_LOGINS[key];
-    if (!account || loading) {
+    if (!account || loading || !demoLoginsEnabled) {
       return;
     }
     setEmail(account.identifier);
@@ -527,7 +548,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
         ) : null}
       </form>
 
-      {mode === "login" ? (
+      {mode === "login" && demoLoginsEnabled ? (
         <div className="mt-6 rounded-lg border border-smart/25 bg-smart/10 p-4">
           <p className="text-sm font-semibold text-white">Explore the demo estate</p>
           <p className="mt-1 text-xs leading-5 text-slate-400">

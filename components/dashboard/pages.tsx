@@ -127,10 +127,12 @@ import {
   type AppwriteVisitorView
 } from "@/lib/appwrite/browser-data";
 import {
+  checkGpsReadiness,
   installGuardTourSync,
   isGuardCheckpointQr,
   submitGuardCheckpointScan,
-  syncPendingTourLogs
+  syncPendingTourLogs,
+  type GpsReadiness
 } from "@/lib/guard-tour";
 import { APPWRITE_ONBOARDING_DATABASE_ID } from "@/lib/appwrite/schema";
 import type { AppwriteAnnouncement, AppwriteComplaint, AppwriteKnowledgeBaseArticle, Bill, CsoReview, EmergencyAlert, EmergencyAlertStatus, EmergencyAlertType, Estate, GuardCheckpoint, GuardPatrolEvent, HouseholdMember, Payment, Property, Resident, Facility, SecurityIncident, Staff, StaffAttendance, StatusTone, Unit, UserRole, VehicleLog, Visitor, WorkOrder } from "@/lib/types";
@@ -10042,8 +10044,23 @@ export function GuardTourPage({ compact = false }: { compact?: boolean }) {
   const [message, setMessage] = useState("");
   const [messageTone, setMessageTone] = useState<"ok" | "warn" | "error">("ok");
   const [scans, setScans] = useState<GuardPatrolEvent[]>([]);
+  const [gps, setGps] = useState<GpsReadiness | null>(null);
+  const [checkingGps, setCheckingGps] = useState(true);
+
+  async function refreshGpsStatus() {
+    setCheckingGps(true);
+    try {
+      setGps(await checkGpsReadiness());
+    } finally {
+      setCheckingGps(false);
+    }
+  }
 
   useEffect(() => installGuardTourSync(), []);
+  useEffect(() => {
+    void refreshGpsStatus();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   async function handleCheckpointScan(rawValue: string) {
     if (!isGuardCheckpointQr(rawValue)) {
@@ -10078,6 +10095,30 @@ export function GuardTourPage({ compact = false }: { compact?: boolean }) {
       {!compact ? <PageHeader title="Guard tour" description="Scan checkpoint QR codes to log your patrol." /> : null}
       <Card>
         <CardHeader title="Checkpoint scan" description="Scan a checkpoint QR to record this patrol point." />
+        <div className={`mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border px-3 py-2.5 text-sm ${
+          checkingGps
+            ? "border-white/15 bg-white/5 text-slate-300"
+            : gps?.ready
+              ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300"
+              : "border-red-500/40 bg-red-500/10 text-red-300"
+        }`}>
+          <span className="font-semibold">
+            {checkingGps
+              ? "Checking GPS..."
+              : gps?.ready
+                ? `GPS ready${gps.accuracy ? ` (±${Math.round(gps.accuracy)}m)` : ""}`
+                : gps?.reason === "denied"
+                  ? "Location blocked — allow location for this site in your browser settings, then retry."
+                  : gps?.reason === "timeout"
+                    ? "GPS signal not found yet — step into open sky and retry."
+                    : "Location unavailable on this device — scans will be saved with a GPS warning."}
+          </span>
+          {!checkingGps && !gps?.ready ? (
+            <Button type="button" variant="secondary" className="min-h-9 px-3" onClick={() => void refreshGpsStatus()}>
+              <RefreshCw className="h-4 w-4" />Retry GPS
+            </Button>
+          ) : null}
+        </div>
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
           <Button className="w-full sm:w-auto" onClick={() => setScannerOpen(true)} disabled={saving}>
             <Camera className="h-4 w-4" />
