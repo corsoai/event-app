@@ -74,6 +74,8 @@ export type Visitor = {
   code: string;
   createdAt?: string;
   expiresAt?: string;
+  /** Timestamp of the most recent status change (e.g. check-in / check-out time). */
+  updatedAt?: string;
   status: "pending" | "verified" | "checked-in" | "checked-out" | "expired" | "cancelled";
 };
 

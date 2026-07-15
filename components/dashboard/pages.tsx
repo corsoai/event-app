@@ -739,12 +739,31 @@ function LiveVisitorCards({
   actionFor?: (visitor: Visitor) => ReactNode;
   onRetry?: () => void;
 }) {
-  const visitorGroups = groupByDate
+  const [showAllRecords, setShowAllRecords] = useState(false);
+  const recentLimit = 8;
+  const allGroups = groupByDate
     ? groupItemsByDay(
       [...visitorViews].sort((left, right) => visitorSortTime(right.visitor) - visitorSortTime(left.visitor)),
       (view) => view.visitor.visitDate
     )
     : [{ label: "", items: visitorViews }];
+  let visitorGroups = allGroups;
+  let hiddenCount = 0;
+  if (groupByDate && !showAllRecords) {
+    let used = 0;
+    const trimmed: typeof allGroups = [];
+    for (const group of allGroups) {
+      if (used >= recentLimit) {
+        hiddenCount += group.items.length;
+        continue;
+      }
+      const take = Math.min(group.items.length, recentLimit - used);
+      trimmed.push(take === group.items.length ? group : { ...group, items: group.items.slice(0, take) });
+      hiddenCount += group.items.length - take;
+      used += take;
+    }
+    visitorGroups = trimmed;
+  }
 
   return (
     <Card className="mb-6">
@@ -801,6 +820,12 @@ function LiveVisitorCards({
               {showResident ? <p><span className="text-slate-500">Unit:</span> {cleanUnitCodeDisplay(unitCode)}</p> : null}
               <p><span className="text-slate-500">Date:</span> {visitor.visitDate}</p>
               <p><span className="text-slate-500">Arrival:</span> {formatClockTime(visitor.arrivalTime)}</p>
+              {visitor.status === "checked-in" && visitor.updatedAt ? (
+                <p><span className="text-slate-500">Checked in:</span> {logDateGroupLabel(logDayKey(visitor.updatedAt))}, {logTimeLabel(visitor.updatedAt)}</p>
+              ) : null}
+              {visitor.status === "checked-out" && visitor.updatedAt ? (
+                <p><span className="text-slate-500">Checked out:</span> {logDateGroupLabel(logDayKey(visitor.updatedAt))}, {logTimeLabel(visitor.updatedAt)}</p>
+              ) : null}
               <p><span className="text-slate-500">Phone:</span> {visitor.phone || "Not recorded"}</p>
               <p><span className="text-slate-500">Guests:</span> {visitor.count}</p>
               <p className="sm:col-span-2"><span className="text-slate-500">Purpose:</span> {visitor.purpose || "Not recorded"}</p>
@@ -811,6 +836,11 @@ function LiveVisitorCards({
           </div>
         </div>
       ))}
+      {groupByDate && (hiddenCount > 0 || showAllRecords) ? (
+        <Button type="button" variant="secondary" className="mt-4 w-full" onClick={() => setShowAllRecords((value) => !value)}>
+          {showAllRecords ? "Show recent only" : `Show older records (${hiddenCount} more)`}
+        </Button>
+      ) : null}
     </Card>
   );
 }
@@ -5887,8 +5917,8 @@ export function ResidentDashboard() {
         </>
       ) : null}
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-2 md:gap-4">
-        <StatCard label="Expected visitors" value={loadingVisitors ? "..." : String(expectedVisitorCount)} helper="Pending or verified access codes" icon={<DoorOpen className="h-5 w-5" />} />
-        <StatCard label="My complaints" value={String(residentState.complaints.filter((complaint) => complaint.residentId === resident.id).length)} helper="Open and resolved tickets" icon={<ClipboardList className="h-5 w-5" />} />
+        <StatCard label="Expected visitors" value={loadingVisitors ? "..." : String(expectedVisitorCount)} helper="Pending or verified access codes" icon={<DoorOpen className="h-5 w-5" />} href="/resident/visitors" />
+        <StatCard label="My complaints" value={String(residentState.complaints.filter((complaint) => complaint.residentId === resident.id).length)} helper="Open and resolved tickets" icon={<ClipboardList className="h-5 w-5" />} href="/resident/complaints" />
       </div>
       <div className="mt-6">
         <LiveVisitorCards
@@ -5896,6 +5926,7 @@ export function ResidentDashboard() {
           visitorViews={visitorViews}
           loading={loadingVisitors}
           error={visitorError}
+          groupByDate
         />
       </div>
       <div className="mt-6 grid gap-6 xl:grid-cols-[0.9fr_1.1fr]">
@@ -6309,6 +6340,7 @@ export function MyVisitorsPage() {
         visitorViews={visitorViews}
         loading={loadingVisitors}
         error={visitorError}
+        groupByDate
         onRetry={() => void refreshVisitors()}
       />
     </>
@@ -7421,11 +7453,15 @@ export function HouseholdPage() {
 
 export function SecurityDashboard() {
   const { visitorViews, loadingVisitors, visitorError } = useLiveVisitorViews(readAppwriteExpectedVisitors, { refreshIntervalMs: 60_000 });
+  const { visitorViews: historyViews, loadingVisitors: loadingHistory } = useLiveVisitorViews(readAppwriteSecurityVisitorHistory, { refreshIntervalMs: 60_000 });
   const [sosAlerts, setSosAlerts] = useState<SecurityIncident[]>([]);
   const [sosMessage, setSosMessage] = useState("");
   const visitors = visitorViews.map((view) => view.visitor);
   const checkedInCount = visitors.filter((visitor) => visitor.status === "checked-in").length;
-  const verifiedCount = visitors.filter((visitor) => visitor.status === "verified").length;
+  const checkedOutToday = historyViews.filter(({ visitor }) =>
+    visitor.status === "checked-out" &&
+    (visitor.updatedAt ? logDayKey(visitor.updatedAt) === dateInputValue() : visitor.visitDate === dateInputValue())
+  ).length;
   const recentVisitors = visitors.slice(0, 4);
   const activeSosAlerts = sosAlerts.filter((incident) => isActiveSosStatus(incident.status));
 
@@ -7525,9 +7561,9 @@ export function SecurityDashboard() {
         <h2 className="text-lg font-semibold text-slate-950 dark:text-white">Today at the gate</h2>
       </div>
       <div className="mt-4 grid grid-cols-2 gap-3 md:grid-cols-3 md:gap-4">
-        <StatCard label="Expected today" value={loadingVisitors ? "..." : visitorError ? "!" : String(visitors.length)} helper={visitorError ? "Refresh to retry" : "Pending, verified, or inside"} icon={<CalendarClock className="h-5 w-5" />} />
-        <StatCard label="Checked in" value={loadingVisitors ? "..." : visitorError ? "!" : String(checkedInCount)} helper="Currently inside" icon={<DoorOpen className="h-5 w-5" />} />
-        <StatCard label="Verified codes" value={loadingVisitors ? "..." : visitorError ? "!" : String(verifiedCount)} helper="Ready for check-in" icon={<BadgeCheck className="h-5 w-5" />} />
+        <StatCard label="Expected today" value={loadingVisitors ? "..." : visitorError ? "!" : String(visitors.length)} helper={visitorError ? "Refresh to retry" : "Pending, verified, or inside"} icon={<CalendarClock className="h-5 w-5" />} href="/security/expected-visitors" />
+        <StatCard label="Checked in" value={loadingVisitors ? "..." : visitorError ? "!" : String(checkedInCount)} helper="Currently inside" icon={<DoorOpen className="h-5 w-5" />} href="/security/logs" />
+        <StatCard label="Checked out" value={loadingHistory ? "..." : String(checkedOutToday)} helper="Left the estate today" icon={<BadgeCheck className="h-5 w-5" />} href="/security/logs" />
       </div>
       <div className="mt-6">
         <LiveVisitorCards
@@ -11024,10 +11060,13 @@ export function EntryLogsPage() {
           formatClockTime(visitor.arrivalTime),
           residentName,
           cleanUnitCodeDisplay(unitCode),
+          visitor.status === "checked-out" && visitor.updatedAt
+            ? `${logDateGroupLabel(logDayKey(visitor.updatedAt))}, ${logTimeLabel(visitor.updatedAt)}`
+            : "—",
           <StatusBadge key={visitor.status} status={visitor.status} />
         ])
       ])
-      : [["No visitor records yet", "—", "—", "—", "—", "—"]];
+      : [["No visitor records yet", "—", "—", "—", "—", "—", "—"]];
 
   return (
     <>
@@ -11041,7 +11080,7 @@ export function EntryLogsPage() {
       <DataTable
         title={loadingVisitors ? "Loading gate movement logs" : "Gate movement logs"}
         description="Visitor movement from Corso records."
-        headers={["Visitor", "Code", "Visit time", "Resident", "Unit", "Status"]}
+        headers={["Visitor", "Code", "Visit time", "Resident", "Unit", "Checked out", "Status"]}
         rows={movementRows}
       />
     </>
