@@ -105,6 +105,8 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
       { key: "contactEmail", type: "string", size: 128, required: false },
       { key: "contactPhone", type: "string", size: 64, required: false },
       { key: "gateName", type: "string", size: 128, required: false },
+      // JSON array of module keys switched OFF for this estate (e.g. ["guard_tour"]).
+      { key: "disabledModules", type: "string", size: 512, required: false },
       { key: "createdAt", type: "datetime", required: false },
       { key: "updatedAt", type: "datetime", required: false }
     ],

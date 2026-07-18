@@ -121,6 +121,8 @@ import {
   updateAppwriteVisitorStatus as saveAppwriteVisitorStatus,
   readAppwriteSuperEstates,
   createAppwriteSuperEstate,
+  readDisabledEstateModules,
+  saveDisabledEstateModules,
   type SuperEstateView,
   type SosCreateInput,
   type SosUpdateInput,
@@ -644,6 +646,36 @@ function mergeAccountingState(state: LocalEstateState, accounting: AppwriteAccou
     payments: accounting?.payments.length ? accounting.payments : state.payments,
     auditLogs: accounting?.auditLogs.length ? accounting.auditLogs : state.auditLogs
   };
+}
+
+const TOGGLABLE_MODULE_OPTIONS: Array<{ key: string; label: string; helper: string }> = [
+  { key: "guard_tour", label: "Guard Tour", helper: "QR checkpoint patrols with GPS verification." },
+  { key: "plate_capture", label: "Plate Capture (ANPR)", helper: "Camera capture of vehicle number plates at the gate." },
+  { key: "facilities", label: "Facilities & Work Orders", helper: "Facility register, faults, and maintenance jobs." },
+  { key: "marketplace", label: "Marketplace", helper: "Resident marketplace and vendor listings." },
+  { key: "household", label: "Household Members", helper: "Residents manage family and domestic staff records." },
+  { key: "knowledge_base", label: "Knowledge Base", helper: "Estate documents, rules, and how-to articles." },
+  { key: "digital_ids", label: "Digital IDs", helper: "QR-based digital ID cards and gate verification." }
+];
+
+function useDisabledModules() {
+  const [disabledModules, setDisabledModules] = useState<string[]>([]);
+
+  useEffect(() => {
+    let active = true;
+    readDisabledEstateModules()
+      .then((disabled) => {
+        if (active) setDisabledModules(disabled);
+      })
+      .catch(() => {
+        // keep everything visible if the lookup fails
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  return disabledModules;
 }
 
 function useLiveEstates() {
@@ -4932,12 +4964,97 @@ function lastUpdatedLabel(value: number | null) {
   return `${minutes} minute${minutes === 1 ? "" : "s"} ago`;
 }
 
+function EstateModulesCard() {
+  const [disabled, setDisabled] = useState<string[]>([]);
+  const [loadingModules, setLoadingModules] = useState(true);
+  const [savingModules, setSavingModules] = useState(false);
+  const [moduleMessage, setModuleMessage] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    readDisabledEstateModules()
+      .then((value) => {
+        if (active) setDisabled(value);
+      })
+      .catch((error) => {
+        if (active) setModuleMessage(error instanceof Error ? error.message : "Module settings could not be loaded.");
+      })
+      .finally(() => {
+        if (active) setLoadingModules(false);
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  function toggleModule(key: string) {
+    setDisabled((current) => current.includes(key) ? current.filter((item) => item !== key) : [...current, key]);
+  }
+
+  async function saveModules() {
+    setSavingModules(true);
+    setModuleMessage("");
+    try {
+      const saved = await saveDisabledEstateModules(disabled);
+      setDisabled(saved);
+      setModuleMessage("Module settings saved. Users will see the change when they next open or refresh the app.");
+    } catch (error) {
+      setModuleMessage(error instanceof Error ? error.message : "Module settings could not be saved.");
+    } finally {
+      setSavingModules(false);
+    }
+  }
+
+  return (
+    <Card className="mb-6">
+      <CardHeader
+        title="Modules"
+        description="Switch features on or off for this estate. Switched-off modules disappear from menus and dashboards for everyone in the estate."
+      />
+      {loadingModules ? (
+        <p className="text-sm text-slate-300">Loading module settings...</p>
+      ) : (
+        <div className="grid gap-3 md:grid-cols-2">
+          {TOGGLABLE_MODULE_OPTIONS.map((option) => {
+            const isOn = !disabled.includes(option.key);
+            return (
+              <button
+                key={option.key}
+                type="button"
+                onClick={() => toggleModule(option.key)}
+                className={`flex items-start justify-between gap-3 rounded-lg border p-4 text-left transition ${
+                  isOn ? "border-smart/40 bg-smart/10" : "border-white/10 bg-white/5 opacity-70"
+                }`}
+              >
+                <span className="min-w-0">
+                  <span className="block font-semibold text-white">{option.label}</span>
+                  <span className="mt-1 block text-xs leading-5 text-slate-400">{option.helper}</span>
+                </span>
+                <span className={`mt-0.5 shrink-0 rounded-full border px-2.5 py-1 text-[11px] font-semibold ${
+                  isOn ? "border-smart/40 bg-smart/15 text-smart" : "border-white/20 bg-white/10 text-slate-300"
+                }`}>
+                  {isOn ? "On" : "Off"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+      {moduleMessage ? <p className="mt-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{moduleMessage}</p> : null}
+      <Button className="mt-5" type="button" disabled={savingModules || loadingModules} onClick={() => void saveModules()}>
+        {savingModules ? "Saving..." : "Save module settings"}
+      </Button>
+    </Card>
+  );
+}
+
 export function SettingsPage() {
   const [message, setMessage] = useState("");
 
   return (
     <>
       <PageHeader title="Settings" description="Control role permissions, gate settings, service categories, integrations, and notification preferences." />
+      <EstateModulesCard />
       <Card>
         <CardHeader title="Platform controls" description="Role-based access, payment processors, gate settings, and notification preferences." />
         <div className="grid gap-4 md:grid-cols-2">
@@ -7454,6 +7571,7 @@ export function HouseholdPage() {
 }
 
 export function SecurityDashboard() {
+  const disabledModules = useDisabledModules();
   const { visitorViews, loadingVisitors, visitorError } = useLiveVisitorViews(readAppwriteExpectedVisitors, { refreshIntervalMs: 60_000 });
   const { visitorViews: historyViews, loadingVisitors: loadingHistory } = useLiveVisitorViews(readAppwriteSecurityVisitorHistory, { refreshIntervalMs: 60_000 });
   const [sosAlerts, setSosAlerts] = useState<SecurityIncident[]>([]);
@@ -7522,24 +7640,28 @@ export function SecurityDashboard() {
           </span>
           <span className="text-sm font-semibold leading-tight text-white">Verify Visitor</span>
         </Link>
-        <Link
-          href="/security/guard-tour"
-          className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[0.06] p-4 text-center transition active:scale-[0.98]"
-        >
-          <span className="grid h-12 w-12 place-items-center rounded-xl bg-white/10 text-white">
-            <ShieldCheck className="h-6 w-6" />
-          </span>
-          <span className="text-sm font-semibold leading-tight text-white">Guard Tour</span>
-        </Link>
-        <Link
-          href="/security/scan-plate"
-          className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[0.06] p-4 text-center transition active:scale-[0.98]"
-        >
-          <span className="grid h-12 w-12 place-items-center rounded-xl bg-white/10 text-white">
-            <Car className="h-6 w-6" />
-          </span>
-          <span className="text-sm font-semibold leading-tight text-white">Scan Plate</span>
-        </Link>
+        {!disabledModules.includes("guard_tour") ? (
+          <Link
+            href="/security/guard-tour"
+            className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[0.06] p-4 text-center transition active:scale-[0.98]"
+          >
+            <span className="grid h-12 w-12 place-items-center rounded-xl bg-white/10 text-white">
+              <ShieldCheck className="h-6 w-6" />
+            </span>
+            <span className="text-sm font-semibold leading-tight text-white">Guard Tour</span>
+          </Link>
+        ) : null}
+        {!disabledModules.includes("plate_capture") ? (
+          <Link
+            href="/security/scan-plate"
+            className="flex flex-col items-center justify-center gap-2 rounded-2xl border border-white/15 bg-white/[0.06] p-4 text-center transition active:scale-[0.98]"
+          >
+            <span className="grid h-12 w-12 place-items-center rounded-xl bg-white/10 text-white">
+              <Car className="h-6 w-6" />
+            </span>
+            <span className="text-sm font-semibold leading-tight text-white">Scan Plate</span>
+          </Link>
+        ) : null}
       </div>
       <Card className="mt-3">
         <CardHeader title="Recent gate activity" description="Latest visitor invitations and movements." />
