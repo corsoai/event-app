@@ -70,6 +70,8 @@ export type NavItem = {
   icon: keyof typeof icons;
   tone?: "danger";
   badge?: "sos";
+  /** Optional module key — the item hides when the estate disables that module. */
+  module?: string;
 };
 
 export function AppShell({
@@ -89,7 +91,24 @@ export function AppShell({
   const [theme, setTheme] = useState<ThemeMode>("light");
   const [themeLoaded, setThemeLoaded] = useState(false);
   const [activeSosCount, setActiveSosCount] = useState(0);
-  const dashboardHref = navItems[0]?.href ?? "/";
+  const [disabledModules, setDisabledModules] = useState<string[]>([]);
+  const visibleNavItems = navItems.filter((item) => !item.module || !disabledModules.includes(item.module));
+  const dashboardHref = visibleNavItems[0]?.href ?? "/";
+
+  useEffect(() => {
+    let active = true;
+    fetch("/api/appwrite/estate-modules", { cache: "no-store" })
+      .then((response) => response.json())
+      .then((payload: { disabled?: string[] }) => {
+        if (active && Array.isArray(payload?.disabled)) setDisabledModules(payload.disabled);
+      })
+      .catch(() => {
+        // keep everything visible if the flag lookup fails
+      });
+    return () => {
+      active = false;
+    };
+  }, []);
 
   useEffect(() => {
     setOpen(false);
@@ -210,7 +229,7 @@ export function AppShell({
         {open ? (
           <nav className="max-h-[calc(100vh-4rem)] overflow-y-auto border-t border-white/10 bg-black/65 px-3 py-3 backdrop-blur-xl">
             <div className="grid gap-1">
-            {navItems.map((item) => (
+            {visibleNavItems.map((item) => (
               <NavLink
                 key={`${item.href}:${item.label}`}
                 item={item}
@@ -253,7 +272,7 @@ export function AppShell({
           </div>
         </div>
         <nav className="mt-6 grid flex-1 gap-1 overflow-y-auto overscroll-contain pr-1">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <NavLink key={`${item.href}:${item.label}`} item={item} active={pathname === item.href} collapseLabel badgeCount={item.badge === "sos" ? activeSosCount : 0} />
           ))}
         </nav>

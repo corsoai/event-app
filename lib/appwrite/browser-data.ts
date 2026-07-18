@@ -139,6 +139,35 @@ export async function readPublicAppwriteEstates() {
   return publicEstatesSessionCache;
 }
 
+export async function readDisabledEstateModules(estateId?: string): Promise<string[]> {
+  const query = estateId ? `?estateId=${encodeURIComponent(estateId)}` : "";
+  const response = await fetch(`/api/appwrite/estate-modules${query}`, { cache: "no-store" });
+  const payload = await response.json().catch(() => ({})) as { disabled?: string[]; error?: string };
+
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Module settings could not be loaded.");
+  }
+
+  return payload.disabled ?? [];
+}
+
+export async function saveDisabledEstateModules(disabled: string[], estateId?: string): Promise<string[]> {
+  const response = await fetch("/api/appwrite/estate-modules", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify(estateId ? { disabled, estateId } : { disabled })
+  });
+  const payload = await response.json().catch(() => ({})) as { disabled?: string[]; error?: string };
+
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Module settings could not be saved.");
+  }
+
+  return payload.disabled ?? [];
+}
+
 export type SuperEstateView = {
   id: string;
   name: string;
