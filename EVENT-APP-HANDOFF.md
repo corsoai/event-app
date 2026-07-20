@@ -19,6 +19,19 @@ Stanley is a novice acting as the bridge between you and the computer. Rules lea
 - Mobile-first always. Test in Light AND Dark theme (the app has its own toggle: `darkMode: ["selector", '[data-theme="dark"]']`).
 - Bump `CACHE_NAME` in `public/sw.js` on every user-facing release (PWA phones cache hard; close-reopen-twice ritual).
 
+## 0.5 Install the Claude crew (first task of Phase 0)
+
+The folder `event-app-claude-setup/` contains this project's Claude configuration. Install it:
+
+- Move `event-app-claude-setup/CLAUDE.md` to the project root, REPLACING the Corso CLAUDE.md.
+- Move `event-app-claude-setup/agents/*` to `.claude/agents/`.
+- Move `event-app-claude-setup/skills/ship/` to `.claude/skills/ship/`.
+- Delete the now-empty `event-app-claude-setup/` folder, and delete Corso's `AGENTS.md`/`CODEX.md`
+  if present (they describe Corso's workflow, not this project's).
+
+The crew: **release-verifier** (run before every release), **ui-reviewer** (run after building any
+screen), and the **ship** skill (the whole release ritual — use it whenever Stanley says "ship").
+
 ## 1. Source and setup
 
 The codebase is a fork of Corso (github.com/corsoai/lbsview-estate). To create the new project:
