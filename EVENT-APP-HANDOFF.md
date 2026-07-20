@@ -126,6 +126,26 @@ Phase 4 — growth: per-event public microsite (event page with RSVP), organizer
 events, seating/tables, vendor & budget tracker, NDPR-compliant data retention (purge guest PII
 N days after event, configurable).
 
+### Nigerian market notes (reference competitor: zikoro.com)
+
+Event categories to support explicitly (event "type" field + landing-page use cases): weddings
+(incl. owambe/asoebi culture — large guest lists, gate control matters), burials/memorials,
+corporate events & product launches, **government functions** (protocol lists, VIP/dignitary
+categories, security tie-in is a differentiator — our SOS + plate capture + gate logs are strong
+here), religious events (crusades, conventions — very large counts), academic events
+(convocations, matriculations), concerts, conferences/workshops, birthdays/house parties.
+
+Zikoro-inspired features worth queueing AFTER Phase 2 (do not start with these):
+- **Credentials**: auto-generated certificates of attendance and digital badges (academic,
+  workshops, corporate trainings) — pairs naturally with our check-in data ("attended = gets
+  certificate"), delivered by email.
+- **Engagements**: live polls, Q&A, quizzes during the event (conference/corporate market).
+- **Bookings**: appointment scheduling — probably out of scope; note only.
+
+Differentiators to lean on vs Zikoro: gate security DNA (guards, scanning discipline, plate
+capture, SOS), WhatsApp-first pass delivery, offline-tolerant check-in for Nigerian venue
+network reality, and protocol/VIP handling for government and traditional functions.
+
 ## 5. Definition of done, per phase
 
 Typecheck clean → Stanley pushes (his six-command ritual) → Vercel green → live smoke test on the
