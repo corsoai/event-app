@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { CheckCircle2, ClipboardList, MapPin, RefreshCw, UserPlus, Users, UploadCloud, X } from "lucide-react";
 import { PageHeader, QRCodeImage } from "@/components/dashboard/pages";
+import { VipParkingCard } from "@/components/events/vip-parking-card";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
@@ -165,6 +166,8 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
           <BulkImportGuests eventId={eventId} onImported={() => void refresh()} />
         </div>
       </div>
+
+      <VipParkingCard eventId={eventId} />
 
       <Card className="mt-6">
         <CardHeader title="Gate log" description="Every scan at the gate, newest first — including duplicate attempts." />

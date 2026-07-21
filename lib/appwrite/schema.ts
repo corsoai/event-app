@@ -33,6 +33,7 @@ export const APPWRITE_TABLE_VEHICLE_LOGS = "vehicle_logs";
 export const APPWRITE_TABLE_EVENTS = "events";
 export const APPWRITE_TABLE_GUESTS = "guests";
 export const APPWRITE_TABLE_CHECKINS = "checkins";
+export const APPWRITE_TABLE_VIP_PLATES = "vip_plates";
 
 export const APPWRITE_TABLE_IDS = {
   estates: APPWRITE_TABLE_ESTATES,
@@ -68,7 +69,8 @@ export const APPWRITE_TABLE_IDS = {
   vehicleLogs: APPWRITE_TABLE_VEHICLE_LOGS,
   events: APPWRITE_TABLE_EVENTS,
   guests: APPWRITE_TABLE_GUESTS,
-  checkins: APPWRITE_TABLE_CHECKINS
+  checkins: APPWRITE_TABLE_CHECKINS,
+  vipPlates: APPWRITE_TABLE_VIP_PLATES
 } as const;
 
 export type AppwriteColumnDefinition = {
@@ -905,6 +907,24 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
     indexes: [
       { key: "checkin_event_idx", type: "key", attributes: ["eventId"] },
       { key: "checkin_scanned_idx", type: "key", attributes: ["scannedAt"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_VIP_PLATES,
+    name: "VIP Plates",
+    columns: [
+      ...baseColumns,
+      { key: "eventId", type: "string", size: 64, required: true },
+      { key: "plate", type: "string", size: 32, required: true },
+      { key: "label", type: "string", size: 160, required: false },
+      { key: "status", type: "string", size: 16, required: false, default: "expected" },
+      { key: "arrivedAt", type: "datetime", required: false },
+      { key: "arrivedGate", type: "string", size: 128, required: false },
+      { key: "loggedBy", type: "string", size: 160, required: false }
+    ],
+    indexes: [
+      { key: "vip_plate_event_idx", type: "key", attributes: ["eventId"] },
+      { key: "vip_plate_plate_idx", type: "key", attributes: ["eventId", "plate"] }
     ]
   }
 ];

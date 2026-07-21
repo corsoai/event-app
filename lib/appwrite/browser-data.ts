@@ -1,6 +1,6 @@
 "use client";
 
-import type { CheckinRecord, EventRecord, Facility, Guest, Resident, SecurityIncident, Staff, StaffAttendance, UserRole, VehicleLog, Visitor, WorkOrder } from "@/lib/types";
+import type { CheckinRecord, EventRecord, Facility, Guest, Resident, SecurityIncident, Staff, StaffAttendance, UserRole, VehicleLog, VipPlate, Visitor, WorkOrder } from "@/lib/types";
 
 type AccessRequestResult = {
   status: "created" | "already-pending" | "already-approved";
@@ -847,6 +847,56 @@ export async function checkInAppwriteGuestByCode(eventId: string, code: string, 
     throw new Error(payload.error ?? `Guest code could not be verified (HTTP ${response.status}).`);
   }
   return payload.guest;
+}
+
+export async function readAppwriteVipPlates(eventId: string): Promise<VipPlate[]> {
+  const response = await fetchWithTimeout(
+    `/api/appwrite/events/vip-arrival?eventId=${encodeURIComponent(eventId)}`,
+    { cache: "no-store" },
+    "The server did not respond within 12 seconds while loading VIP plates. Check your connection and try again."
+  );
+  const payload = await response.json().catch(() => ({})) as { plates?: VipPlate[]; error?: string };
+  if (!response.ok) {
+    throw new Error(payload.error ?? `VIP plates could not be loaded (HTTP ${response.status}).`);
+  }
+  return Array.isArray(payload.plates) ? payload.plates : [];
+}
+
+export async function addAppwriteVipPlate(eventId: string, plate: string, label: string): Promise<VipPlate> {
+  const response = await fetch("/api/appwrite/admin/events/vip-plates", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ eventId, plate, label })
+  });
+  const payload = await response.json().catch(() => ({})) as { plate?: VipPlate; error?: string };
+  if (!response.ok || !payload.plate) {
+    throw new Error(payload.error ?? `VIP plate could not be saved (HTTP ${response.status}).`);
+  }
+  return payload.plate;
+}
+
+export async function removeAppwriteVipPlate(eventId: string, plateId: string): Promise<void> {
+  const response = await fetch(
+    `/api/appwrite/admin/events/vip-plates?eventId=${encodeURIComponent(eventId)}&plateId=${encodeURIComponent(plateId)}`,
+    { method: "DELETE" }
+  );
+  const payload = await response.json().catch(() => ({})) as { ok?: boolean; error?: string };
+  if (!response.ok) {
+    throw new Error(payload.error ?? `VIP plate could not be removed (HTTP ${response.status}).`);
+  }
+}
+
+export async function markAppwriteVipArrival(eventId: string, plate: string, gateName: string): Promise<VipPlate> {
+  const response = await fetch("/api/appwrite/events/vip-arrival", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ eventId, plate, gateName })
+  });
+  const payload = await response.json().catch(() => ({})) as { plate?: VipPlate; error?: string };
+  if (!response.ok || !payload.plate) {
+    throw new Error(payload.error ?? `VIP arrival could not be logged (HTTP ${response.status}).`);
+  }
+  return payload.plate;
 }
 
 export async function readAppwriteEventCheckins(eventId: string): Promise<CheckinRecord[]> {

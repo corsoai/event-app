@@ -23,7 +23,8 @@ export const residentNav: NavItem[] = [
 export const securityNav: NavItem[] = [
   { label: "Dashboard", href: "/security", icon: "Gauge" },
   { label: "🚨 SOS", href: "/security/sos-alerts", icon: "AlertTriangle", tone: "danger", badge: "sos" },
-  { label: "Guest Check-in", href: "/security/checkin", icon: "CalendarDays" }
+  { label: "Guest Check-in", href: "/security/checkin", icon: "CalendarDays" },
+  { label: "VIP Parking", href: "/security/vip-parking", icon: "Car", module: "plate_capture" }
 ];
 
 export const csoNav: NavItem[] = [

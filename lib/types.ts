@@ -131,6 +131,19 @@ export type CheckinRecord = {
   createdAt?: string;
 };
 
+export type VipPlate = {
+  id: string;
+  estateId: string;
+  eventId: string;
+  plate: string;
+  label: string;
+  status: "expected" | "arrived";
+  arrivedAt?: string;
+  arrivedGate?: string;
+  loggedBy?: string;
+  createdAt?: string;
+};
+
 export type Bill = {
   id: string;
   residentId: string;

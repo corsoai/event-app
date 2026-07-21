@@ -1063,3 +1063,32 @@ byte-verification on all committed files. CACHE_NAME → `corsvent-v2026-07-21-i
 
 **Backlog now:** resident/cso portal decision (Stanley), VIP Parking module, orphaned-helper
 tidy in pages.tsx, RSVP + Paystack when Stanley has an account, broadcasts/certificates.
+
+### Session 13 (2026-07-21) — VIP Parking module built (behind plate_capture toggle)
+
+Built the roadmap item end-to-end, per Stanley's spec and rules 6A/6C:
+- **Data:** new `vip_plates` table (plate normalized to A-Z0-9 uppercase, label/owner, status
+  expected/arrived with required-false defaults, arrivedAt/arrivedGate, `loggedBy` from the
+  session profileId — never the request body). Auto-provisions via the Session-10 targeted
+  `ensureAppwriteTablesExist(["vip_plates"])` path.
+- **Server:** new `lib/appwrite/vip-parking.ts` mirroring events.ts (organizer-only
+  add/remove, gate-roles list/arrive, workspace scoping, duplicate arrival → "already arrived
+  at HH:MM", duplicate plate on list rejected).
+- **Routes:** `/api/appwrite/admin/events/vip-plates` (GET/POST/DELETE, organizer) and
+  `/api/appwrite/events/vip-arrival` (GET list + POST arrival, gate roles) — house
+  errorResponse pattern, 404/409 mapping on the arrival POST.
+- **UI:** `components/events/vip-parking-card.tsx` on the event detail page (renders nothing
+  when the workspace has VIP Parking toggled off in Settings; add/remove plates, arrival
+  status at a glance) and `components/events/vip-parking-gate-page.tsx` at
+  `/security/vip-parking` (event picker, big plate entry, arrived counter + expected list,
+  8s auto-refresh). New "VIP Parking" securityNav item gated by `module: "plate_capture"` —
+  it disappears from gate staff nav when toggled off. `Car` icon registered in app-shell.
+- No camera ANPR in v1 — gate staff type the plate (the old estate plate-capture camera flow
+  stays in git history if ever wanted).
+
+**Verification:** typecheck exit 0; NUL/brace checks; md5 byte-verification on all committed
+files. CACHE_NAME → `corsvent-v2026-07-21-vip-parking-1`.
+
+**Backlog now:** resident/cso portal decision (Stanley), orphaned-helper tidy in pages.tsx,
+RSVP + Paystack when Stanley has an account, broadcasts/certificates. All other approved
+builds are DONE.
