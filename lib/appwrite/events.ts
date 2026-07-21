@@ -5,21 +5,21 @@ import {
   APPWRITE_LBSVIEW_ESTATE_ID,
   appwriteInsertRow,
   appwriteUpsertRow,
-  setupAppwriteOnboardingSchema,
+  ensureAppwriteTablesExist,
   safeAppwriteId
 } from "@/lib/appwrite/server";
 import { listAppwriteTableRows, type AppwriteEstateScope } from "@/lib/appwrite/residents";
 
 /**
- * The `events` and `guests` tables were added to schema.ts after the estate's
- * Appwrite database was already provisioned. setupAppwriteOnboardingSchema()
- * is memoized per server instance (see server.ts), so this only pays the full
- * dozens-of-REST-calls cost once per cold start — every later call in the
- * same warm instance just reuses the cached promise. Safe to call on every
- * entry point below until the tables are confirmed created everywhere.
+ * The events/guests/checkins tables were added to schema.ts after the
+ * database was first provisioned. The FULL schema sweep proved too slow for
+ * a serverless request path (it walks every estate-era table first and hits
+ * the function time limit before reaching these), so this ensures exactly
+ * the three event tables — memoized per instance, a few quick calls per
+ * cold start once they exist.
  */
 async function ensureEventsSchema() {
-  await setupAppwriteOnboardingSchema();
+  await ensureAppwriteTablesExist(["events", "guests", "checkins"]);
 }
 
 type AppwriteEventRow = {

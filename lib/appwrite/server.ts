@@ -134,6 +134,61 @@ export async function ensureAppwriteSchemaReady(): Promise<void> {
   return appwriteSchemaReadyPromise;
 }
 
+const appwriteTargetedEnsurePromises = new Map<string, Promise<void>>();
+
+/**
+ * Targeted provisioning for tables added AFTER an environment's database was
+ * first bootstrapped. The full setupAppwriteOnboardingSchema sweep walks ~30
+ * estate-era tables (dozens of REST round-trips) before ever reaching newer
+ * tables at the end of the list — on a serverless cold start that exceeds the
+ * function time limit, so the new tables were never created (found live on
+ * 2026-07-21: events/guests/checkins missing from eventng_db). This ensures
+ * ONLY the named tables: ~2 quick calls per already-existing table, real
+ * creation (including missing columns on existing tables) when absent.
+ * Memoized per instance; the memo clears on failure so the next request
+ * retries. Falls back to the full setup only when the database itself is
+ * missing (brand-new environment).
+ */
+export async function ensureAppwriteTablesExist(tableIds: string[]): Promise<void> {
+  const memoKey = tableIds.join(",");
+  const cached = appwriteTargetedEnsurePromises.get(memoKey);
+  if (cached) {
+    return cached;
+  }
+
+  const promise = (async () => {
+    const config = getAppwriteServerConfig();
+    if (!config.configured) {
+      return;
+    }
+
+    const database = await appwriteRequest<unknown>(`/tablesdb/${config.databaseId}`, {
+      method: "GET",
+      allowNotFound: true
+    });
+
+    if (!database) {
+      await setupAppwriteOnboardingSchema();
+      return;
+    }
+
+    for (const tableId of tableIds) {
+      const table = appwriteOnboardingTables.find((definition) => definition.tableId === tableId);
+      if (!table) {
+        throw new Error(`Unknown Appwrite table definition: ${tableId}`);
+      }
+      validateTableDefinition(table);
+      await ensureTable(config.databaseId, table);
+    }
+  })().catch((error) => {
+    appwriteTargetedEnsurePromises.delete(memoKey);
+    throw error;
+  });
+
+  appwriteTargetedEnsurePromises.set(memoKey, promise);
+  return promise;
+}
+
 async function setupAppwriteOnboardingSchemaUncached(): Promise<AppwriteSetupResult> {
   const config = getAppwriteServerConfig();
   const result: AppwriteSetupResult = {

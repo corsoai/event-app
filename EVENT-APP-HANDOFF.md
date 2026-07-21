@@ -942,3 +942,40 @@ workspace defaults), iOS Safari QR scanning (needs a vendored decoder — Barcod
 Chromium-only; npm registry blocked in the cloud sandbox), physical deletion of dead
 estate components inside pages.tsx, resident/cso portal decision with Stanley, then
 RSVP + Paystack when Stanley has an account, broadcasts + certificates after that.
+
+### Session 10 (2026-07-21) — live-failure fixes: table provisioning, form crash, honest errors
+
+Overseer verified via the Appwrite console API that events/guests/checkins were NEVER created
+in eventng_db — only estate-era tables existed. Root cause found in code: `ensureEventsSchema()`
+called the FULL `setupAppwriteOnboardingSchema()` sweep, which walks all ~30 estate-era tables
+(dozens of REST round-trips) with the event tables LAST in `appwriteOnboardingTables` — on a
+serverless cold start the function time limit kills the request before provisioning ever
+reaches them, the memoized promise clears on failure, and the next cold start repeats the same
+doomed walk. The client meanwhile aborted at its own 12s timeout and showed the misleading
+"taking too long" message.
+
+**Fix 1 — targeted provisioning.** New `ensureAppwriteTablesExist(tableIds)` in
+`lib/appwrite/server.ts`: ensures ONLY the named tables via the existing `ensureTable` helper
+(which also heals missing columns on existing tables), memoized per instance with
+clear-on-failure, falling back to the full setup only when the database itself is missing.
+`ensureEventsSchema()` now calls `ensureAppwriteTablesExist(["events", "guests", "checkins"])`
+— a handful of quick calls instead of the full sweep. Verified every events/guests/checkin
+entry point ensures schema first, directly or via `getAppwriteEvent`. The schema definitions
+already comply with the Appwrite 1.9 rule (no `default` on `required: true`) from Session 4.
+No version marker needed — the targeted ensure is idempotent and self-healing, so "bump a
+version to re-run" is replaced by "always cheaply verify the three tables".
+
+**Fix 2 — create-event form crash** ("Cannot read properties of null (reading 'reset')"):
+`event.currentTarget.reset()` after an await — React nulls currentTarget by then. Captured
+`const formElement = event.currentTarget` at handler top in `events-admin-page.tsx` (create
+event) and `event-detail-page.tsx` (add guest) — same fix as EstateComposer in the parent
+repo. These were the only two `.reset()`-after-await sites in components/events/.
+
+**Fix 3 — honest error messages.** All event/guest/gate wrappers in `browser-data.ts`: the
+timeout message now says what actually happened ("The server did not respond within 12
+seconds...") and non-OK fallbacks include the HTTP status (`(HTTP 500)`) when the server sends
+no error text — the next failure diagnoses itself.
+
+**Verification:** typecheck exit 0; md5 byte-verification on all committed files. CACHE_NAME →
+`corsvent-v2026-07-21-checkin-fix-1`. No data cleanup needed (zero event rows existed).
+After this deploys green, re-run the walkthrough from Step 1 (create event → guest → check-in).

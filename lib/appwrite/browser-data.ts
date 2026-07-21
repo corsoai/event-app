@@ -736,11 +736,11 @@ export async function readAppwriteAdminEvents(): Promise<EventRecord[]> {
   const response = await fetchWithTimeout(
     "/api/appwrite/admin/events",
     { cache: "no-store" },
-    "Events are taking too long to load. Please refresh."
+    "The server did not respond within 12 seconds while loading events. Check your connection and try again."
   );
   const payload = await response.json().catch(() => ({})) as { events?: EventRecord[]; error?: string };
   if (!response.ok) {
-    throw new Error(payload.error ?? "Events could not be loaded online.");
+    throw new Error(payload.error ?? `Events could not be loaded (HTTP ${response.status}).`);
   }
   return Array.isArray(payload.events) ? payload.events : [];
 }
@@ -749,11 +749,11 @@ export async function readAppwriteAdminEvent(eventId: string): Promise<EventReco
   const response = await fetchWithTimeout(
     `/api/appwrite/admin/events?eventId=${encodeURIComponent(eventId)}`,
     { cache: "no-store" },
-    "This event is taking too long to load. Please refresh."
+    "The server did not respond within 12 seconds while loading this event. Check your connection and try again."
   );
   const payload = await response.json().catch(() => ({})) as { event?: EventRecord; error?: string };
   if (!response.ok || !payload.event) {
-    throw new Error(payload.error ?? "Event could not be loaded online.");
+    throw new Error(payload.error ?? `Event could not be loaded (HTTP ${response.status}).`);
   }
   return payload.event;
 }
@@ -788,11 +788,11 @@ export async function readAppwriteEventGuests(eventId: string): Promise<Guest[]>
   const response = await fetchWithTimeout(
     `/api/appwrite/admin/events/guests?eventId=${encodeURIComponent(eventId)}`,
     { cache: "no-store" },
-    "The guest list is taking too long to load. Please refresh."
+    "The server did not respond within 12 seconds while loading the guest list. Check your connection and try again."
   );
   const payload = await response.json().catch(() => ({})) as { guests?: Guest[]; error?: string };
   if (!response.ok) {
-    throw new Error(payload.error ?? "Guest list could not be loaded online.");
+    throw new Error(payload.error ?? `Guest list could not be loaded (HTTP ${response.status}).`);
   }
   return Array.isArray(payload.guests) ? payload.guests : [];
 }
@@ -827,11 +827,11 @@ export async function readAppwriteGateEvents(): Promise<EventRecord[]> {
   const response = await fetchWithTimeout(
     "/api/appwrite/events",
     { cache: "no-store" },
-    "Events are taking too long to load. Please refresh."
+    "The server did not respond within 12 seconds while loading events. Check your connection and try again."
   );
   const payload = await response.json().catch(() => ({})) as { events?: EventRecord[]; error?: string };
   if (!response.ok) {
-    throw new Error(payload.error ?? "Events could not be loaded online.");
+    throw new Error(payload.error ?? `Events could not be loaded (HTTP ${response.status}).`);
   }
   return Array.isArray(payload.events) ? payload.events : [];
 }
@@ -844,7 +844,7 @@ export async function checkInAppwriteGuestByCode(eventId: string, code: string, 
   });
   const payload = await response.json().catch(() => ({})) as { guest?: Guest; error?: string };
   if (!response.ok || !payload.guest) {
-    throw new Error(payload.error ?? "Guest code could not be verified online.");
+    throw new Error(payload.error ?? `Guest code could not be verified (HTTP ${response.status}).`);
   }
   return payload.guest;
 }
@@ -853,11 +853,11 @@ export async function readAppwriteEventCheckins(eventId: string): Promise<Checki
   const response = await fetchWithTimeout(
     `/api/appwrite/events/checkin?eventId=${encodeURIComponent(eventId)}`,
     { cache: "no-store" },
-    "The gate log is taking too long to load. Please refresh."
+    "The server did not respond within 12 seconds while loading the gate log. Check your connection and try again."
   );
   const payload = await response.json().catch(() => ({})) as { checkins?: CheckinRecord[]; error?: string };
   if (!response.ok) {
-    throw new Error(payload.error ?? "Gate log could not be loaded online.");
+    throw new Error(payload.error ?? `Gate log could not be loaded (HTTP ${response.status}).`);
   }
   return Array.isArray(payload.checkins) ? payload.checkins : [];
 }

@@ -200,7 +200,9 @@ function AddGuestForm({ eventId, onAdded }: { eventId: string; onAdded: () => vo
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    // React nulls event.currentTarget after the first await — capture it now.
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     setSaving(true);
     setMessage("");
     try {
@@ -211,7 +213,7 @@ function AddGuestForm({ eventId, onAdded }: { eventId: string; onAdded: () => vo
         category: (String(form.get("category") ?? "regular") as GuestCategory)
       });
       setMessage(`${created.fullName} added — code ${created.code}.`);
-      event.currentTarget.reset();
+      formElement.reset();
       onAdded();
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Guest could not be saved online.");

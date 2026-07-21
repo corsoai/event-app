@@ -36,7 +36,9 @@ export function EventsAdminPage() {
 
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
+    // React nulls event.currentTarget after the first await — capture it now.
+    const formElement = event.currentTarget;
+    const form = new FormData(formElement);
     const startDate = String(form.get("startDate") ?? "");
     const startTime = String(form.get("startTime") ?? "10:00");
 
@@ -51,7 +53,7 @@ export function EventsAdminPage() {
         gates: String(form.get("gates") ?? "")
       });
       setCreateMessage(`"${created.name}" created. Add guests from the event page.`);
-      event.currentTarget.reset();
+      formElement.reset();
       await refresh();
     } catch (err) {
       setCreateMessage(err instanceof Error ? err.message : "Event could not be saved online.");
