@@ -1,8 +1,25 @@
 import { NextRequest, NextResponse } from "next/server";
 import { resolveSessionContext, SessionContextError } from "@/lib/appwrite/session-context";
-import { checkInAppwriteGuestByCode } from "@/lib/appwrite/events";
+import { checkInAppwriteGuestByCode, listAppwriteEventCheckins } from "@/lib/appwrite/events";
 
 const gateRoles = ["security_guard", "estate_admin", "super_admin"] as const;
+
+export async function GET(request: NextRequest) {
+  const eventId = request.nextUrl.searchParams.get("eventId") ?? "";
+  if (!eventId) {
+    return NextResponse.json({ error: "eventId is required." }, { status: 400 });
+  }
+
+  try {
+    const context = await resolveSessionContext(request, { allowedRoles: gateRoles });
+    const checkins = await listAppwriteEventCheckins(context, eventId);
+    return NextResponse.json({ checkins });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "Gate log could not be loaded online.";
+    const status = error instanceof SessionContextError ? error.status : 400;
+    return NextResponse.json({ error: message }, { status });
+  }
+}
 
 export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => null);
@@ -16,7 +33,8 @@ export async function POST(request: NextRequest) {
       context,
       String(body.eventId),
       String(body.code),
-      String(body.gateName ?? "Main gate")
+      String(body.gateName ?? "Main gate"),
+      body.capturedAt ? String(body.capturedAt) : undefined
     );
     return NextResponse.json({ guest });
   } catch (error) {

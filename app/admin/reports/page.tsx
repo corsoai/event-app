@@ -1,5 +1,5 @@
-import { ReportsPage } from "@/components/dashboard/pages";
+import { EventReportsPage } from "@/components/events/event-reports-page";
 
 export default function Page() {
-  return <ReportsPage />;
+  return <EventReportsPage />;
 }

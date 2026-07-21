@@ -1,6 +1,6 @@
 "use client";
 
-import type { EventRecord, Facility, Guest, Resident, SecurityIncident, Staff, StaffAttendance, UserRole, VehicleLog, Visitor, WorkOrder } from "@/lib/types";
+import type { CheckinRecord, EventRecord, Facility, Guest, Resident, SecurityIncident, Staff, StaffAttendance, UserRole, VehicleLog, Visitor, WorkOrder } from "@/lib/types";
 
 type AccessRequestResult = {
   status: "created" | "already-pending" | "already-approved";
@@ -836,15 +836,28 @@ export async function readAppwriteGateEvents(): Promise<EventRecord[]> {
   return Array.isArray(payload.events) ? payload.events : [];
 }
 
-export async function checkInAppwriteGuestByCode(eventId: string, code: string, gateName: string): Promise<Guest> {
+export async function checkInAppwriteGuestByCode(eventId: string, code: string, gateName: string, capturedAt?: string): Promise<Guest> {
   const response = await fetch("/api/appwrite/events/checkin", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ eventId, code, gateName })
+    body: JSON.stringify(capturedAt ? { eventId, code, gateName, capturedAt } : { eventId, code, gateName })
   });
   const payload = await response.json().catch(() => ({})) as { guest?: Guest; error?: string };
   if (!response.ok || !payload.guest) {
     throw new Error(payload.error ?? "Guest code could not be verified online.");
   }
   return payload.guest;
+}
+
+export async function readAppwriteEventCheckins(eventId: string): Promise<CheckinRecord[]> {
+  const response = await fetchWithTimeout(
+    `/api/appwrite/events/checkin?eventId=${encodeURIComponent(eventId)}`,
+    { cache: "no-store" },
+    "The gate log is taking too long to load. Please refresh."
+  );
+  const payload = await response.json().catch(() => ({})) as { checkins?: CheckinRecord[]; error?: string };
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Gate log could not be loaded online.");
+  }
+  return Array.isArray(payload.checkins) ? payload.checkins : [];
 }

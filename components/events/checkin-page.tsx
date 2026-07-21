@@ -13,6 +13,7 @@ import {
   readAppwriteEventGuests,
   readAppwriteGateEvents
 } from "@/lib/appwrite/browser-data";
+import { cachePendingCheckin, installGateCheckinSync, readPendingCheckins } from "@/lib/gate-offline";
 
 const LIVE_REFRESH_MS = 8000;
 
@@ -70,11 +71,12 @@ function EventCheckIn({ eventId }: { eventId: string }) {
   const [code, setCode] = useState("");
   const [gateName, setGateName] = useState("Main gate");
   const [message, setMessage] = useState("");
-  const [tone, setTone] = useState<"ok" | "error">("ok");
+  const [tone, setTone] = useState<"ok" | "error" | "offline">("ok");
   const [checking, setChecking] = useState(false);
   const [guests, setGuests] = useState<Guest[]>([]);
   const [loadingGuests, setLoadingGuests] = useState(true);
   const [scannerOpen, setScannerOpen] = useState(false);
+  const [pendingCount, setPendingCount] = useState(0);
 
   async function refreshGuests(silent = false) {
     if (!silent) setLoadingGuests(true);
@@ -93,6 +95,24 @@ function EventCheckIn({ eventId }: { eventId: string }) {
     return () => window.clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
+
+  useEffect(() => {
+    setPendingCount(readPendingCheckins().length);
+    const uninstall = installGateCheckinSync((result) => {
+      setPendingCount(result.remaining);
+      const parts = [];
+      if (result.synced) parts.push(`${result.synced} offline scan${result.synced === 1 ? "" : "s"} synced`);
+      if (result.duplicates) parts.push(`${result.duplicates} already checked in elsewhere`);
+      if (result.rejected) parts.push(`${result.rejected} rejected`);
+      if (parts.length) {
+        setMessage(`${parts.join(", ")}.`);
+        setTone("ok");
+      }
+      void refreshGuests(true);
+    });
+    return uninstall;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const checkedInCount = guests.filter((guest) => guest.status === "checked-in").length;
 
@@ -115,8 +135,24 @@ function EventCheckIn({ eventId }: { eventId: string }) {
       setCode("");
       void refreshGuests(true);
     } catch (err) {
-      setMessage(err instanceof Error ? err.message : "Guest code could not be verified online.");
-      setTone("error");
+      // Rule 6B: a scan that can't reach the server is queued locally and
+      // synced automatically when connectivity returns.
+      const isNetworkFailure = err instanceof TypeError || !navigator.onLine;
+      if (isNetworkFailure) {
+        const queued = cachePendingCheckin({
+          eventId,
+          code: targetCode,
+          gateName: gateName.trim() || "Main gate",
+          capturedAt: new Date().toISOString()
+        });
+        setPendingCount(queued);
+        setMessage(`Saved offline — will sync automatically. ${queued} scan${queued === 1 ? "" : "s"} waiting.`);
+        setTone("offline");
+        setCode("");
+      } else {
+        setMessage(err instanceof Error ? err.message : "Guest code could not be verified online.");
+        setTone("error");
+      }
     } finally {
       setChecking(false);
     }
@@ -163,8 +199,13 @@ function EventCheckIn({ eventId }: { eventId: string }) {
           {checking ? "Checking in..." : "Check in"}
         </Button>
         {message ? (
-          <p className={`mt-4 rounded-lg border px-3 py-2 text-sm ${tone === "ok" ? "border-smart/30 bg-smart/10 text-smart" : "border-danger/30 bg-danger/10 text-danger"}`}>
+          <p className={`mt-4 rounded-lg border px-3 py-2 text-sm ${tone === "ok" ? "border-smart/30 bg-smart/10 text-smart" : tone === "offline" ? "border-gold/40 bg-gold/10 text-gold" : "border-danger/30 bg-danger/10 text-danger"}`}>
             {message}
+          </p>
+        ) : null}
+        {pendingCount > 0 ? (
+          <p className="mt-2 rounded-lg border border-gold/40 bg-gold/10 px-3 py-2 text-xs text-gold">
+            {pendingCount} offline scan{pendingCount === 1 ? "" : "s"} waiting to sync — they upload automatically when the network returns.
           </p>
         ) : null}
       </Card>

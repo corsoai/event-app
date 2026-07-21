@@ -113,6 +113,24 @@ export type Guest = {
   updatedAt?: string;
 };
 
+export type CheckinResult = "checked-in" | "duplicate";
+
+export type CheckinRecord = {
+  id: string;
+  estateId: string;
+  eventId: string;
+  guestId: string;
+  guestName: string;
+  category: GuestCategory;
+  code: string;
+  gate: string;
+  scannedBy: string;
+  scannedAt: string;
+  capturedAt?: string;
+  result: CheckinResult;
+  createdAt?: string;
+};
+
 export type Bill = {
   id: string;
   residentId: string;

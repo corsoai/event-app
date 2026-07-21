@@ -1,5 +1,5 @@
 import { randomInt } from "crypto";
-import type { EventRecord, Guest, GuestCategory, UserRole } from "@/lib/types";
+import type { CheckinRecord, CheckinResult, EventRecord, Guest, GuestCategory, UserRole } from "@/lib/types";
 import type { SessionContext } from "@/lib/appwrite/session-context";
 import {
   APPWRITE_LBSVIEW_ESTATE_ID,
@@ -52,6 +52,22 @@ type AppwriteGuestRow = {
   checkedInBy?: string;
   createdAt?: string;
   updatedAt?: string;
+};
+
+type AppwriteCheckinRow = {
+  $id?: string;
+  estateId?: string;
+  eventId?: string;
+  guestId?: string;
+  guestName?: string;
+  category?: GuestCategory;
+  code?: string;
+  gate?: string;
+  scannedBy?: string;
+  scannedAt?: string;
+  capturedAt?: string;
+  result?: CheckinResult;
+  createdAt?: string;
 };
 
 const organizerRoles = new Set<UserRole>(["estate_admin", "super_admin"]);
@@ -227,7 +243,13 @@ export async function bulkCreateAppwriteGuests(context: SessionInput, eventId: s
   return { created, errors };
 }
 
-export async function checkInAppwriteGuestByCode(context: SessionInput, eventId: string, code: string, gateName: string): Promise<Guest> {
+export async function checkInAppwriteGuestByCode(
+  context: SessionInput,
+  eventId: string,
+  code: string,
+  gateName: string,
+  capturedAt?: string
+): Promise<Guest> {
   requireGateStaff(context);
   await getAppwriteEvent(context, eventId);
 
@@ -244,14 +266,19 @@ export async function checkInAppwriteGuestByCode(context: SessionInput, eventId:
   }
 
   const guest = mapGuestRow(row);
+  const gate = gateName.trim() || "Main gate";
+  const now = new Date().toISOString();
+  const arrivalAt = normalizeCapturedAt(capturedAt) ?? now;
+
   if (guest.status === "checked-in") {
+    // Rule 6C: every scan is recorded, including duplicate attempts.
+    await recordCheckinScan(context, guest, gate, now, arrivalAt, "duplicate");
     throw new Error(`${guest.fullName} already checked in at ${formatCheckInTime(guest.checkedInAt)}.`);
   }
   if (guest.status === "cancelled") {
     throw new Error(`${guest.fullName}'s invitation was cancelled.`);
   }
 
-  const now = new Date().toISOString();
   const updated = await appwriteUpsertRow<AppwriteGuestRow>("guests", guest.id, {
     estateId: guest.estateId,
     eventId: guest.eventId,
@@ -261,14 +288,99 @@ export async function checkInAppwriteGuestByCode(context: SessionInput, eventId:
     category: guest.category,
     code: guest.code,
     status: "checked-in",
-    checkedInAt: now,
-    checkedInGate: gateName.trim() || "Main gate",
+    checkedInAt: arrivalAt,
+    checkedInGate: gate,
     checkedInBy: context.profileId,
     createdAt: guest.createdAt,
     updatedAt: now
   });
 
+  await recordCheckinScan(context, guest, gate, now, arrivalAt, "checked-in");
+
   return mapGuestRow(updated);
+}
+
+/**
+ * Offline-synced scans send the honest capture time from the gate device.
+ * Accept it only if it parses and is not in the future (small clock-skew
+ * allowance) and no older than 48h — otherwise fall back to server time.
+ */
+function normalizeCapturedAt(value?: string) {
+  if (!value) return undefined;
+  const time = new Date(value).getTime();
+  if (Number.isNaN(time)) return undefined;
+  const nowMs = Date.now();
+  if (time > nowMs + 5 * 60 * 1000) return undefined;
+  if (time < nowMs - 48 * 60 * 60 * 1000) return undefined;
+  return new Date(time).toISOString();
+}
+
+/**
+ * One row per scan (rule 6C): scannedBy from the session, gate label,
+ * server timestamp. Logging must never break the check-in itself.
+ */
+async function recordCheckinScan(
+  context: SessionInput,
+  guest: Guest,
+  gate: string,
+  scannedAt: string,
+  capturedAt: string,
+  result: CheckinResult
+) {
+  try {
+    await appwriteInsertRow<AppwriteCheckinRow>(
+      "checkins",
+      safeAppwriteId("chk", `${guest.eventId}:${guest.code}:${scannedAt}`),
+      {
+        estateId: guest.estateId,
+        eventId: guest.eventId,
+        guestId: guest.id,
+        guestName: guest.fullName,
+        category: guest.category,
+        code: guest.code,
+        gate,
+        scannedBy: context.profileId,
+        scannedAt,
+        capturedAt,
+        result,
+        createdAt: scannedAt
+      }
+    );
+  } catch {
+    // Non-fatal: the guest row is the source of truth for state; the log is auxiliary.
+  }
+}
+
+export async function listAppwriteEventCheckins(context: SessionInput, eventId: string, limit = 200): Promise<CheckinRecord[]> {
+  requireGateStaff(context);
+  await ensureEventsSchema();
+  await getAppwriteEvent(context, eventId);
+
+  const scope = scopeForContext(context);
+  const rows = await listAppwriteTableRows<AppwriteCheckinRow>("checkins", scope);
+  return rows
+    .filter((row) => row.eventId === eventId)
+    .map(mapCheckinRow)
+    .sort((left, right) => new Date(right.scannedAt).getTime() - new Date(left.scannedAt).getTime())
+    .slice(0, limit);
+}
+
+function mapCheckinRow(row: AppwriteCheckinRow): CheckinRecord {
+  return {
+    id: row.$id ?? "",
+    estateId: row.estateId ?? "",
+    eventId: row.eventId ?? "",
+    guestId: row.guestId ?? "",
+    guestName: row.guestName ?? "",
+    category: row.category ?? "regular",
+    code: row.code ?? "",
+    gate: row.gate ?? "",
+    scannedBy: row.scannedBy ?? "",
+    scannedAt: row.scannedAt ?? row.createdAt ?? "",
+    capturedAt: row.capturedAt,
+    result: row.result ?? "checked-in",
+    createdAt: row.createdAt
+  };
 }
 
 async function makeUniqueGuestCode(eventId: string, preferredCode?: string) {

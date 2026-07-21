@@ -880,3 +880,65 @@ existing Phase 1 code against them before recording:
   now pins the design so no new storage library sneaks in.
 
 Doc-only change; no code touched this session.
+
+### Session 9 (2026-07-21) — gate log, offline queue, CSV upload, Reports rebuild, estate-route deletion
+
+Stanley said "continue till you finish every build" — this session executes the whole approved
+backlog except Paystack/RSVP (**explicitly deferred by Stanley: no Paystack account exists yet;
+do not start it until he says so**).
+
+**Build 1 — per-scan gate log (rule 6C).** New `checkins` table in `lib/appwrite/schema.ts`
+(auto-provisions on first API call, same memoized path as events/guests — columns follow the
+required-false-with-default rule from Session 4). Every scan now inserts one row: `scannedBy`
+from session profileId (never the body), `gate`, server `scannedAt`, `capturedAt`, guest
+snapshot fields, and `result` — including `"duplicate"` rows when someone re-scans an
+already-arrived guest (the check-in still throws the same duplicate error; logging is
+non-fatal-wrapped so it can never break the check-in itself). New `listAppwriteEventCheckins`
++ GET on `/api/appwrite/events/checkin?eventId=` (gate + organizer roles), client wrapper
+`readAppwriteEventCheckins`, and a "Gate log" card on the event detail page (newest first,
+duplicate attempts badged amber).
+
+**Build 2 — offline scan queue (rule 6B).** New `lib/gate-offline.ts` mirroring
+`lib/guard-tour.ts` exactly: localStorage queue (`corsvent_pending_checkins`), flush on
+`online`/`visibilitychange` + on mount, permanent rejections (no such guest / cancelled)
+leave the queue, "already checked in" counts as duplicate, network failures stay queued.
+Check-in screen: network-failed scans save with amber "Saved offline — will sync
+automatically" feedback, a pending-count chip, and sync results reported in the message area.
+Offline scans send `capturedAt`; the server accepts it only within [-48h, +5min] (clock-skew
+guard, `normalizeCapturedAt` in events.ts) and uses it for the guest's `checkedInAt` so
+arrival times stay honest after a sync.
+
+**Build 3 — CSV file upload.** Bulk import card now has a file input (FileReader, no new
+libraries) that loads the CSV into the existing preview textarea; the parser now skips a
+"Name, Phone, Category" header row, strips simple quotes, handles CRLF, and normalizes
+category case.
+
+**Build 4 — Reports rebuilt for events.** New `components/events/event-reports-page.tsx`
+(fresh file, event language only): event picker, guest-list/arrived/no-shows/VIP stat cards
+with attendance %, arrivals + no-shows lists, and client-generated CSV export (full list and
+no-shows-only, quoted-cell-safe). `/admin/reports` now renders this instead of the estate
+`ReportsPage`; "Reports" restored to adminNav and the admin mobile tab bar.
+
+**Build 5 — stale estate routes physically deleted** (git rm commands given to Stanley; the
+cloud bridge cannot delete device files). Deleted route folders: admin announcements, bills,
+complaints, digital-ids, facilities, knowledge-base, payments, residents, settings, system,
+visitors; security expected-visitors, logs, scan-plate, verify-id, verify-visitor; plus
+app/marketplace and the dead app/demo redirect stub. Kept: everything under app/resident and
+app/cso (product decision still pending with Stanley — do NOT delete without him), security
+checkin/guard-tour/sos-alerts, admin estate/events/users/reports/sos-alerts, super-admin.
+The page COMPONENTS in `components/dashboard/pages.tsx` (BillsAdminPage etc.) still exist as
+now-unrouted dead exports — deleting them from the 12k-line file is a separate careful pass.
+Note `/admin/settings` is gone, so the module-toggle UI (EstateModulesCard) is unreachable;
+guard_tour/plate_capture stay at their DB defaults until an event-shaped settings page is
+built (backlog).
+
+**Verification:** full-tree typecheck (cloud sandbox, TS 6.0.3) exit 0 after EVERY checkpoint
+above, including one final run with all 18 route folders deleted. NUL scan + brace balance on
+all touched files; md5 byte-verification cloud↔device on every committed file. `CACHE_NAME`
+bumped → `corsvent-v2026-07-21-gatelog-1`.
+
+**Still on the backlog (in rough order):** event-shaped Settings page (module toggles +
+workspace defaults), iOS Safari QR scanning (needs a vendored decoder — BarcodeDetector is
+Chromium-only; npm registry blocked in the cloud sandbox), physical deletion of dead
+estate components inside pages.tsx, resident/cso portal decision with Stanley, then
+RSVP + Paystack when Stanley has an account, broadcasts + certificates after that.

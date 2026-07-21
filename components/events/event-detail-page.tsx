@@ -8,11 +8,12 @@ import { Button } from "@/components/ui/button";
 import { Field, Input, Select, Textarea } from "@/components/ui/input";
 import { StatCard } from "@/components/ui/stat-card";
 import { StatusBadge } from "@/components/ui/status-badge";
-import type { EventRecord, Guest, GuestCategory } from "@/lib/types";
+import type { CheckinRecord, EventRecord, Guest, GuestCategory } from "@/lib/types";
 import {
   bulkCreateAppwriteGuests,
   createAppwriteGuest,
   readAppwriteAdminEvent,
+  readAppwriteEventCheckins,
   readAppwriteEventGuests,
   updateAppwriteAdminEventStatus,
   type GuestCreateInput
@@ -21,6 +22,7 @@ import {
 export function EventDetailPage({ eventId }: { eventId: string }) {
   const [event, setEvent] = useState<EventRecord | null>(null);
   const [guests, setGuests] = useState<Guest[]>([]);
+  const [checkins, setCheckins] = useState<CheckinRecord[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
@@ -32,12 +34,14 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
       setError("");
     }
     try {
-      const [eventData, guestData] = await Promise.all([
+      const [eventData, guestData, checkinData] = await Promise.all([
         readAppwriteAdminEvent(eventId),
-        readAppwriteEventGuests(eventId)
+        readAppwriteEventGuests(eventId),
+        readAppwriteEventCheckins(eventId).catch(() => null)
       ]);
       setEvent(eventData);
       setGuests(guestData);
+      if (checkinData) setCheckins(checkinData);
     } catch (err) {
       if (!silent) setError(err instanceof Error ? err.message : "Event could not be loaded online.");
     } finally {
@@ -162,6 +166,27 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
         </div>
       </div>
 
+      <Card className="mt-6">
+        <CardHeader title="Gate log" description="Every scan at the gate, newest first — including duplicate attempts." />
+        {checkins.length === 0 ? (
+          <div className="p-4 text-center text-sm text-slate-300">No scans yet. The log fills up as gate staff check guests in.</div>
+        ) : (
+          <div className="grid gap-2">
+            {checkins.slice(0, 15).map((scan) => (
+              <div key={scan.id} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-white/[0.03] px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="truncate text-sm font-medium text-white">{scan.guestName || "Unknown guest"}</p>
+                  <p className="mt-0.5 text-xs text-slate-400">
+                    {formatScanTime(scan.scannedAt)}{scan.gate ? ` · ${scan.gate}` : ""}
+                  </p>
+                </div>
+                <StatusBadge status={scan.result === "duplicate" ? "duplicate scan" : "checked-in"} tone={scan.result === "duplicate" ? "yellow" : "green"} />
+              </div>
+            ))}
+          </div>
+        )}
+      </Card>
+
       {selectedGuest ? (
         <GuestPassModal guest={selectedGuest} event={event} onClose={() => setSelectedGuest(null)} />
       ) : null}
@@ -228,6 +253,18 @@ function BulkImportGuests({ eventId, onImported }: { eventId: string; onImported
 
   const parsedCount = useMemo(() => parseGuestPasteText(text).length, [text]);
 
+  function loadCsvFile(file: File | undefined) {
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      const content = typeof reader.result === "string" ? reader.result : "";
+      setText(content.trim());
+      setMessage(`Loaded ${file.name} — review the rows below, then import.`);
+    };
+    reader.onerror = () => setMessage("That file could not be read. Try copy-pasting the rows instead.");
+    reader.readAsText(file);
+  }
+
   async function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const guests = parseGuestPasteText(text);
@@ -257,8 +294,15 @@ function BulkImportGuests({ eventId, onImported }: { eventId: string; onImported
 
   return (
     <Card>
-      <CardHeader title="Bulk import" description="Paste from Excel/CSV — one guest per line: Name, Phone, Category." />
+      <CardHeader title="Bulk import" description="Upload a CSV file or paste from Excel — one guest per line: Name, Phone, Category." />
       <form className="grid gap-4" onSubmit={submit}>
+        <Field label="CSV file (optional)">
+          <Input
+            type="file"
+            accept=".csv,text/csv,text/plain"
+            onChange={(event) => loadCsvFile(event.target.files?.[0])}
+          />
+        </Field>
         <Textarea
           value={text}
           onChange={(event) => setText(event.target.value)}
@@ -277,17 +321,24 @@ function BulkImportGuests({ eventId, onImported }: { eventId: string; onImported
 }
 
 function parseGuestPasteText(text: string): GuestCreateInput[] {
-  return text
-    .split("\n")
+  const lines = text
+    .split(/\r?\n/)
     .map((line) => line.trim())
-    .filter(Boolean)
+    .filter(Boolean);
+
+  // Skip a CSV header row like "Name, Phone, Category".
+  const firstLine = (lines[0] ?? "").toLowerCase();
+  const hasHeader = firstLine.includes("name") && (firstLine.includes("phone") || firstLine.includes("category"));
+
+  return (hasHeader ? lines.slice(1) : lines)
     .map((line) => {
-      const parts = line.split(",").map((part) => part.trim());
+      const parts = line.split(",").map((part) => part.trim().replace(/^"|"$/g, "").trim());
       const [fullName, phone, category] = parts;
+      const normalizedCategory = (category ?? "").toLowerCase();
       return {
         fullName: fullName ?? "",
         phone: phone || undefined,
-        category: category === "vip" || category === "staff" ? category : "regular"
+        category: normalizedCategory === "vip" || normalizedCategory === "staff" ? normalizedCategory : "regular"
       } satisfies GuestCreateInput;
     })
     .filter((guest) => guest.fullName);
@@ -338,6 +389,15 @@ function normalizeGuestPhone(phone: string) {
   const digits = phone.replace(/\D/g, "");
   if (!digits) return "";
   return digits.startsWith("0") ? `234${digits.slice(1)}` : digits;
+}
+
+function formatScanTime(value: string) {
+  if (!value) return "";
+  try {
+    return new Intl.DateTimeFormat("en-NG", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit", hour12: true }).format(new Date(value));
+  } catch {
+    return value;
+  }
 }
 
 function formatEventDate(value: string) {

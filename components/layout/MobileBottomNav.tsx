@@ -224,7 +224,8 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
     { label: "Dash", href: "/admin", icon: LayoutDashboard },
     { label: "Events", href: "/admin/events", icon: CalendarDays },
     { label: "SOS", href: "/admin/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
-    { label: "Users", href: "/admin/users", icon: Users }
+    { label: "Users", href: "/admin/users", icon: Users },
+    { label: "Reports", href: "/admin/reports", icon: BarChart3 }
   ];
 }
 

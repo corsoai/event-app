@@ -32,6 +32,7 @@ export const APPWRITE_TABLE_WORK_ORDERS = "work_orders";
 export const APPWRITE_TABLE_VEHICLE_LOGS = "vehicle_logs";
 export const APPWRITE_TABLE_EVENTS = "events";
 export const APPWRITE_TABLE_GUESTS = "guests";
+export const APPWRITE_TABLE_CHECKINS = "checkins";
 
 export const APPWRITE_TABLE_IDS = {
   estates: APPWRITE_TABLE_ESTATES,
@@ -66,7 +67,8 @@ export const APPWRITE_TABLE_IDS = {
   workOrders: APPWRITE_TABLE_WORK_ORDERS,
   vehicleLogs: APPWRITE_TABLE_VEHICLE_LOGS,
   events: APPWRITE_TABLE_EVENTS,
-  guests: APPWRITE_TABLE_GUESTS
+  guests: APPWRITE_TABLE_GUESTS,
+  checkins: APPWRITE_TABLE_CHECKINS
 } as const;
 
 export type AppwriteColumnDefinition = {
@@ -882,6 +884,27 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
       { key: "guest_event_idx", type: "key", attributes: ["eventId"] },
       { key: "guest_code_idx", type: "key", attributes: ["eventId", "code"] },
       { key: "guest_status_idx", type: "key", attributes: ["status"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_CHECKINS,
+    name: "Check-ins",
+    columns: [
+      ...baseColumns,
+      { key: "eventId", type: "string", size: 64, required: true },
+      { key: "guestId", type: "string", size: 64, required: true },
+      { key: "guestName", type: "string", size: 160, required: false },
+      { key: "category", type: "string", size: 16, required: false },
+      { key: "code", type: "string", size: 16, required: false },
+      { key: "gate", type: "string", size: 128, required: false },
+      { key: "scannedBy", type: "string", size: 160, required: false },
+      { key: "scannedAt", type: "datetime", required: false },
+      { key: "capturedAt", type: "datetime", required: false },
+      { key: "result", type: "string", size: 16, required: false, default: "checked-in" }
+    ],
+    indexes: [
+      { key: "checkin_event_idx", type: "key", attributes: ["eventId"] },
+      { key: "checkin_scanned_idx", type: "key", attributes: ["scannedAt"] }
     ]
   }
 ];
