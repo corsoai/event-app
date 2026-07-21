@@ -3,7 +3,7 @@ import { DEMO_PASSWORD } from "@/lib/password-policy";
 
 export const roleLabels: Record<UserRole, string> = {
   super_admin: "Super Admin",
-  estate_admin: "Estate Admin",
+  estate_admin: "Organizer",
   cso: "Chief Security Officer",
   resident: "Resident",
   security_guard: "Security Guard",

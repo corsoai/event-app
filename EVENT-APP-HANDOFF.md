@@ -517,3 +517,74 @@ git push origin main
    latest check-in status/time is stored on the guest row).
 3. Everything else from the Session 1/2 notes still stands (copy sweep, residents-import-machinery
    removal) — lower priority than confirming Phase 1 works end-to-end.
+
+### Session 4 (2026-07-21) — live bug fixes from the first real walkthrough
+
+Session 3's push went live and Stanley/"Overseer" did the first real walkthrough (trying to create
+an organizer account as super-admin). Two real bugs surfaced, both fixed this session:
+
+**Bug 1 — schema provisioning crash (the serious one).** Appwrite 1.9 rejected the `events` and
+`guests` table creation outright: `"Attribute 'status' cannot have a default value when required
+is true"`. My Phase 1 schema definitions in `lib/appwrite/schema.ts` combined `required: true` with
+`default: "..."` on three columns (`events.status`, `guests.category`, `guests.status`) — every
+other column in the whole schema file correctly pairs `default` with `required: false`, this was
+the one place I got the combination backwards. Fixed by switching all three to `required: false`
+(the create functions in `lib/appwrite/events.ts` always supply an explicit value anyway, so this
+is a behavior-neutral fix — the `default` only matters as a DB-level fallback that should now
+basically never fire). **Cascading symptom, not a separate bug:** because table creation failed,
+the live `/api/appwrite/admin/events` etc. calls errored, which is unrelated to but happened
+alongside the super-admin Users page's estate dropdown falling back to locally-cached demo data
+showing "LBS View Estate" — grepped the whole codebase and confirmed there is no remaining
+hardcoded "LBS View Estate" string anywhere; that name is almost certainly stale `localStorage`
+on Stanley's device from before the Session 1 seed-data fix (the local store is an offline
+fallback cache, not re-seeded by a code change alone). Once this schema fix ships and live data
+loads successfully, the fallback branch shouldn't trigger — if "LBS View Estate" still shows after
+this deploys, a hard refresh / PWA close-reopen-twice should clear it; flag it again if it
+persists after that.
+
+**Bug 2 — "Organizer" role missing from the create-user dropdown.** My instruction to pick
+"Organizer" was wrong — the role is internally `estate_admin` (per the estate→organizer-workspace
+concept mapping this whole project is built on) and the create-user dropdown was still displaying
+its old Corso label, "Estate Admin," because `roleLabels.estate_admin` in `lib/auth.ts` had never
+been updated. Fixed the label itself (`"Estate Admin"` → `"Organizer"`) rather than adding a new
+role — this single map feeds the create-user dropdown, the edit-user dropdown, the user list
+table, and the temporary-credential summary message, so all four are now consistent. Also found
+and fixed the same stale label in `app/admin/layout.tsx`'s sidebar (`roleLabel="Estate Admin /
+Manager"` → `"Organizer"`) while sweeping for other "estate admin" text — grepped the whole
+codebase afterward and confirmed no other hardcoded "Estate Admin" strings remain.
+
+**release-verifier checklist, run manually (no `release-verifier` subagent type available in this
+environment) per Stanley's request before this push:**
+- Typecheck: exit 0.
+- Guardrail scan: no auth logic touched (auth-card.tsx submit flow / session-context.ts /
+  users.ts login untouched this round), no env vars pointing at `lbsview-estate`/`lbsview_estate`,
+  no hardcoded secrets — this round is schema column flags + two display-label strings only.
+- No new screens this round, so the responsive/theme check doesn't apply.
+- `CACHE_NAME` bumped (`public/sw.js`: `...phase1-events-1` → `...phase1-events-2`) since the
+  Organizer label is a user-visible change and PWA caches hard on phones.
+- `git add` list cross-checked against `git status` — exactly 4 files changed, nothing missing,
+  nothing extra (`npm-install-log.txt` is stray local debug output, deliberately excluded).
+- **Verdict: READY.**
+
+**Push list for this session:**
+
+```
+node node_modules/typescript/bin/tsc -p tsconfig.typecheck.json --noEmit
+```
+
+If that prints nothing and exits clean, continue with:
+
+```
+git add lib/appwrite/schema.ts lib/auth.ts app/admin/layout.tsx public/sw.js EVENT-APP-HANDOFF.md
+git commit -m "Fix Appwrite schema validation error and Organizer role label"
+git push origin main
+```
+
+**Next session should:**
+1. Confirm this deploys green, then have Stanley redo the organizer account creation from
+   Users & Roles (Super Admin) — this time picking "Organizer" from the dropdown — and confirm
+   the events/guests tables provision successfully (no more "cannot have a default value" error).
+2. If "LBS View Estate" still shows in the estate dropdown after this ships, have Stanley do a
+   hard refresh (or the close-reopen-twice PWA cache ritual) before treating it as a new bug.
+3. Once an organizer account exists, resume the original Phase 1 walkthrough: create a test event,
+   add guests, check one in as security, confirm the live counter.

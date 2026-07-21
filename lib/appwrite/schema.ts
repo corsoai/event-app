@@ -853,7 +853,7 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
       { key: "startAt", type: "datetime", required: true },
       { key: "endAt", type: "datetime", required: false },
       { key: "gates", type: "string", size: 512, required: false },
-      { key: "status", type: "string", size: 16, required: true, default: "draft" },
+      { key: "status", type: "string", size: 16, required: false, default: "draft" },
       { key: "createdBy", type: "string", size: 64, required: false }
     ],
     indexes: [
@@ -871,9 +871,9 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
       { key: "fullName", type: "string", size: 160, required: true },
       { key: "phone", type: "string", size: 64, required: false },
       { key: "email", type: "string", size: 160, required: false },
-      { key: "category", type: "string", size: 16, required: true, default: "regular" },
+      { key: "category", type: "string", size: 16, required: false, default: "regular" },
       { key: "code", type: "string", size: 16, required: true },
-      { key: "status", type: "string", size: 16, required: true, default: "invited" },
+      { key: "status", type: "string", size: 16, required: false, default: "invited" },
       { key: "checkedInAt", type: "datetime", required: false },
       { key: "checkedInGate", type: "string", size: 128, required: false },
       { key: "checkedInBy", type: "string", size: 160, required: false }
