@@ -12267,7 +12267,7 @@ function DigitalIdCard({
   );
 }
 
-function QRCodeImage({ value }: { value: string }) {
+export function QRCodeImage({ value }: { value: string }) {
   const qrValue = useMemo(() => value || "Pending QR code", [value]);
   const [src, setSrc] = useState(() => qrDataUrlCache.get(qrValue) ?? "");
 

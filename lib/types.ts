@@ -79,6 +79,40 @@ export type Visitor = {
   status: "pending" | "verified" | "checked-in" | "checked-out" | "expired" | "cancelled";
 };
 
+export type EventRecord = {
+  id: string;
+  estateId: string;
+  name: string;
+  venue: string;
+  address: string;
+  startAt: string;
+  endAt?: string;
+  gates?: string;
+  status: "draft" | "live" | "ended";
+  createdBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type GuestCategory = "regular" | "vip" | "staff";
+
+export type Guest = {
+  id: string;
+  estateId: string;
+  eventId: string;
+  fullName: string;
+  phone: string;
+  email: string;
+  category: GuestCategory;
+  code: string;
+  status: "invited" | "checked-in" | "checked-out" | "cancelled";
+  checkedInAt?: string;
+  checkedInGate?: string;
+  checkedInBy?: string;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
 export type Bill = {
   id: string;
   residentId: string;

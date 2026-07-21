@@ -7,6 +7,7 @@ import {
   AlertTriangle,
   BarChart3,
   Building2,
+  CalendarDays,
   ClipboardList,
   CreditCard,
   Home,
@@ -15,8 +16,7 @@ import {
   ReceiptText,
   Settings,
   Shield,
-  Users,
-  WalletCards
+  Users
 } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
 import { cn } from "@/lib/utils";
@@ -198,9 +198,9 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
   if (role === "security_guard") {
     return [
       { label: "Dash", href: "/security", icon: Shield },
-      { label: "Verify", href: "/security/verify-visitor", icon: QrCode },
+      { label: "Check-in", href: "/security/checkin", icon: CalendarDays },
       { label: "SOS", href: "/security/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
-      { label: "Expected", href: "/security/expected-visitors", icon: Users },
+      { label: "Verify", href: "/security/verify-visitor", icon: QrCode },
       { label: "Logs", href: "/security/logs", icon: ClipboardList }
     ];
   }
@@ -226,9 +226,9 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
 
   return [
     { label: "Dash", href: "/admin", icon: LayoutDashboard },
-    { label: "Residents", href: "/admin/residents", icon: Users },
+    { label: "Events", href: "/admin/events", icon: CalendarDays },
     { label: "SOS", href: "/admin/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
-    { label: "Payments", href: "/admin/payments", icon: WalletCards },
+    { label: "Residents", href: "/admin/residents", icon: Users },
     { label: "Reports", href: "/admin/reports", icon: BarChart3 }
   ];
 }

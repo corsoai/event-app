@@ -400,3 +400,120 @@ git push origin main
    (`ResidentOnboardingPanel` / `AppwriteOnboardingPanel`) as its own careful pass.
 4. Start Phase 1 (Events table, guest list, pass delivery, check-in) once Stanley confirms the
    sidebar strip.
+
+### Session 3 (2026-07-21) — Phase 1 vertical slice: Events, Guests, passes, gate check-in
+
+Stanley asked to move straight into the real event features rather than wait on the sidebar
+check. Confirmed via `git log` that Session 2's push (auth-card + landing page rebrand) had
+**not yet been run by Stanley** — those commands are still pending from the prior note above and
+should be run together with this session's files (see combined push list below).
+
+**Scope for this session (Stanley picked "full flow, one event" as the starting slice):** a real,
+working vertical slice — organizer creates an event, adds guests (manually or pasted CSV), each
+guest gets a 6-digit code + QR pass shareable by WhatsApp, and gate staff can look up an event and
+check guests in with a live "checked in / still expected" counter. Deferred to later passes: a
+full per-scan audit log table (guest check-in currently just stores the latest status + timestamp
+on the guest row, not a running log like `visitor_logs`), Paystack ticketing, offline-tolerant
+scanning, and CSV file upload (v1 bulk import is copy/paste only).
+
+**Data model — new tables added to `lib/appwrite/schema.ts`:**
+- `events`: estateId, name, venue, address, startAt, endAt, gates, status (draft/live/ended),
+  createdBy.
+- `guests`: estateId, eventId, fullName, phone, email, category (regular/vip/staff), code (6-digit,
+  unique per event), status (invited/checked-in/checked-out/cancelled), checkedInAt,
+  checkedInGate, checkedInBy.
+- **Important — these are the first genuinely new tables added since the estate's Appwrite
+  database was already provisioned** (everything before this was part of the original one-time
+  bootstrap). The cheap `ensureAppwriteSchemaReady()` guard used elsewhere in the codebase only
+  checks that the *database* exists, not that every table does, so it would NOT have created these
+  on its own. Fixed by having every entry point in the new `lib/appwrite/events.ts` call the full
+  `setupAppwriteOnboardingSchema()` (via a small `ensureEventsSchema()` wrapper) — that function is
+  already memoized per server instance in `server.ts`, so this only pays the full schema-check cost
+  once per cold start; every later call in the same warm instance reuses the cached result. No
+  manual setup step needed from Stanley — the first Events API call after this deploy creates the
+  two new tables automatically.
+
+**New backend (`lib/appwrite/events.ts`)** — mirrors the existing `visitors.ts` pattern closely:
+event CRUD scoped by estate (organizer = `estate_admin`/`super_admin` only), guest CRUD +
+6-digit unique-code generation (same collision-avoidance approach as visitor codes), bulk guest
+import (loops single-create, collects per-row errors, caps at 500/import), and check-in by code
+(gate staff = `security_guard`/`estate_admin`/`super_admin`, scoped so one estate's staff can never
+see or check in another estate's guests).
+
+**New API routes:**
+- `/api/appwrite/admin/events` — GET (list, or `?eventId=` for one), POST (create), PATCH (status)
+  — organizer-only.
+- `/api/appwrite/admin/events/guests` — GET (`?eventId=`), POST (single guest, or `{eventId,
+  guests: [...]}`  for bulk) — organizer-only.
+- `/api/appwrite/events` — GET, lightweight event listing for gate staff (excludes ended events).
+- `/api/appwrite/events/checkin` — POST `{eventId, code, gateName}` — gate staff + organizer.
+
+**New client wrappers** appended to `lib/appwrite/browser-data.ts` (readAppwriteAdminEvents,
+createAppwriteAdminEvent, updateAppwriteAdminEventStatus, readAppwriteEventGuests,
+createAppwriteGuest, bulkCreateAppwriteGuests, readAppwriteGateEvents,
+checkInAppwriteGuestByCode).
+
+**New UI — per CLAUDE.md guardrail #7, built as new files under `components/events/` rather than
+adding to the already-12k-line `pages.tsx`** (the only touch to `pages.tsx` itself was exporting
+the existing `QRCodeImage` helper so the new screens could reuse it instead of duplicating QR
+rendering logic):
+- `components/events/events-admin-page.tsx` — event list (cards) + create-event form. Route:
+  `/admin/events`.
+- `components/events/event-detail-page.tsx` — event header with live stats (total/checked-in/VIP),
+  guest table, add-guest form, paste-to-import bulk form, and a guest pass modal (QR + code +
+  WhatsApp share, reusing the same `wa.me` share pattern as the existing visitor-invite flow).
+  Route: `/admin/events/[eventId]`.
+- `components/events/checkin-page.tsx` — event picker + 6-digit code entry (numeric, auto-focus)
+  + live "checked in / still expected" counter for gate staff. Route: `/security/checkin`.
+- All three reuse the existing `Card`/`CardHeader`/`Field`/`Input`/`Select`/`Textarea`/`Button`/
+  `StatCard`/`StatusBadge` primitives from `components/ui/`, so mobile sizing and the dashboard's
+  visual style are inherited automatically rather than rebuilt.
+
+**Nav + icons:**
+- Added "Events" to `adminNav` and "Guest Check-in" to `securityNav`
+  (`components/layout/nav.ts`), using a new `CalendarDays` icon registered in
+  `components/layout/app-shell.tsx`'s icon map.
+- **Fixed a pre-existing mobile bottom-nav gap while I was in this file:** `MobileBottomNav.tsx`
+  still had its own hardcoded "Payments" tab for admin even though Payments was removed from the
+  desktop `adminNav` back in Session 1 — the strip only ever touched the desktop sidebar. Replaced
+  it with "Events" (admin) and added a "Check-in" tab for security (replacing the old primary
+  "Verify" slot, which moved down since visitor-code verification is now the secondary flow).
+
+**Verification done:** typecheck clean (exit 0) after every batch of changes: schema/types edit,
+new `events.ts` + routes, new UI components, and again after the nav/icon edits. Full-repo NUL
+scan came back clean for every source file (the only NUL bytes found were in binary PNG/ICO/JPEG
+assets, which is normal for those file types, not corruption). Brace/paren balance checked against
+`git show HEAD:<file>` for every edited file and self-checked for every new file — all balanced.
+`git fsck` shows only the same pre-existing harmless dangling tree noted in earlier sessions.
+
+**Not done yet, flagged for the next pass (Phase 1b/1c, already tracked as follow-up tasks):**
+finish the vertical slice with real device testing (I can't click through the live app myself —
+Stanley should create a test event, add a couple of guests, and check one in from a phone before
+trusting this fully), a proper per-scan check-in audit log/history table (mirrors `visitor_logs`),
+CSV *file* upload (not just paste), duplicate-scan messaging polish, and eventually wiring the
+Events nav item to replace/absorb the old Visitor Logs + Residents items once Phase 1 is confirmed
+solid (left both in place this round to avoid breaking anything mid-flight).
+
+**Combined push list for this session (includes Session 2's still-pending auth-card/landing-page
+files, since Stanley hadn't pushed those yet):**
+
+```
+node node_modules/typescript/bin/tsc -p tsconfig.typecheck.json --noEmit
+```
+
+If that prints nothing and exits clean, continue with:
+
+```
+git add app/page.tsx components/auth/auth-card.tsx components/landing/demo-request-form.tsx lib/types.ts lib/appwrite/schema.ts lib/appwrite/events.ts lib/appwrite/browser-data.ts components/dashboard/pages.tsx components/layout/nav.ts components/layout/app-shell.tsx components/layout/MobileBottomNav.tsx public/sw.js app/api/appwrite/admin/events/route.ts app/api/appwrite/admin/events/guests/route.ts app/api/appwrite/events/route.ts app/api/appwrite/events/checkin/route.ts app/admin/events/page.tsx "app/admin/events/[eventId]/page.tsx" app/security/checkin/page.tsx components/events/events-admin-page.tsx components/events/event-detail-page.tsx components/events/checkin-page.tsx EVENT-APP-HANDOFF.md
+git commit -m "Phase 1 vertical slice: Events, guest list, QR passes, gate check-in"
+git push origin main
+```
+
+**Next session should:**
+1. Confirm the push built green, then have Stanley walk through the real flow on `event.corso.ng`:
+   create a test event as organizer, add 2-3 guests, view a guest's pass/QR, then log in as
+   security and check one guest in — confirm the counter updates.
+2. Add a per-scan check-in log table if Stanley wants a full audit trail (currently only the
+   latest check-in status/time is stored on the guest row).
+3. Everything else from the Session 1/2 notes still stands (copy sweep, residents-import-machinery
+   removal) — lower priority than confirming Phase 1 works end-to-end.

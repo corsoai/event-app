@@ -30,6 +30,8 @@ export const APPWRITE_TABLE_STAFF_ATTENDANCE = "staff_attendance";
 export const APPWRITE_TABLE_FACILITIES = "facilities";
 export const APPWRITE_TABLE_WORK_ORDERS = "work_orders";
 export const APPWRITE_TABLE_VEHICLE_LOGS = "vehicle_logs";
+export const APPWRITE_TABLE_EVENTS = "events";
+export const APPWRITE_TABLE_GUESTS = "guests";
 
 export const APPWRITE_TABLE_IDS = {
   estates: APPWRITE_TABLE_ESTATES,
@@ -62,7 +64,9 @@ export const APPWRITE_TABLE_IDS = {
   staffAttendance: APPWRITE_TABLE_STAFF_ATTENDANCE,
   facilities: APPWRITE_TABLE_FACILITIES,
   workOrders: APPWRITE_TABLE_WORK_ORDERS,
-  vehicleLogs: APPWRITE_TABLE_VEHICLE_LOGS
+  vehicleLogs: APPWRITE_TABLE_VEHICLE_LOGS,
+  events: APPWRITE_TABLE_EVENTS,
+  guests: APPWRITE_TABLE_GUESTS
 } as const;
 
 export type AppwriteColumnDefinition = {
@@ -836,6 +840,48 @@ export const appwriteOnboardingTables: AppwriteTableDefinition[] = [
       { key: "vehicle_log_estate_idx", type: "key", attributes: ["estateId"] },
       { key: "vehicle_log_plate_idx", type: "key", attributes: ["plate"] },
       { key: "vehicle_log_scanned_idx", type: "key", attributes: ["scannedAt"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_EVENTS,
+    name: "Events",
+    columns: [
+      ...baseColumns,
+      { key: "name", type: "string", size: 160, required: true },
+      { key: "venue", type: "string", size: 160, required: false },
+      { key: "address", type: "string", size: 255, required: false },
+      { key: "startAt", type: "datetime", required: true },
+      { key: "endAt", type: "datetime", required: false },
+      { key: "gates", type: "string", size: 512, required: false },
+      { key: "status", type: "string", size: 16, required: true, default: "draft" },
+      { key: "createdBy", type: "string", size: 64, required: false }
+    ],
+    indexes: [
+      { key: "event_estate_idx", type: "key", attributes: ["estateId"] },
+      { key: "event_status_idx", type: "key", attributes: ["status"] },
+      { key: "event_start_idx", type: "key", attributes: ["startAt"] }
+    ]
+  },
+  {
+    tableId: APPWRITE_TABLE_GUESTS,
+    name: "Guests",
+    columns: [
+      ...baseColumns,
+      { key: "eventId", type: "string", size: 64, required: true },
+      { key: "fullName", type: "string", size: 160, required: true },
+      { key: "phone", type: "string", size: 64, required: false },
+      { key: "email", type: "string", size: 160, required: false },
+      { key: "category", type: "string", size: 16, required: true, default: "regular" },
+      { key: "code", type: "string", size: 16, required: true },
+      { key: "status", type: "string", size: 16, required: true, default: "invited" },
+      { key: "checkedInAt", type: "datetime", required: false },
+      { key: "checkedInGate", type: "string", size: 128, required: false },
+      { key: "checkedInBy", type: "string", size: 160, required: false }
+    ],
+    indexes: [
+      { key: "guest_event_idx", type: "key", attributes: ["eventId"] },
+      { key: "guest_code_idx", type: "key", attributes: ["eventId", "code"] },
+      { key: "guest_status_idx", type: "key", attributes: ["status"] }
     ]
   }
 ];

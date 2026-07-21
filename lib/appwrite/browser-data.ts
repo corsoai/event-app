@@ -1,6 +1,6 @@
 "use client";
 
-import type { Facility, Resident, SecurityIncident, Staff, StaffAttendance, UserRole, VehicleLog, Visitor, WorkOrder } from "@/lib/types";
+import type { EventRecord, Facility, Guest, Resident, SecurityIncident, Staff, StaffAttendance, UserRole, VehicleLog, Visitor, WorkOrder } from "@/lib/types";
 
 type AccessRequestResult = {
   status: "created" | "already-pending" | "already-approved";
@@ -691,4 +691,137 @@ export async function saveAppwriteVehicleLog(input: Record<string, unknown>): Pr
   }
 
   return payload.log;
+}
+
+export type EventCreateInput = {
+  name: string;
+  venue: string;
+  address: string;
+  startAt: string;
+  endAt?: string;
+  gates?: string;
+};
+
+export type GuestCreateInput = {
+  fullName: string;
+  phone?: string;
+  email?: string;
+  category?: "regular" | "vip" | "staff";
+};
+
+export async function readAppwriteAdminEvents(): Promise<EventRecord[]> {
+  const response = await fetchWithTimeout(
+    "/api/appwrite/admin/events",
+    { cache: "no-store" },
+    "Events are taking too long to load. Please refresh."
+  );
+  const payload = await response.json().catch(() => ({})) as { events?: EventRecord[]; error?: string };
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Events could not be loaded online.");
+  }
+  return Array.isArray(payload.events) ? payload.events : [];
+}
+
+export async function readAppwriteAdminEvent(eventId: string): Promise<EventRecord> {
+  const response = await fetchWithTimeout(
+    `/api/appwrite/admin/events?eventId=${encodeURIComponent(eventId)}`,
+    { cache: "no-store" },
+    "This event is taking too long to load. Please refresh."
+  );
+  const payload = await response.json().catch(() => ({})) as { event?: EventRecord; error?: string };
+  if (!response.ok || !payload.event) {
+    throw new Error(payload.error ?? "Event could not be loaded online.");
+  }
+  return payload.event;
+}
+
+export async function createAppwriteAdminEvent(input: EventCreateInput): Promise<EventRecord> {
+  const response = await fetch("/api/appwrite/admin/events", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input)
+  });
+  const payload = await response.json().catch(() => ({})) as { event?: EventRecord; error?: string };
+  if (!response.ok || !payload.event) {
+    throw new Error(payload.error ?? "Event could not be saved online.");
+  }
+  return payload.event;
+}
+
+export async function updateAppwriteAdminEventStatus(eventId: string, status: EventRecord["status"]): Promise<EventRecord> {
+  const response = await fetch("/api/appwrite/admin/events", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ eventId, status })
+  });
+  const payload = await response.json().catch(() => ({})) as { event?: EventRecord; error?: string };
+  if (!response.ok || !payload.event) {
+    throw new Error(payload.error ?? "Event status could not be updated online.");
+  }
+  return payload.event;
+}
+
+export async function readAppwriteEventGuests(eventId: string): Promise<Guest[]> {
+  const response = await fetchWithTimeout(
+    `/api/appwrite/admin/events/guests?eventId=${encodeURIComponent(eventId)}`,
+    { cache: "no-store" },
+    "The guest list is taking too long to load. Please refresh."
+  );
+  const payload = await response.json().catch(() => ({})) as { guests?: Guest[]; error?: string };
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Guest list could not be loaded online.");
+  }
+  return Array.isArray(payload.guests) ? payload.guests : [];
+}
+
+export async function createAppwriteGuest(eventId: string, input: GuestCreateInput): Promise<Guest> {
+  const response = await fetch("/api/appwrite/admin/events/guests", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ eventId, ...input })
+  });
+  const payload = await response.json().catch(() => ({})) as { guest?: Guest; error?: string };
+  if (!response.ok || !payload.guest) {
+    throw new Error(payload.error ?? "Guest could not be saved online.");
+  }
+  return payload.guest;
+}
+
+export async function bulkCreateAppwriteGuests(eventId: string, guests: GuestCreateInput[]): Promise<{ created: Guest[]; errors: string[] }> {
+  const response = await fetch("/api/appwrite/admin/events/guests", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ eventId, guests })
+  });
+  const payload = await response.json().catch(() => ({})) as { created?: Guest[]; errors?: string[]; error?: string };
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Guests could not be imported online.");
+  }
+  return { created: payload.created ?? [], errors: payload.errors ?? [] };
+}
+
+export async function readAppwriteGateEvents(): Promise<EventRecord[]> {
+  const response = await fetchWithTimeout(
+    "/api/appwrite/events",
+    { cache: "no-store" },
+    "Events are taking too long to load. Please refresh."
+  );
+  const payload = await response.json().catch(() => ({})) as { events?: EventRecord[]; error?: string };
+  if (!response.ok) {
+    throw new Error(payload.error ?? "Events could not be loaded online.");
+  }
+  return Array.isArray(payload.events) ? payload.events : [];
+}
+
+export async function checkInAppwriteGuestByCode(eventId: string, code: string, gateName: string): Promise<Guest> {
+  const response = await fetch("/api/appwrite/events/checkin", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ eventId, code, gateName })
+  });
+  const payload = await response.json().catch(() => ({})) as { guest?: Guest; error?: string };
+  if (!response.ok || !payload.guest) {
+    throw new Error(payload.error ?? "Guest code could not be verified online.");
+  }
+  return payload.guest;
 }
