@@ -979,3 +979,23 @@ no error text — the next failure diagnoses itself.
 **Verification:** typecheck exit 0; md5 byte-verification on all committed files. CACHE_NAME →
 `corsvent-v2026-07-21-checkin-fix-1`. No data cleanup needed (zero event rows existed).
 After this deploys green, re-run the walkthrough from Step 1 (create event → guest → check-in).
+
+### Roadmap addition (2026-07-21, from Stanley) — VIP Parking module (post-demo)
+
+Resurrect the inherited plate-capture module as an optional **"VIP Parking"** feature:
+- Organizer registers expected VIP plates per event (plate number ↔ guest/VIP name).
+- Gate staff scan/enter plates at the car gate; arrivals logged with timestamp and staff ID
+  (same rule-6C shape as the guest gate log — scannedBy from session, never the body).
+- Kept behind the existing per-workspace module toggle (`plate_capture` in
+  `estates.disabledModules` — the toggle plumbing survived the strip; the toggle UI needs a
+  home again since /admin/settings was deleted, which is already on the backlog as the
+  event-shaped Settings page).
+- Build notes for whoever picks this up: the old plate-capture code was nav-hidden in Phase 0
+  and its route (`app/security/scan-plate`) was deleted in Session 9 — the underlying
+  components in `components/dashboard/pages.tsx` and any `vehicle_logs` table machinery still
+  exist to salvage. Follow the concept-mapping table in section 2 (plate capture → VIP
+  parking) and rules 6A/6B/6C: proxy via our API routes, guard-tour offline queue if offline
+  support is wanted at the car gate, house-pattern route modeled on patrols.
+
+Priority: after the current backlog (event-shaped Settings, iOS QR fallback, pages.tsx dead
+component deletion, resident/cso decision) unless Stanley pulls it forward.
