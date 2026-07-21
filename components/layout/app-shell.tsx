@@ -205,7 +205,7 @@ export function AppShell({
         <div className="flex h-16 items-center justify-between px-4">
           <Link href={dashboardHref} className="flex items-center gap-2 font-semibold text-white" aria-label={`${roleLabel} dashboard`}>
             <BrandMark className="h-9 w-9" />
-            Corso
+            Corsvent
           </Link>
           <div className="flex items-center gap-2">
             <ThemeToggleButton theme={theme} onToggle={() => setTheme((value) => value === "dark" ? "light" : "dark")} />
@@ -252,10 +252,10 @@ export function AppShell({
 
       <aside className="fixed inset-y-0 left-0 z-30 hidden w-16 flex-col border-r border-white/10 bg-black/40 px-2 py-5 shadow-[10px_0_40px_rgba(0,0,0,0.2)] backdrop-blur-2xl lg:flex xl:w-64 xl:px-3">
         <div className="shrink-0">
-          <Link href={dashboardHref} className="flex items-center justify-center gap-3 px-2 text-white xl:justify-start" title="Corso dashboard">
+          <Link href={dashboardHref} className="flex items-center justify-center gap-3 px-2 text-white xl:justify-start" title="Corsvent dashboard">
             <BrandMark className="h-11 w-11" />
             <span className="hidden xl:block">
-              <span className="block text-base font-semibold">Corso</span>
+              <span className="block text-base font-semibold">Corsvent</span>
               <span className="text-xs text-slate-400">{roleLabel}</span>
             </span>
           </Link>

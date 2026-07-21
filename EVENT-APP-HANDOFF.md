@@ -157,17 +157,173 @@ Zikoro-inspired features worth queueing AFTER Phase 2 (do not start with these):
 
 Differentiators to lean on vs Zikoro: gate security DNA (guards, scanning discipline, plate
 capture, SOS), WhatsApp-first pass delivery, offline-tolerant check-in for Nigerian venue
-network reality, and protocol/VIP handling for government and traditional functions.
+network reality, and protocol/VIP handling for gover
+## 7. Progress notes (updated each session — read this first)
 
-## 5. Definition of done, per phase
+**Product name: Corsvent.** **Domain: `event.corso.ng`** (subdomain of corso.ng, live now). A
+dedicated domain (Stanley mentioned `corsven.com`) may be registered later — not yet, don't
+build anything that assumes it.
 
-Typecheck clean → Stanley pushes (his six-command ritual) → Vercel green → live smoke test on the
-real domain (desktop + phone, Light + Dark) → update the project's own ROADMAP.md.
+### Session 1 (2026-07-20) — 0.5 crew install + Phase 0 first pass
 
-## 6. Answers to predictable questions
+**0.5 done:** `CLAUDE.md` moved to project root, `release-verifier` + `ui-reviewer` moved to
+`.claude/agents/`, `ship` skill moved to `.claude/skills/ship/`, `event-app-claude-setup/`
+deleted. No old Corso `AGENTS.md`/`CODEX.md` existed to delete.
 
-- Same Appwrite server for both apps? Yes — separate projects/databases/API keys keep them sealed.
-- Shared login with Corso? No. Separate user base, separate cookies, separate domain.
-- Can an organizer later ALSO be a Corso estate? Fine — separate accounts; do not build bridges.
-- Sender ID / WhatsApp Business API paperwork: same CAC-based process noted in Corso's
-  CORSO-ROADMAP.md; do it under the event brand when the name is chosen.
+**IMPORTANT — file-write reliability issue found and worked around:** Edit/Write tool calls on
+this mounted folder intermittently corrupted files this session — some were truncated mid-file
+(silently missing their tail, e.g. `public/sw.js` and `app/layout.tsx` cut off mid-statement),
+others got trailing NUL-byte padding when the new content was shorter than the old (e.g.
+`components/layout/nav.ts`, `components/auth/auth-card.tsx`, `components/dashboard/pages.tsx`,
+`public/manifest.json`). This was caught by verifying every touched file at the byte level
+(NUL-byte scan + brace/paren balance vs. `git show HEAD:<file>`) — do NOT skip this step in
+future sessions. All corrupted files were recovered by pulling the clean `git show HEAD:<file>`
+version and reapplying the intended change via a direct Python file write (bypassing the
+Edit/Write tool), then re-verified byte-for-byte. Every file was confirmed clean before this
+note was written. **Next session: keep verifying every edited file at the byte level
+(`tail -c 80 <file>`, NUL scan, brace balance) before trusting an Edit/Write result on this
+project — don't assume tool success messages reflect what actually landed on disk.**
+
+**Also could not run `node node_modules/typescript/bin/tsc -p tsconfig.typecheck.json --noEmit`**
+this session — this sandbox's network blocks the npm registry (`registry.npmjs.org` returns
+403 blocked-by-allowlist), so `npm ci` cannot complete and `node_modules` isn't fully installed.
+**Stanley needs to run the typecheck command himself** (paste-ready command given below) before
+pushing, until this sandbox gets registry access or a session runs with node_modules already
+present.
+
+**Phase 0 changes made (verified, ready to push):**
+- Removed `EXHIBITION_DEMO_LOGINS` and all related state/effects/UI from
+  `components/auth/auth-card.tsx` (login mechanics untouched — only the demo-account shortcut
+  buttons were removed, since those Corso demo accounts don't exist in Corsvent's own Appwrite
+  project anyway). Deleted the now-orphaned `app/api/public/demo-status/route.ts`.
+- Nav strip (`components/layout/nav.ts`): removed Bills, Payments (admin + resident), Facilities,
+  Household, Marketplace, Knowledge Base (admin + resident) nav entries. Kept Residents,
+  Complaints, Announcements, Digital IDs, Reports, System Status, Settings, SOS, Visitor
+  Logs/Invite Visitor/Visitors (guest/pass crown jewel), CSO nav, security/guard nav as-is.
+- Removed the now-orphaned facilities/marketplace/household/knowledge_base entries from
+  `TOGGLABLE_MODULE_OPTIONS` in `components/dashboard/pages.tsx` (settings page module toggle
+  list) — kept guard_tour, plate_capture, digital_ids.
+- **Underlying code for stripped modules was NOT physically deleted** (per the "hide nav first,
+  delete code once stable" rule) — `lib/appwrite/accounting.ts`, `facilities.ts`, `household.ts`,
+  `knowledge-base.ts`, the `app/admin/bills`, `app/admin/payments`, `app/admin/facilities`,
+  `app/resident/household`, `app/marketplace`, `app/*/knowledge-base` routes, and their
+  components in `pages.tsx` (`BillsAdminPage`, `PaymentsAdminPage`, `AdminFacilitiesPage`,
+  `HouseholdPage`, `MarketplacePage`, `KnowledgeBase*Page`) all still exist and are still
+  reachable by direct URL. Physically delete in a later pass once confirmed nothing is needed.
+- **Not yet stripped — flagged for next session:** the residents/units/properties **import**
+  machinery specifically named in section 3 (`ResidentOnboardingPanel` at
+  `components/dashboard/pages.tsx` ~line 2597 and `AppwriteOnboardingPanel` ~line 2787, both
+  rendered inside `ResidentsAdminPage`). These are wired into local demo state
+  (`addProperty`/`addUnit`) and shared `onboardingMessage` state inside a large shared component,
+  so removing them cleanly needs a careful, dedicated read-through rather than a quick edit.
+  Residents nav entry itself was deliberately kept (not explicitly listed as a strip target,
+  and may still be useful as a guest-list placeholder until Phase 1 replaces it) — revisit this
+  call once Phase 1 guest-list work starts.
+- Rebrand pass (Corso → Corsvent) — done for all persistent/high-visibility UI: page
+  metadata/title (`app/layout.tsx`), PWA manifests (`public/manifest.json`,
+  `public/manifest.webmanifest`), sidebar + mobile topbar brand text and dashboard link title
+  (`components/layout/app-shell.tsx`), the shared `PageHeader` eyebrow label used on every
+  admin/security screen and the resident dashboard eyebrow (`components/dashboard/pages.tsx`),
+  brand mark alt text (`components/layout/brand-mark.tsx`), email template brand/tagline/footer
+  (`lib/email/resend.ts`, from-name now "Corsvent <notifications@corso.ng>").
+  **Not yet done — a large remaining sweep, deliberately deferred to its own session:** ~50+
+  more "Corso"/"LBS View Estate" strings scattered through `components/dashboard/pages.tsx`
+  (default placeholder values like "LBS View Estate" in estate/unit/address fields, description
+  copy on Super Admin/Estates/Onboarding/Reports pages, CSV/PDF export text in
+  `components/admin/reports/*`, `app/admin/system/page.tsx` diagnostics copy,
+  `components/landing/demo-request-form.tsx`). Many of these live inside the modules being
+  stripped (billing, facilities) and aren't worth polishing before deletion; the rest need
+  judgment calls (e.g. "LBS View Estate" as an input placeholder should become an
+  event-appropriate placeholder, not just a name swap) — do this as a dedicated copy pass.
+  **The landing page (`app/page.tsx`) was deliberately left untouched** — section 3 calls for a
+  full content rewrite (headline, feature copy, event categories, CTAs) keeping the existing
+  Apple-light design system, which deserves its own focused session rather than a rushed
+  find-replace.
+- Bumped `CACHE_NAME` in `public/sw.js` to `corsvent-v2026-07-20-phase0-strip-1` (user-facing
+  release).
+- Checked cookie/session domain scoping since `event.corso.ng` is a subdomain of `corso.ng`:
+  `app/api/appwrite/auth/login/route.ts` sets `corso_role`/`corso_appwrite_user`/
+  `corso_appwrite_session` cookies with no explicit `domain` attribute, so they default to
+  host-only scope — no session bleed with Corso's main site. No code change needed; verified only.
+- Logo/icon **image assets** (`public/brand/corso-icon.png`, `public/icons/corso-*.png`,
+  favicons) still say Corso and are the old artwork — need real Corsvent artwork from Stanley
+  before swapping; left as-is (functional placeholders) for now.
+
+**Push ritual for this session's changes** (Stanley runs, from the EVENTAPP folder):
+
+```
+node node_modules/typescript/bin/tsc -p tsconfig.typecheck.json --noEmit
+```
+
+If that prints nothing and exits clean, continue with:
+
+```
+git add CLAUDE.md .claude/agents/release-verifier.md .claude/agents/ui-reviewer.md .claude/skills/ship/SKILL.md event-app-claude-setup app/api/public/demo-status/route.ts app/layout.tsx components/auth/auth-card.tsx components/dashboard/pages.tsx components/layout/app-shell.tsx components/layout/brand-mark.tsx components/layout/nav.ts lib/email/resend.ts public/manifest.json public/manifest.webmanifest public/sw.js EVENT-APP-HANDOFF.md
+git commit -m "Install Claude crew; Phase 0 first pass: strip billing/facilities/household/marketplace/knowledge-base nav, remove Corso demo logins, rebrand core UI to Corsvent"
+git push origin main
+```
+
+**Next session should:**
+1. Confirm the typecheck Stanley ran was clean (or fix whatever it flagged).
+2. Finish the remaining Corso→Corsvent copy sweep in `pages.tsx` and the reports/system/landing
+   files listed above.
+3. Rewrite `app/page.tsx` (landing page) for events, keeping the Apple-light design system.
+4. Decide + execute the residents/units/properties import-machinery removal
+   (`ResidentOnboardingPanel` / `AppwriteOnboardingPanel`) as its own careful pass.
+5. Start Phase 1 (Events table, guest list, pass delivery, check-in) once the strip/rebrand is
+   stable and Stanley has pushed + smoke-tested on `event.corso.ng`.
+### Session 1 continued — Appwrite verified, seed data fixed, infra issues found
+
+**Appwrite connection confirmed working end-to-end** on `event.corso.ng` (`eventng` project /
+`eventng_db`). Root cause of an initial "Invalid login details" error: a stale deploy (predated
+the env vars) plus a pasted-twice `CORSO_APPWRITE_API_KEY` value with an embedded newline
+breaking the Authorization header — both fixed with a clean re-paste + rebuild. First super-admin
+user now exists in the live Appwrite project; schema/tables auto-created on that first login as
+designed.
+
+**Fixed: Corso demo seed data replaced with event-appropriate defaults.** The bootstrap flow (any
+new project's first login, or admin creating a user under no existing estate) auto-creates an
+`estates` row via a hardcoded seed. Changed in `lib/utils.ts` (`DEFAULT_ESTATE_NAME`: "LBS View
+Estate" → "Demo Organizer Workspace" — this one constant feeds ~9 call sites), and the literal
+`address`/`contactEmail` fields in the three functions that actually write the seed row:
+`lib/appwrite/users.ts` (`createAppwriteManagedUser` and `ensureAppwriteDefaultUser`, both write
+"Lagos, Nigeria" / "admin@corsvent.example" now) and `lib/appwrite/access-requests.ts`
+(`resolveEstate`, same values). Also updated the local-demo-mode estate list in
+`lib/demo-data.ts` to match (name/address/contactEmail), so the offline demo dropdown is
+consistent too. **Not changed** (didn't touch — protected/low-priority): the actual login/session
+logic in these files, `gateName`/`contactPhone` literals (generic enough, not Corso-branded), and
+the gate-name fallbacks in `lib/appwrite/visitors.ts` / `lib/local-store.ts` / the residents-import
+seed in `lib/appwrite/onboarding-import.ts` (that whole import feature is already flagged for
+removal in an earlier note — not worth polishing before deletion).
+
+**Note: the estate row already created in the live database still says "LBS View Estate"** — the
+code fix only affects *future* bootstraps (new environments, or if the DB is ever reset). To
+rename the one that already exists, Stanley should edit it directly through the app UI once this
+session's changes are live: log in as `super@corso.ng`, go to Super Admin → Estates → the
+existing estate → edit name/address/contact fields there. No push needed for that part.
+
+**Also found and fixed: a corrupted `.git/index`.** While re-verifying before giving push
+commands, `git status` failed with "index file corrupt" — same underlying file-write reliability
+issue as the earlier source-file corruption, this time hitting the index itself. Rebuilt cleanly
+via `git read-tree HEAD` (safe: nothing had been staged yet, so no risk of losing anything).
+`git fsck` confirms the repository objects/history are otherwise fully intact. **This can recur —
+if `git status`/`git add` ever errors with anything mentioning "index" or "corrupt," don't panic:
+it's very likely fixable the same way** (`rm .git/index && git read-tree HEAD`, then re-run
+`git status` to confirm it shows the expected file list again before adding/committing).
+
+**Stanley's local npm install was also broken** (missing `npm.cmd`/`npm.ps1` in his Node.js
+install) — separate from this repo, fixed by reinstalling Node.js LTS. Worth remembering if npm
+commands go silent (no output, exit 0, nothing actually happens) on his machine again.
+
+**Full push list for this session (nothing has been pushed yet — all of Session 1's work lands in
+one push):** see the commands in chat. Files: the crew install (`CLAUDE.md`, `.claude/agents/*`,
+`.claude/skills/ship/SKILL.md`, minus `event-app-claude-setup/`), the Phase 0 nav
+strip/rebrand/demo-login removal, and this session's seed-data fix
+(`lib/utils.ts`, `lib/appwrite/users.ts`, `lib/appwrite/access-requests.ts`, `lib/demo-data.ts`).
+
+**Next session should:**
+1. Confirm the push went through, Vercel built green, and `event.corso.ng` shows Corsvent
+   branding live (desktop + phone, Light + Dark).
+2. Have Stanley rename the already-existing "LBS View Estate" record via the UI (see above).
+3. Everything else from the prior progress note still stands (copy sweep, landing page rewrite,
+   residents-import-machinery removal, then Phase 1).

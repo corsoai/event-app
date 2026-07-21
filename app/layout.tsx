@@ -6,11 +6,11 @@ import { ServiceWorkerRegister } from "@/components/pwa/service-worker-register"
 
 export const metadata: Metadata = {
   title: {
-    default: "Corso",
-    template: "%s | Corso"
+    default: "Corsvent",
+    template: "%s | Corsvent"
   },
-  description: "A secure, mobile-first PWA for gated estate and community access control.",
-  applicationName: "Corso",
+  description: "Guest lists, passes, and gate check-in for Nigerian events — weddings, conferences, and everything in between.",
+  applicationName: "Corsvent",
   manifest: "/manifest.json",
   icons: {
     icon: [
@@ -29,7 +29,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     statusBarStyle: "black-translucent",
-    title: "Corso"
+    title: "Corsvent"
   }
 };
 

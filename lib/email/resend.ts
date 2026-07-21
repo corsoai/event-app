@@ -1,5 +1,5 @@
 const RESEND_API_URL = "https://api.resend.com/emails";
-const DEFAULT_FROM = "Corso <notifications@corso.ng>";
+const DEFAULT_FROM = "Corsvent <notifications@corso.ng>";
 
 export type CorsoEmailInput = {
   to: string | string[];
@@ -102,8 +102,8 @@ export function corsoEmailHtml(input: CorsoEmailTemplateInput) {
   <body style="margin:0;padding:0;background:#f1f5f9;font-family:Arial,Helvetica,sans-serif;">
     <div style="max-width:520px;margin:0 auto;padding:24px 16px;">
       <div style="background:#0f172a;border-radius:14px 14px 0 0;padding:18px 22px;">
-        <p style="margin:0;font-size:18px;font-weight:700;color:#ffffff;">Corso</p>
-        <p style="margin:2px 0 0;font-size:12px;color:#94a3b8;">Estate management, simplified</p>
+        <p style="margin:0;font-size:18px;font-weight:700;color:#ffffff;">Corsvent</p>
+        <p style="margin:2px 0 0;font-size:12px;color:#94a3b8;">Guest passes and gate check-in, simplified</p>
       </div>
       <div style="background:#ffffff;border-radius:0 0 14px 14px;padding:22px;">
         <h1 style="margin:0 0 14px;font-size:19px;color:#0f172a;">${escapeHtml(input.heading)}</h1>
@@ -113,7 +113,7 @@ export function corsoEmailHtml(input: CorsoEmailTemplateInput) {
         ${cta}
         ${footer}
       </div>
-      <p style="margin:14px 0 0;text-align:center;font-size:11px;color:#94a3b8;">Sent by Corso · app.corso.ng</p>
+      <p style="margin:14px 0 0;text-align:center;font-size:11px;color:#94a3b8;">Sent by Corsvent · event.corso.ng</p>
     </div>
   </body>
 </html>`;

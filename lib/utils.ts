@@ -16,7 +16,7 @@ export function makeAccessCode() {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
 
-export const DEFAULT_ESTATE_NAME = "LBS View Estate";
+export const DEFAULT_ESTATE_NAME = "Demo Organizer Workspace";
 
 export function sortEstatesWithDefaultFirst<T extends { name: string }>(estates: T[]) {
   return [...estates].sort((left, right) => {

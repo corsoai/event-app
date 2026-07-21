@@ -261,8 +261,8 @@ export async function readAppwriteAccessRequestStatus(identifier: string) {
 async function resolveEstate(estateId?: string, estateName?: string) {
   await appwriteUpsertRow<AppwriteEstateRow>("estates", APPWRITE_LBSVIEW_ESTATE_ID, {
     name: DEFAULT_ESTATE_NAME,
-    address: "LBS View Estate, Lagos",
-    contactEmail: "admin@lbsviewestate.example",
+    address: "Lagos, Nigeria",
+    contactEmail: "admin@corsvent.example",
     contactPhone: "+2348011112040",
     gateName: "Main Gate",
     createdAt: new Date().toISOString(),

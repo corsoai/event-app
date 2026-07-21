@@ -7,13 +7,9 @@ export const adminNav: NavItem[] = [
   { label: "Users & Roles", href: "/admin/users", icon: "Users" },
   { label: "Residents", href: "/admin/residents", icon: "Users" },
   { label: "Visitor Logs", href: "/admin/visitors", icon: "QrCode" },
-  { label: "Bills", href: "/admin/bills", icon: "ReceiptText" },
-  { label: "Payments", href: "/admin/payments", icon: "WalletCards" },
   { label: "Complaints", href: "/admin/complaints", icon: "ClipboardList" },
-  { label: "Facilities", href: "/admin/facilities", icon: "Building2", module: "facilities" },
   { label: "Announcements", href: "/admin/announcements", icon: "Megaphone" },
   { label: "Digital IDs", href: "/admin/digital-ids", icon: "IdCard", module: "digital_ids" },
-  { label: "Knowledge Base", href: "/admin/knowledge-base", icon: "BookOpen", module: "knowledge_base" },
   { label: "Reports", href: "/admin/reports", icon: "BarChart3" },
   { label: "System Status", href: "/admin/system", icon: "ShieldCheck" },
   { label: "Settings", href: "/admin/settings", icon: "Settings" }
@@ -22,15 +18,10 @@ export const adminNav: NavItem[] = [
 export const residentNav: NavItem[] = [
   { label: "Home", href: "/resident", icon: "Home" },
   { label: "Invite Visitor", href: "/resident/invite-visitor", icon: "QrCode" },
-  { label: "My Bills", href: "/resident/bills", icon: "ReceiptText" },
   { label: "Complaints", href: "/resident/complaints", icon: "ClipboardList" },
   { label: "Digital ID", href: "/resident/digital-id", icon: "IdCard", module: "digital_ids" },
   { label: "Visitors", href: "/resident/visitors", icon: "DoorOpen" },
-  { label: "Payments", href: "/resident/payments", icon: "CreditCard" },
   { label: "Announcements", href: "/resident/announcements", icon: "Bell" },
-  { label: "Household", href: "/resident/household", icon: "Users", module: "household" },
-  { label: "Marketplace", href: "/marketplace", icon: "Store", module: "marketplace" },
-  { label: "Knowledge Base", href: "/resident/knowledge-base", icon: "BookOpen", module: "knowledge_base" },
   { label: "🚨 SOS", href: "/resident/sos", icon: "AlertTriangle", tone: "danger" }
 ];
 

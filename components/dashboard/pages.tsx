@@ -594,7 +594,7 @@ export function PageHeader({
   return (
     <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
       <div>
-        <p className="text-sm font-medium uppercase tracking-[0.2em] text-smart">Corso</p>
+        <p className="text-sm font-medium uppercase tracking-[0.2em] text-smart">Corsvent</p>
         <h1 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">{title}</h1>
         <p className="mt-2 max-w-3xl text-sm leading-6 text-slate-300">{description}</p>
       </div>
@@ -651,10 +651,6 @@ function mergeAccountingState(state: LocalEstateState, accounting: AppwriteAccou
 const TOGGLABLE_MODULE_OPTIONS: Array<{ key: string; label: string; helper: string }> = [
   { key: "guard_tour", label: "Guard Tour", helper: "QR checkpoint patrols with GPS verification." },
   { key: "plate_capture", label: "Plate Capture (ANPR)", helper: "Camera capture of vehicle number plates at the gate." },
-  { key: "facilities", label: "Facilities & Work Orders", helper: "Facility register, faults, and maintenance jobs." },
-  { key: "marketplace", label: "Marketplace", helper: "Resident marketplace and vendor listings." },
-  { key: "household", label: "Household Members", helper: "Residents manage family and domestic staff records." },
-  { key: "knowledge_base", label: "Knowledge Base", helper: "Estate documents, rules, and how-to articles." },
   { key: "digital_ids", label: "Digital IDs", helper: "QR-based digital ID cards and gate verification." }
 ];
 
@@ -5997,7 +5993,7 @@ export function ResidentDashboard() {
         <div className="grid gap-3">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
             <div>
-              <p className="text-sm font-medium uppercase tracking-[0.2em] text-smart">Corso</p>
+              <p className="text-sm font-medium uppercase tracking-[0.2em] text-smart">Corsvent</p>
               <h1 className="mt-2 text-2xl font-semibold text-white sm:text-3xl">Welcome, {resident.name}</h1>
             </div>
             <Link href="/resident/sos">

@@ -8,7 +8,7 @@ export function BrandMark({ className }: { className?: string }) {
         className
       )}
     >
-      <img src="/brand/corso-icon.png" alt="Corso" className="h-full w-full object-cover" loading="lazy" decoding="async" />
+      <img src="/brand/corso-icon.png" alt="Corsvent" className="h-full w-full object-cover" loading="lazy" decoding="async" />
     </span>
   );
 }

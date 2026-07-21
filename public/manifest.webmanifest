@@ -1,7 +1,7 @@
 {
-  "name": "Corso",
-  "short_name": "Corso",
-  "description": "Smart access, secure estates, total control.",
+  "name": "Corsvent",
+  "short_name": "Corsvent",
+  "description": "Guest lists, passes, and gate check-in for Nigerian events.",
   "start_url": "/login",
   "scope": "/",
   "display": "standalone",

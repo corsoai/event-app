@@ -16,9 +16,9 @@
 export const estates: Estate[] = [
   {
     id: "lekki-gardens",
-    name: "LBS View Estate",
-    address: "LBS View Estate, Lagos",
-    contactEmail: "admin@lbsviewestate.example",
+    name: "Demo Organizer Workspace",
+    address: "Lagos, Nigeria",
+    contactEmail: "admin@corsvent.example",
     contactPhone: "+234 801 111 2040",
     gateName: "Main Gate A"
   },

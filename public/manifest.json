@@ -1,7 +1,7 @@
 {
-  "name": "Corso - LBS View Estate",
-  "short_name": "Corso",
-  "description": "Estate management for LBS View residents and staff",
+  "name": "Corsvent",
+  "short_name": "Corsvent",
+  "description": "Guest lists, passes, and gate check-in for Nigerian events",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
@@ -24,14 +24,9 @@
   ],
   "shortcuts": [
     {
-      "name": "Pay subscription",
-      "url": "/resident/payments",
-      "description": "Pay your estate subscription"
-    },
-    {
       "name": "Invite visitor",
       "url": "/resident/invite-visitor",
-      "description": "Invite a visitor to the estate"
+      "description": "Invite a guest and send their pass"
     }
   ]
 }
