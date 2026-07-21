@@ -999,3 +999,28 @@ Resurrect the inherited plate-capture module as an optional **"VIP Parking"** fe
 
 Priority: after the current backlog (event-shaped Settings, iOS QR fallback, pages.tsx dead
 component deletion, resident/cso decision) unless Stanley pulls it forward.
+
+### Session 11 (2026-07-21) — event-shaped Settings page (module toggles restored)
+
+Built the event-language replacement for the deleted estate Settings page:
+- New `components/events/workspace-settings-page.tsx` (fresh file per guardrail #7): module
+  toggle card reusing the existing `readDisabledEstateModules`/`saveDisabledEstateModules`
+  wrappers → `/api/appwrite/estate-modules` (rule 6A respected — no new API surface). Options
+  shown in event language: `guard_tour` → "Venue Patrols", `plate_capture` → "VIP Parking
+  (feature in development)" — the same underlying module keys, so the VIP Parking roadmap item
+  has its toggle ready. `digital_ids` deliberately not shown (redundant with guest QR passes).
+- Recreated `app/admin/settings/page.tsx` rendering it; "Settings" restored to `adminNav`
+  (desktop only — mobile tab bar stays at 5 tabs).
+- The old `SettingsPage`/`EstateModulesCard` in pages.tsx remain as dead exports for the
+  pages.tsx cleanup pass.
+
+Verification: typecheck exit 0; md5 byte-verification on all committed files. CACHE_NAME →
+`corsvent-v2026-07-21-settings-1`.
+
+**Backlog state after this session:** iOS Safari QR scanning is BLOCKED on a decision — it
+needs a vendored QR-decode library (BarcodeDetector is Chromium-only; npm registry blocked in
+the cloud sandbox), and rule 6B's no-new-libraries spirit says don't vendor one silently: ask
+Stanley/Overseer before adding ~40KB of vendored decoder code. The pages.tsx dead-component
+deletion remains a dedicated careful pass (12k-line shared-state file — don't rush it at a
+session tail). Resident/CSO portal decision still needs Stanley. Then VIP Parking, then
+Paystack/RSVP when Stanley has an account.

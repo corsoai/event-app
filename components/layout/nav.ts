@@ -6,7 +6,8 @@ export const adminNav: NavItem[] = [
   { label: "Events", href: "/admin/events", icon: "CalendarDays" },
   { label: "Organizer Profile", href: "/admin/estate", icon: "Building2" },
   { label: "Users & Roles", href: "/admin/users", icon: "Users" },
-  { label: "Reports", href: "/admin/reports", icon: "BarChart3" }
+  { label: "Reports", href: "/admin/reports", icon: "BarChart3" },
+  { label: "Settings", href: "/admin/settings", icon: "Settings" }
 ];
 
 export const residentNav: NavItem[] = [
