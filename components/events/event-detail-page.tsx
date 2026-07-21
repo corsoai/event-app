@@ -26,9 +26,11 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
   const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
 
-  async function refresh() {
-    setLoading(true);
-    setError("");
+  async function refresh(silent = false) {
+    if (!silent) {
+      setLoading(true);
+      setError("");
+    }
     try {
       const [eventData, guestData] = await Promise.all([
         readAppwriteAdminEvent(eventId),
@@ -37,14 +39,16 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
       setEvent(eventData);
       setGuests(guestData);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Event could not be loaded online.");
+      if (!silent) setError(err instanceof Error ? err.message : "Event could not be loaded online.");
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }
 
   useEffect(() => {
     void refresh();
+    const interval = window.setInterval(() => void refresh(true), 8000);
+    return () => window.clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
@@ -305,7 +309,7 @@ function GuestPassModal({ guest, event, onClose }: { guest: Guest; event: EventR
 
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-t-2xl bg-slate-900 p-5 sm:rounded-2xl" onClick={(event) => event.stopPropagation()}>
+      <div className="w-full max-w-sm rounded-t-2xl border border-line bg-panel p-5 shadow-glow sm:rounded-2xl" onClick={(event) => event.stopPropagation()}>
         <div className="mb-4 flex items-start justify-between">
           <div>
             <p className="text-base font-semibold text-white">{guest.fullName}</p>

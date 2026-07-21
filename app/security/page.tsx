@@ -1,5 +1,5 @@
-import { SecurityDashboard } from "@/components/dashboard/pages";
+import { GateDashboard } from "@/components/events/gate-dashboard";
 
 export default function SecurityPage() {
-  return <SecurityDashboard />;
+  return <GateDashboard />;
 }

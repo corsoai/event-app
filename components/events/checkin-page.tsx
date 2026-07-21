@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import { CheckCircle2, QrCode, RefreshCw, Users } from "lucide-react";
+import { useEffect, useRef, useState } from "react";
+import { Camera, CheckCircle2, QrCode, RefreshCw, Users, X } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/pages";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,8 @@ import {
   readAppwriteEventGuests,
   readAppwriteGateEvents
 } from "@/lib/appwrite/browser-data";
+
+const LIVE_REFRESH_MS = 8000;
 
 export function CheckInPage() {
   const [events, setEvents] = useState<EventRecord[]>([]);
@@ -72,20 +74,23 @@ function EventCheckIn({ eventId }: { eventId: string }) {
   const [checking, setChecking] = useState(false);
   const [guests, setGuests] = useState<Guest[]>([]);
   const [loadingGuests, setLoadingGuests] = useState(true);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
-  async function refreshGuests() {
-    setLoadingGuests(true);
+  async function refreshGuests(silent = false) {
+    if (!silent) setLoadingGuests(true);
     try {
       setGuests(await readAppwriteEventGuests(eventId));
     } catch {
       // Non-fatal — the counter just won't update; check-in itself still works.
     } finally {
-      setLoadingGuests(false);
+      if (!silent) setLoadingGuests(false);
     }
   }
 
   useEffect(() => {
     void refreshGuests();
+    const interval = window.setInterval(() => void refreshGuests(true), LIVE_REFRESH_MS);
+    return () => window.clearInterval(interval);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [eventId]);
 
@@ -108,7 +113,7 @@ function EventCheckIn({ eventId }: { eventId: string }) {
       setMessage(`${guest.fullName} checked in — ${guest.category} guest.`);
       setTone("ok");
       setCode("");
-      void refreshGuests();
+      void refreshGuests(true);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "Guest code could not be verified online.");
       setTone("error");
@@ -120,8 +125,24 @@ function EventCheckIn({ eventId }: { eventId: string }) {
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_0.7fr]">
       <Card>
-        <CardHeader title="Scan or type code" description="Guests read out their 6-digit code, or scan the QR on their pass." />
-        <Field label="Gate name"><Input value={gateName} onChange={(event) => setGateName(event.target.value)} /></Field>
+        <CardHeader title="Scan or type code" description="Scan the QR on the guest's pass with the camera, or type their 6-digit code." />
+        {scannerOpen ? (
+          <QrCodeScanner
+            onDetected={(value) => {
+              setScannerOpen(false);
+              void submitCode(value);
+            }}
+            onClose={() => setScannerOpen(false)}
+          />
+        ) : (
+          <Button type="button" variant="secondary" className="w-full" onClick={() => setScannerOpen(true)}>
+            <Camera className="h-4 w-4" />
+            Scan QR with camera
+          </Button>
+        )}
+        <div className="mt-4">
+          <Field label="Gate name"><Input value={gateName} onChange={(event) => setGateName(event.target.value)} /></Field>
+        </div>
         <div className="mt-4">
           <Field label="Guest code">
             <Input
@@ -134,7 +155,6 @@ function EventCheckIn({ eventId }: { eventId: string }) {
               maxLength={6}
               placeholder="123456"
               className="text-center font-mono text-2xl tracking-[0.3em]"
-              autoFocus
             />
           </Field>
         </div>
@@ -167,6 +187,105 @@ function EventCheckIn({ eventId }: { eventId: string }) {
           {loadingGuests ? "Loading" : "Refresh count"}
         </Button>
       </div>
+    </div>
+  );
+}
+
+type BarcodeDetectorLike = {
+  detect: (source: HTMLVideoElement) => Promise<Array<{ rawValue?: string }>>;
+};
+
+type BarcodeDetectorConstructor = new (options?: { formats?: string[] }) => BarcodeDetectorLike;
+
+function QrCodeScanner({ onDetected, onClose }: { onDetected: (value: string) => void; onClose: () => void }) {
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const [scannerError, setScannerError] = useState("");
+
+  useEffect(() => {
+    let active = true;
+    let stream: MediaStream | null = null;
+    let intervalId: number | null = null;
+
+    async function start() {
+      const DetectorCtor = (window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
+      if (!DetectorCtor) {
+        setScannerError("Camera scanning isn't supported in this browser — type the code below instead.");
+        return;
+      }
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setScannerError("Camera access isn't available here — type the code below instead.");
+        return;
+      }
+
+      try {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: "environment" } },
+          audio: false
+        });
+      } catch {
+        setScannerError("Camera permission was denied — type the code below instead.");
+        return;
+      }
+
+      if (!active || !videoRef.current) return;
+      videoRef.current.srcObject = stream;
+      try {
+        await videoRef.current.play();
+      } catch {
+        // Autoplay hiccups are non-fatal; detection below still retries.
+      }
+
+      const detector = new DetectorCtor({ formats: ["qr_code"] });
+      intervalId = window.setInterval(async () => {
+        const video = videoRef.current;
+        if (!video || video.readyState < 2) return;
+        try {
+          const results = await detector.detect(video);
+          const raw = results[0]?.rawValue ?? "";
+          const digits = raw.replace(/\D/g, "").slice(0, 6);
+          if (digits.length === 6 && active) {
+            if (intervalId !== null) window.clearInterval(intervalId);
+            intervalId = null;
+            onDetected(digits);
+          }
+        } catch {
+          // Ignore detection errors and keep trying.
+        }
+      }, 350);
+    }
+
+    void start();
+
+    return () => {
+      active = false;
+      if (intervalId !== null) window.clearInterval(intervalId);
+      if (stream) {
+        for (const track of stream.getTracks()) track.stop();
+      }
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  return (
+    <div className="overflow-hidden rounded-xl border border-line">
+      <div className="relative bg-black">
+        {/* eslint-disable-next-line jsx-a11y/media-has-caption */}
+        <video ref={videoRef} playsInline muted className="mx-auto aspect-square w-full max-w-sm object-cover" />
+        <div className="pointer-events-none absolute inset-0 grid place-items-center">
+          <div className="h-40 w-40 rounded-2xl border-2 border-smart/80" />
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="absolute right-2 top-2 rounded-full bg-black/60 p-2 text-white"
+          aria-label="Close camera"
+        >
+          <X className="h-5 w-5" />
+        </button>
+      </div>
+      <p className="px-3 py-2 text-center text-xs text-slate-300">
+        {scannerError || "Point the camera at the guest's QR pass."}
+      </p>
     </div>
   );
 }

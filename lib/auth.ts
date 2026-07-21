@@ -6,7 +6,7 @@ export const roleLabels: Record<UserRole, string> = {
   estate_admin: "Organizer",
   cso: "Chief Security Officer",
   resident: "Resident",
-  security_guard: "Security Guard",
+  security_guard: "Gate Staff",
   vendor: "Vendor / Domestic Staff"
 };
 
@@ -24,13 +24,13 @@ export const demoUsers = [
     email: "super@corso.ng",
     password: DEMO_PASSWORD,
     role: "super_admin" as UserRole,
-    name: "Corso Platform Admin"
+    name: "Corsvent Platform Admin"
   },
   {
     email: "admin@corso.ng",
     password: DEMO_PASSWORD,
     role: "estate_admin" as UserRole,
-    name: "LBS View Estate Manager"
+    name: "Demo Organizer"
   },
   {
     email: "resident@corso.ng",
@@ -48,7 +48,7 @@ export const demoUsers = [
     email: "cso@corso.ng",
     password: DEMO_PASSWORD,
     role: "cso" as UserRole,
-    name: "LBS View CSO"
+    name: "Event Security Lead"
   }
 ];
 

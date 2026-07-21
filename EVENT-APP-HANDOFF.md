@@ -744,3 +744,91 @@ git push origin main
    long-term — repurpose, keep as-is, or remove — before touching `residentNav`/`csoNav`.
 4. Once confirmed genuinely unused, physically delete the hidden routes/components (Visitor Logs,
    Complaints, Digital IDs, Residents) rather than leaving them reachable by direct URL forever.
+
+### Session 7 (2026-07-21) — DEMO DAY: fresh dashboards, QR camera scanning, live counters, final estate-word sweep
+
+Stanley is demoing Corsvent TODAY. Everything this session optimizes the demo path only:
+organizer creates event → adds guests → guest passes (QR + WhatsApp) → gate check-in →
+live arrivals counter. Confirmed at session start that all of Sessions 1–6 was already
+committed AND pushed (`origin/main` = `381d605`), and the Session 4 schema fix
+(`required: false` + `default` on events.status / guests.category / guests.status) is
+in that pushed code — the "Attribute 'status' cannot have a default when required" blocker
+is resolved on disk and live.
+
+**New screens (fresh files, event language only):**
+- `components/events/organizer-dashboard.tsx` — new organizer home (`/admin` now renders this
+  instead of the estate-era `AdminDashboard`): event stats, a featured-event "X of Y guests
+  arrived" card with progress bar that auto-refreshes every 8s, and an event card list.
+  `AdminDashboard` in pages.tsx still exists but is no longer routed.
+- `components/events/gate-dashboard.tsx` — new gate-staff home (`/security` now renders this
+  instead of `SecurityDashboard`): big Guest Check-in tile, Event SOS tile, live
+  arrived/still-expected counters and a "latest arrivals" feed (auto-refresh 8s). The old
+  visitor/plate-capture dashboard is no longer routed.
+
+**Check-in screen (`components/events/checkin-page.tsx`) — QR scanning added:** "Scan QR with
+camera" opens a live camera view using the browser-native BarcodeDetector API (no new npm
+dependency — registry access is blocked in the cloud sandbox anyway). Works on Chrome/Android
+(the realistic gate-staff phone); graceful fallback messages if the browser lacks
+BarcodeDetector or camera permission is denied, with the type-the-code path always available.
+Detected QR → digits → same submitCode() path as typing. Camera stops on detect/close/unmount.
+Counter now also auto-refreshes every 8s (silent poll, no flicker), so it ticks up even if
+another gate checks guests in.
+
+**Event detail page:** silent 8s auto-refresh added, so the organizer's stats/guest table tick
+up live while gate staff scan. Background poll failures don't flash error banners.
+**Guest pass modal light-theme bug fixed:** the modal was `bg-slate-900` (hardcoded dark) while
+the global light-theme CSS overrides `.text-white` to dark ink → invisible text in Light mode.
+Now `bg-panel border-line shadow-glow`, correct in both themes.
+
+**Estate-word sweep on the demo path (delete-not-rename per Stanley's rule):**
+- `adminNav`: removed Broadcasts (its form says "all residents"), Reports, System Status,
+  Settings (page says "Default resident status"/"Visitor code expiry"). Admin sidebar is now:
+  Dashboard, SOS, Events, Organizer Profile, Users & Roles.
+- `securityNav`: removed Guard Tour. Now: Dashboard, SOS, Guest Check-in.
+- `MobileBottomNav` admin tabs: removed Reports → Dash/Events/SOS/Users.
+- `lib/auth.ts`: `security_guard` label "Security Guard" → **"Gate Staff"**; local-demo user
+  names de-Corso'd ("LBS View Estate Manager" → "Demo Organizer" etc.). Roles unchanged
+  internally.
+- `UserManagementPage` (pages.tsx): create-user description no longer lists "CSO, security,
+  resident, and vendor"; role dropdowns now offer only Organizer + Gate Staff (super-admin
+  scope: + Super Admin; admin scope: Gate Staff only — **verified against
+  `app/api/appwrite/admin/users/route.ts`, which 403s an estate_admin creating another
+  estate_admin, so the dropdown no longer offers a role the API would reject**). Default
+  role selections changed from "resident" to "security_guard". Routes for the removed nav
+  items still exist by direct URL (consistent with the hide-first rule); physically delete
+  post-demo.
+- `CACHE_NAME` bumped → `corsvent-v2026-07-21-demo-day-1`.
+
+**Verification done this session:** all 11 touched/new files copied back to the device and
+md5-verified byte-for-byte against the intended content (no corruption recurrence); NUL scan +
+brace/paren balance clean; full-tree typecheck run in the cloud sandbox (project sources + all
+node_modules type declarations bundled over, TypeScript 6.0.3) → **exit 0**. Note the sandbox
+check needed a `declare module "*.css"` shim only because TS 6 added error TS2882 for
+side-effect CSS imports — the project's own TS 5.x doesn't have that error; the shim was NOT
+added to the repo. Stanley must still run the project's own typecheck before pushing (ritual
+below), which is the authoritative gate.
+
+**Environment notes for future sessions (cloud/device bridge quirks found today):**
+- Running plain `git status`/`git diff` on the mounted folder from the cloud sandbox leaves a
+  stale `.git/index.lock` (the VM can't delete files). Use `git --no-optional-locks <cmd>` for
+  read-only git on the mount. Today's stray lock was moved to `_to_delete/stale-index.lock`.
+- Device-side `git status` shows ~200 phantom "modified" files — CRLF noise from the Linux VM's
+  viewpoint, not real changes. Trust `git status` run by Stanley on Windows instead.
+- Background processes on the device VM are killed when each command returns, and commands cap
+  at 45s, so the full tsc can't run device-side from here; the cloud-bundle approach above is
+  the workaround (bundle script/chunks were built into `_to_delete/`).
+- `_to_delete/` in the repo root is scratch (typecheck bundles + stale lock) — Stanley can
+  delete the whole folder anytime; it must NOT be committed.
+
+**Deferred / post-demo (recorded per Stanley's instruction):**
+- **Full clean-slate rebuild of admin Reports + remaining estate-era pages comes AFTER the
+  demo.** The hidden-but-reachable routes (bills, payments, facilities, residents, visitor
+  logs, complaints, digital IDs, broadcasts, reports, system, settings, resident portal,
+  cso) should then be rebuilt event-shaped or physically deleted.
+- Per-scan check-in audit log table, CSV file upload, offline-tolerant scanning, Paystack —
+  unchanged from earlier notes.
+- jsQR/zxing fallback for iOS Safari camera scanning (BarcodeDetector is Chromium-only);
+  needs npm registry access or vendoring the lib.
+
+**Push ritual for this session** (Stanley runs, from the EVENTAPP folder): see chat — single
+demo-day commit, 12 files (11 code + this handoff).

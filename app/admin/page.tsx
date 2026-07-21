@@ -1,5 +1,5 @@
-import { AdminDashboard } from "@/components/dashboard/pages";
+import { OrganizerDashboard } from "@/components/events/organizer-dashboard";
 
 export default function AdminPage() {
-  return <AdminDashboard />;
+  return <OrganizerDashboard />;
 }

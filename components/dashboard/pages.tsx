@@ -5377,7 +5377,7 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
   const { liveEstates } = useLiveEstates();
   const estateOptions = liveEstates.length ? liveEstates : state.estates;
   const [users, setUsers] = useState<ManagedAppUser[]>([]);
-  const [role, setRole] = useState<UserRole>(scope === "super-admin" ? "estate_admin" : "resident");
+  const [role, setRole] = useState<UserRole>(scope === "super-admin" ? "estate_admin" : "security_guard");
   const [message, setMessage] = useState("");
   const [createdPassword, setCreatedPassword] = useState("");
   const [temporaryCredential, setTemporaryCredential] = useState<TemporaryCredential | null>(null);
@@ -5385,13 +5385,13 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
   const [loading, setLoading] = useState(false);
   const [loadingUsers, setLoadingUsers] = useState(false);
   const [editingUser, setEditingUser] = useState<ManagedAppUser | null>(null);
-  const [editRole, setEditRole] = useState<UserRole>("resident");
+  const [editRole, setEditRole] = useState<UserRole>("security_guard");
   const [emailInvite, setEmailInvite] = useState(false);
   const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
   const allowedRoles = useMemo<UserRole[]>(
     () => scope === "super-admin"
-      ? ["super_admin", "estate_admin", "cso", "security_guard", "resident", "vendor"]
-      : ["cso", "security_guard", "resident", "vendor"],
+      ? ["super_admin", "estate_admin", "security_guard"]
+      : ["security_guard"],
     [scope]
   );
   const selectedUsers = users.filter((user) => selectedUserIds.includes(user.id));
@@ -5691,7 +5691,7 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
         onRefresh={() => void refreshRequestsAndUsers()}
       />
       <Card className="mb-6">
-        <CardHeader title="Create user" description="Organizer admins can create CSO, security, resident, and vendor users for their assigned workspace, then share the login details privately." />
+        <CardHeader title="Create user" description="Create Organizer and Gate Staff accounts for this workspace, then share the login details privately." />
         <form className="grid gap-4" onSubmit={submitUser}>
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Full name"><Input name="fullName" placeholder="Full name" required /></Field>
