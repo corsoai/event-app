@@ -158,6 +158,31 @@ Zikoro-inspired features worth queueing AFTER Phase 2 (do not start with these):
 Differentiators to lean on vs Zikoro: gate security DNA (guards, scanning discipline, plate
 capture, SOS), WhatsApp-first pass delivery, offline-tolerant check-in for Nigerian venue
 network reality, and protocol/VIP handling for gover
+## 6. Architecture rules (Overseer-approved, added Session 8 — follow these)
+
+**6A. Proxy everything via API routes.** The frontend never talks to Appwrite directly — no
+Web SDK, ever. Every gate/organizer operation targets our own Next.js API routes, which use
+the existing server-side REST helpers in `lib/appwrite/server.ts` with the protected server
+key.
+
+**6B. Offline caching = reuse the guard-tour queue pattern.** No Dexie, no IndexedDB, no new
+libraries. When a gate scan can't reach the server, serialize it into a localStorage queue
+exactly like `lib/guard-tour.ts` does for patrols (synced flag, amber "saved offline"
+feedback, flush on `online`/`visibilitychange`), batch-POSTing to our own `/api/gate/...`
+endpoints when connectivity returns. Handle duplicates on sync ("already checked in at
+HH:MM").
+
+**6C. Check-in route: follow the house pattern, not external blueprints.** Model the gate
+check-in route on the existing `app/api/appwrite/security/patrols/route.ts` — it is the exact
+shape needed: `resolveSessionContext(request, { allowedRoles })` for identity (the scannedBy
+staff ID comes from the session, never from the request body — client-supplied identity is
+spoofable), `ensureAppwriteSchemaReady()` before writes, workspace scoping from context,
+writes via `appwriteInsertRow`/`appwriteUpsertRow` with `safeAppwriteId`, and the standard
+errorResponse mapping (SessionContextError / AppwriteRestError). Do NOT use `node-appwrite`,
+`createDocument`, `'unique()'`, or any `..._COLLECTION_ID` env vars — none of those exist in
+this codebase. Record every check-in with `scannedBy` (session profileId), `gate` label if
+present, and timestamp.
+
 ## 7. Progress notes (updated each session — read this first)
 
 **Product name: Corsvent.** **Domain: `event.corso.ng`** (subdomain of corso.ng, live now). A
@@ -832,3 +857,26 @@ below), which is the authoritative gate.
 
 **Push ritual for this session** (Stanley runs, from the EVENTAPP folder): see chat — single
 demo-day commit, 12 files (11 code + this handoff).
+
+
+### Session 8 (2026-07-21) — Overseer architecture rules recorded + compliance audit
+
+Appended the Overseer-approved architecture rules as section 6 above (6A proxy-only Appwrite
+access, 6B guard-tour-pattern offline queue, 6C house-pattern check-in route). Audited the
+existing Phase 1 code against them before recording:
+
+- **6A: compliant today.** All event/guest/check-in UI goes through `lib/appwrite/browser-data.ts`
+  wrappers → our own API routes → `lib/appwrite/server.ts` REST helpers. No Appwrite Web SDK
+  anywhere in the frontend.
+- **6C: compliant today.** `checkInAppwriteGuestByCode` (lib/appwrite/events.ts) takes identity
+  from `resolveSessionContext` — `checkedInBy: context.profileId`, never from the request body;
+  workspace-scoped reads; writes via `appwriteUpsertRow` with `safeAppwriteId`; no
+  `node-appwrite`/`createDocument`/`'unique()'`/`_COLLECTION_ID` anywhere. Note the current
+  vertical slice stores the latest check-in state on the guest row; the planned per-scan audit
+  log table (next build) must ALSO follow 6C — one inserted row per scan with `scannedBy`,
+  `gate`, timestamp, modeled on `app/api/appwrite/security/patrols/route.ts`.
+- **6B: not yet built (as expected).** Offline check-in queueing is still on the backlog; when
+  built, it must reuse the `lib/guard-tour.ts` localStorage queue pattern verbatim — this rule
+  now pins the design so no new storage library sneaks in.
+
+Doc-only change; no code touched this session.
