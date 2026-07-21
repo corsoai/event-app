@@ -1671,25 +1671,20 @@ export function EstateProfilePage() {
 
   return (
     <>
-      <PageHeader title="Estate profile" description="Configure estate identity, gate details, billing account, contact information, and service charge categories." />
+      <PageHeader title="Organizer profile" description="Configure your organizer identity, gate details, payout account, and contact information." />
       <Card>
-        <CardHeader title="LBS View Estate settings" description="These fields map to the estates table and are scoped by estate_id." />
+        <CardHeader title="Workspace settings" description="These details appear on your event passes and organizer communications." />
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Estate name"><Input defaultValue="LBS View Estate" /></Field>
-          <Field label="Address"><Input defaultValue="LBS View Estate, Lagos" /></Field>
-          <Field label="Primary contact email"><Input defaultValue="admin@lbsviewestate.example" /></Field>
+          <Field label="Workspace name"><Input defaultValue="Demo Organizer Workspace" /></Field>
+          <Field label="Address"><Input defaultValue="Lagos, Nigeria" /></Field>
+          <Field label="Primary contact email"><Input defaultValue="admin@corsvent.example" /></Field>
           <Field label="Contact phone"><Input defaultValue="+234 801 111 2040" /></Field>
           <Field label="Security gate name"><Input defaultValue="Main Gate A" /></Field>
-          <Field label="Payment account"><Input defaultValue="Corso Estate Collections - 0123456789 - GTBank" /></Field>
-        </div>
-        <div className="mt-5">
-          <Field label="Service charge categories">
-            <Textarea defaultValue={"Service charge\nSecurity levy\nWaste management\nPower/infrastructure levy\nMaintenance fee"} />
-          </Field>
+          <Field label="Payout account"><Input defaultValue="Corsvent Event Collections - 0123456789 - GTBank" /></Field>
         </div>
         {message ? <p className="mt-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{message}</p> : null}
-        <Button className="mt-5" type="button" onClick={() => setMessage("Estate profile settings saved for this session.")}>
-          Save estate profile
+        <Button className="mt-5" type="button" onClick={() => setMessage("Organizer profile settings saved for this session.")}>
+          Save organizer profile
         </Button>
       </Card>
     </>
@@ -4132,8 +4127,8 @@ export function AnnouncementsAdminPage() {
 
   return (
     <>
-      <PageHeader title="Announcements" description="Publish estate-wide or targeted communication for residents, owners, tenants, security, and vendors.">
-        <Button type="button" onClick={() => scrollToSection("publish-announcement")}><Megaphone className="h-4 w-4" />Create announcement</Button>
+      <PageHeader title="Broadcasts" description="Publish workspace-wide or targeted communication for staff and guests.">
+        <Button type="button" onClick={() => scrollToSection("publish-announcement")}><Megaphone className="h-4 w-4" />Create broadcast</Button>
       </PageHeader>
       <Card id="publish-announcement" className="scroll-mt-24">
         <CardHeader title="Publish update" description="Prepared for future email, SMS, and push notification delivery." />

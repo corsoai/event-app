@@ -660,3 +660,87 @@ git push origin main
    is fixed: create a test event, add guests, check one in as security, confirm the live counter.
 3. There's still a broader "Corso"/"estate" copy sweep deferred from Session 1 covering
    `pages.tsx` reports/system pages — lower priority than confirming Phase 1 works end-to-end.
+
+### Session 6 (2026-07-21) — sidebar sweep: removed estate-era nav items, renamed the rest
+
+Stanley shared a corrected screenshot confirming Session 5 deployed cleanly (Organizer Workspaces
+nav, Organizer role, Organizer admins/workspace copy all showing correctly), then asked what
+"Residents" and "LBS View Estate" were still doing in the admin experience. Answered LBS View
+Estate (unchanged since Session 5 — Stanley just hadn't used the new Edit button yet) and asked
+whether to remove "Residents" from the admin nav now that Events/Guests replaces it. Stanley said
+yes, and asked for a full sweep of the sidebar using the same logic — remove or rename anything
+estate-era that doesn't map to events/guests/gates, done once instead of item by item.
+
+**Research first:** used a subagent to audit every remaining admin nav item's underlying page and
+data-model coupling before touching anything (report below, condensed):
+- **Estate Profile** — a session-only settings form (no real backend save), hardcoded with
+  "LBS View Estate" example values and a resident-era "service charge categories" field. Not
+  actually resident/unit-coupled in the data layer — just mislabeled copy. → **rename + fix copy.**
+- **Visitor Logs** — reads the `visitors` table, keyed by `residentId`/`unitCode`, joined against
+  `residents`/`units`. Entirely separate data model from the new `guests` table backing Events,
+  zero reuse path. → **remove from nav** (same reasoning as Residents).
+- **Complaints** — property-maintenance ticketing (security/power/water/waste/noise/road/facility
+  categories), every record carries `residentName`/`unitCode`. Doesn't map to an events company's
+  workflow. → **remove from nav.**
+- **Digital IDs** — resident ID-card system pulling from `state.residents`, and now redundant:
+  Events already has its own QR guest-pass system (`GuestPassModal`). → **remove from nav.**
+- **Announcements** — generic title/message/priority broadcaster with no resident/unit field
+  coupling (just a `targetRole` enum). Structurally fine as-is. → **rename to "Broadcasts."**
+- **Users & Roles** — "resident" is just one of four selectable role options, no special
+  prominence now that Residents isn't a standalone nav item. → **keep as-is.**
+
+**Changes made** (nav labels/removals only — per this project's "hide nav first, delete code once
+stable" rule, none of the underlying pages/routes were deleted; they're still reachable by direct
+URL and can be removed for real in a later cleanup pass once confirmed unused):
+- `components/layout/nav.ts` (`adminNav`): removed Residents, Visitor Logs, Complaints, Digital
+  IDs. Renamed "Estate Profile" → "Organizer Profile", "Announcements" → "Broadcasts".
+- `components/layout/nav.ts` (`securityNav`): applied the same logic — removed "Verify Visitor",
+  "Expected Visitors", "Entry Logs" (all read the same resident/visitor-coupled data as admin's
+  Visitor Logs) and "Verify Digital ID" (same resident-ID system as admin's Digital IDs). Left
+  with Dashboard, SOS, Guest Check-in, Guard Tour (module-gated, kept since venue patrol for large
+  events is a plausible future use per the concept-mapping table in section 2).
+- `components/layout/MobileBottomNav.tsx`: admin tab bar swapped "Residents" → "Users" (Users &
+  Roles); security tab bar dropped "Verify" and "Logs" (mirrors the desktop removals) down to
+  Dash / Check-in / SOS. Removed the now-unused `QrCode`/`ClipboardList` icon imports.
+- `components/dashboard/pages.tsx`:
+  - `EstateProfilePage` → full copy pass: "Estate profile" → "Organizer profile", dropped the
+    "Service charge categories" field entirely (no equivalent concept for an events company),
+    updated all hardcoded example values (LBS View Estate → Demo Organizer Workspace, address/
+    email/payout account → Corsvent-appropriate examples).
+  - `AnnouncementsAdminPage` → title/description/button copy relabeled to "Broadcasts" language
+    (organizer-facing only — the resident-facing Announcements page/nav was deliberately left
+    untouched this round, see below).
+
+**Deliberately NOT touched this round — flagged for a future, separate decision:** the entire
+resident portal (`residentNav`: Home, Invite Visitor, Complaints, Digital ID, Visitors,
+Announcements, SOS) and `csoNav`. Whether an events app still needs a "resident" login type at
+all — and if so, what it should become — is a bigger product question than a nav copy sweep;
+didn't want to make that call silently mid-cleanup. Revisit with Stanley explicitly before
+touching it.
+
+**Verification:** typecheck exit 0 after all changes; NUL-byte scan and brace/paren balance check
+(against `git show HEAD:<file>`) on every touched file — all clean. `CACHE_NAME` bumped again
+(user-facing nav changes).
+
+**Push list for this session:**
+
+```
+node node_modules/typescript/bin/tsc -p tsconfig.typecheck.json --noEmit
+```
+
+If that prints nothing and exits clean, continue with:
+
+```
+git add components/layout/nav.ts components/layout/MobileBottomNav.tsx components/dashboard/pages.tsx public/sw.js EVENT-APP-HANDOFF.md
+git commit -m "Sweep admin/security nav: remove estate-era items, rename the rest to organizer/event language"
+git push origin main
+```
+
+**Next session should:**
+1. Confirm this deploys green and the admin/security sidebars show the trimmed, renamed lists.
+2. Have Stanley finish the Phase 1 walkthrough: rename the workspace via the new Edit button,
+   create a test event, add guests, check one in as security.
+3. Decide with Stanley (don't assume) what happens to the resident portal / "resident" role
+   long-term — repurpose, keep as-is, or remove — before touching `residentNav`/`csoNav`.
+4. Once confirmed genuinely unused, physically delete the hidden routes/components (Visitor Logs,
+   Complaints, Digital IDs, Residents) rather than leaving them reachable by direct URL forever.

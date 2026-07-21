@@ -4,13 +4,9 @@ export const adminNav: NavItem[] = [
   { label: "Dashboard", href: "/admin", icon: "Gauge" },
   { label: "🚨 SOS", href: "/admin/sos-alerts", icon: "AlertTriangle", tone: "danger", badge: "sos" },
   { label: "Events", href: "/admin/events", icon: "CalendarDays" },
-  { label: "Estate Profile", href: "/admin/estate", icon: "Building2" },
+  { label: "Organizer Profile", href: "/admin/estate", icon: "Building2" },
   { label: "Users & Roles", href: "/admin/users", icon: "Users" },
-  { label: "Residents", href: "/admin/residents", icon: "Users" },
-  { label: "Visitor Logs", href: "/admin/visitors", icon: "QrCode" },
-  { label: "Complaints", href: "/admin/complaints", icon: "ClipboardList" },
-  { label: "Announcements", href: "/admin/announcements", icon: "Megaphone" },
-  { label: "Digital IDs", href: "/admin/digital-ids", icon: "IdCard", module: "digital_ids" },
+  { label: "Broadcasts", href: "/admin/announcements", icon: "Megaphone" },
   { label: "Reports", href: "/admin/reports", icon: "BarChart3" },
   { label: "System Status", href: "/admin/system", icon: "ShieldCheck" },
   { label: "Settings", href: "/admin/settings", icon: "Settings" }
@@ -30,11 +26,7 @@ export const securityNav: NavItem[] = [
   { label: "Dashboard", href: "/security", icon: "Gauge" },
   { label: "🚨 SOS", href: "/security/sos-alerts", icon: "AlertTriangle", tone: "danger", badge: "sos" },
   { label: "Guest Check-in", href: "/security/checkin", icon: "CalendarDays" },
-  { label: "Verify Visitor", href: "/security/verify-visitor", icon: "QrCode" },
-  { label: "Guard Tour", href: "/security/guard-tour", icon: "ShieldCheck", module: "guard_tour" },
-  { label: "Expected Visitors", href: "/security/expected-visitors", icon: "DoorOpen" },
-  { label: "Entry Logs", href: "/security/logs", icon: "FileText" },
-  { label: "Verify Digital ID", href: "/security/verify-id", icon: "IdCard", module: "digital_ids" }
+  { label: "Guard Tour", href: "/security/guard-tour", icon: "ShieldCheck", module: "guard_tour" }
 ];
 
 export const csoNav: NavItem[] = [

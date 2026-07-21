@@ -8,11 +8,9 @@ import {
   BarChart3,
   Building2,
   CalendarDays,
-  ClipboardList,
   CreditCard,
   Home,
   LayoutDashboard,
-  QrCode,
   ReceiptText,
   Settings,
   Shield,
@@ -199,9 +197,7 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
     return [
       { label: "Dash", href: "/security", icon: Shield },
       { label: "Check-in", href: "/security/checkin", icon: CalendarDays },
-      { label: "SOS", href: "/security/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
-      { label: "Verify", href: "/security/verify-visitor", icon: QrCode },
-      { label: "Logs", href: "/security/logs", icon: ClipboardList }
+      { label: "SOS", href: "/security/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" }
     ];
   }
 
@@ -228,7 +224,7 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
     { label: "Dash", href: "/admin", icon: LayoutDashboard },
     { label: "Events", href: "/admin/events", icon: CalendarDays },
     { label: "SOS", href: "/admin/sos-alerts", icon: AlertTriangle, badge: openIncidents, tone: "danger" },
-    { label: "Residents", href: "/admin/residents", icon: Users },
+    { label: "Users", href: "/admin/users", icon: Users },
     { label: "Reports", href: "/admin/reports", icon: BarChart3 }
   ];
 }
