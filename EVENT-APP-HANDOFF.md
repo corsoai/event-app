@@ -327,3 +327,76 @@ strip/rebrand/demo-login removal, and this session's seed-data fix
 2. Have Stanley rename the already-existing "LBS View Estate" record via the UI (see above).
 3. Everything else from the prior progress note still stands (copy sweep, landing page rewrite,
    residents-import-machinery removal, then Phase 1).
+
+### Session 2 (2026-07-21) — auth-card copy + full landing page rewrite
+
+Confirmed via `git log` that Session 1's full push (crew install + Phase 0 strip/rebrand + seed-data
+fix) already landed as commit `f3d4af0` on `origin/main`, and per Stanley/"Overseer": build green,
+tab title = Corsvent, demo logins removed, live estate record renamed via the Appwrite console.
+
+**This session's work — the two remaining visible-branding gaps Stanley flagged:**
+
+1. **`components/auth/auth-card.tsx` — copy only, login mechanics untouched.** 11 text
+   replacements: heading "Sign in to Corso" → "Sign in to Corsvent" (signup heading "Request
+   estate access" → "Request access"), tagline → "Secure access for event organizers and staff.",
+   `<Field label="Estate">` → "Organizer workspace", every "estate admin" reference → "organizer
+   admin" (password reset hint, approval-pending message, rejection message, access-request
+   submitted message ×2), old-demo-emails hint reworded, unavailable-login message simplified, and
+   the hardcoded `estate: "LBS View Estate"` literal switched to reference the shared
+   `DEFAULT_ESTATE_NAME` constant instead of a stale duplicate string.
+
+2. **`app/page.tsx` — full landing page rewrite, Apple-light design system preserved verbatim**
+   (every className/JSX structure kept identical, only text content changed). Hero now pitches
+   "Run your event without the chaos" with guest-list/pass/gate-check-in copy and a re-themed
+   mock dashboard card (check-in counter, VIP guest pass, progress bar). Rewrote the 8-item
+   features grid (guest passes, VIP parking, Paystack ticketing, reports, SOS alert, venue
+   patrols, broadcasts, digital badges), the 3-step "how it works", the 3 audience cards
+   (organizers / ushers & gate staff / guests), section headings, and the contact/footer copy
+   (copyright → "© 2026 Corsvent. Lagos, Nigeria.").
+   **Self-caught bug, fixed before handoff:** the rewrite initially linked 3 CTAs to `/demo`
+   (hero secondary button, contact section, footer nav) — but `app/demo/page.tsx` is just a
+   `redirect("/login")` stub left over after Session 1 removed the actual demo-login buttons from
+   auth-card.tsx, so `/demo` no longer does anything useful. Repointed all three to `/login`
+   instead ("Sign in" / "Already have an account? Sign in." / removed the dead "Demo" footer link).
+
+3. **`components/landing/demo-request-form.tsx`** — matching copy fixes: confirmation message
+   "Corso team" → "Corsvent team", field label "Estate name" → "Company / event name" (placeholder
+   updated to an event example), textarea placeholder reworded from "how many homes" to "what kind
+   of events do you run."
+
+**UI-review pass (done manually — no `ui-reviewer` subagent type available in this environment, so
+I applied its checklist by hand):** both files preserve every existing className, so phone-width
+(~380px), tap-target sizing, and Light/Dark theme behavior are inherited unchanged from the
+already-shipped design system — nothing structural was touched, only strings. The one real issue
+found was the `/demo` dead-link problem above, caught and fixed pre-handoff. No other broken links,
+no empty/loading/error-state regressions (none of these 3 files touch data-fetching logic).
+
+**Verification done:** typecheck (`tsc -p tsconfig.typecheck.json --noEmit`) exit 0 on the combined
+change set; byte-level check on all 3 touched files (NUL-byte scan = 0, brace/paren balance vs
+`git show HEAD:<file>` = matched) — the file-corruption bug from Session 1 did not recur, but the
+verification step stayed in the workflow per that note's guidance.
+
+**Push ritual for this session's changes** (Stanley runs, from the EVENTAPP folder):
+
+```
+node node_modules/typescript/bin/tsc -p tsconfig.typecheck.json --noEmit
+```
+
+If that prints nothing and exits clean, continue with:
+
+```
+git add app/page.tsx components/auth/auth-card.tsx components/landing/demo-request-form.tsx EVENT-APP-HANDOFF.md
+git commit -m "Rebrand auth-card copy and rewrite landing page for Corsvent"
+git push origin main
+```
+
+**Next session should:**
+1. Confirm this push built green and `event.corso.ng` shows the new landing page + login copy
+   live (desktop + phone, Light + Dark) — Stanley said he'll log in after this to confirm the
+   sidebar strip himself.
+2. Finish the remaining Corso→Corsvent copy sweep in `pages.tsx` and the reports/system files
+   (still deferred from Session 1 — ~50+ scattered strings, mostly in modules slated for deletion).
+3. Decide + execute the residents/units/properties import-machinery removal
+   (`ResidentOnboardingPanel` / `AppwriteOnboardingPanel`) as its own careful pass.
+4. Start Phase 1 (Events table, guest list, pass delivery, check-in) once Stanley confirms the
+   sidebar strip.

@@ -10,7 +10,7 @@ export function DemoRequestForm() {
 
   function submit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setMessage("Thank you — your request has been noted. The Corso team will reach out to arrange your demo.");
+    setMessage("Thank you — your request has been noted. The Corsvent team will reach out to arrange your demo.");
     event.currentTarget.reset();
   }
 
@@ -27,8 +27,8 @@ export function DemoRequestForm() {
             <input name="email" type="email" placeholder="you@example.com" required className={inputClass} />
           </label>
           <label className="block">
-            <span className="mb-1.5 block text-sm font-medium text-[#1d1d1f]">Estate name</span>
-            <input name="estateName" placeholder="e.g. Harmony Gardens Estate" required className={inputClass} />
+            <span className="mb-1.5 block text-sm font-medium text-[#1d1d1f]">Company / event name</span>
+            <input name="estateName" placeholder="e.g. Grand Events Ltd, or your event name" required className={inputClass} />
           </label>
           <label className="block">
             <span className="mb-1.5 block text-sm font-medium text-[#1d1d1f]">Phone</span>
@@ -40,7 +40,7 @@ export function DemoRequestForm() {
           <textarea
             name="message"
             rows={4}
-            placeholder="How many homes, and how do you manage things today?"
+            placeholder="What kind of events do you run, and how do you manage guest lists today?"
             className={inputClass}
           />
         </label>

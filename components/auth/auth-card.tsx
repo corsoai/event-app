@@ -147,7 +147,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
       setEmail("");
       setPassword("");
       setMessageTone("error");
-      setMessage("Old estate demo emails are disabled. Use a phone number or an @corso.ng email instead.");
+      setMessage("Old demo emails are disabled. Use a phone number or an @corso.ng email instead.");
       setLoading(false);
       return;
     }
@@ -155,7 +155,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
     try {
       if (mode === "forgot") {
         setMessageTone("success");
-        setMessage("Ask an estate admin to reset your Corso password from Users & Roles.");
+        setMessage("Ask an organizer admin to reset your password from Users & Roles.");
         return;
       }
 
@@ -196,7 +196,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
 
           setSubmittedEmail(normalizedPhone);
           setMessageTone("success");
-          setMessage(result.message ?? "Access request submitted. An estate admin must approve this account before login.");
+          setMessage(result.message ?? "Access request submitted. An organizer admin must approve this account before login.");
           setEmail("");
           setPhone("");
           setPassword("");
@@ -227,7 +227,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
 
         setSubmittedEmail(result.request.phone || result.request.email);
         setMessageTone("success");
-        setMessage("Access request submitted. An estate admin must approve this account before login.");
+        setMessage("Access request submitted. An organizer admin must approve this account before login.");
         setEmail("");
         setPhone("");
         setPassword("");
@@ -320,14 +320,14 @@ export function AuthCard({ mode }: { mode: Mode }) {
           : await readAppwriteAccessRequestForCurrentUser(email);
         if (accessRequest?.status === "pending") {
           setMessageTone("info");
-          setMessage("This account is waiting for estate admin approval.");
+          setMessage("This account is waiting for organizer admin approval.");
           setLoading(false);
           return;
         }
 
         if (accessRequest?.status === "rejected") {
           setMessageTone("error");
-          setMessage("This access request was rejected. Contact the estate admin.");
+          setMessage("This access request was rejected. Contact the organizer admin.");
           setLoading(false);
           return;
         }
@@ -351,7 +351,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
         phone: "",
         name: demoUser.name,
         role: demoUser.role,
-        estate: "LBS View Estate"
+        estate: DEFAULT_ESTATE_NAME
       });
       const destination = params.get("next") ?? roleHome[demoUser.role];
       router.prefetch(destination);
@@ -375,9 +375,9 @@ export function AuthCard({ mode }: { mode: Mode }) {
         <BrandMark className="h-12 w-12" />
         <div>
           <h1 className="text-xl font-semibold text-white">
-            {mode === "login" ? "Sign in to Corso" : mode === "signup" ? "Request estate access" : "Reset password"}
+            {mode === "login" ? "Sign in to Corsvent" : mode === "signup" ? "Request access" : "Reset password"}
           </h1>
-          <p className="text-sm text-slate-400">Secure access for estate teams and residents.</p>
+          <p className="text-sm text-slate-400">Secure access for event organizers and staff.</p>
         </div>
       </div>
 
@@ -463,7 +463,7 @@ export function AuthCard({ mode }: { mode: Mode }) {
                 <option value="resident">{roleLabels.resident}</option>
               </Select>
             </Field>
-            <Field label="Estate">
+            <Field label="Organizer workspace">
               <Select value={estateId} onChange={(event) => setEstateId(event.target.value)}>
                 {estateOptions.map((estateOption) => (
                   <option key={estateOption.id} value={estateOption.id}>
@@ -554,7 +554,7 @@ async function signInWithAppwrite(identifier: string, password: string): Promise
     return {
       ok: false,
       canFallback: true,
-      error: error instanceof Error ? error.message : "Corso login is unavailable."
+      error: error instanceof Error ? error.message : "Sign-in is unavailable right now."
     };
   }
 }

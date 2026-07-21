@@ -19,76 +19,76 @@ import { DemoRequestForm } from "@/components/landing/demo-request-form";
 
 const features: Array<[string, string, LucideIcon]> = [
   [
-    "Visitor passes that work",
-    "Residents send a one-time code ahead of their guest. The gate confirms it in seconds — no gate-pass books, no arguments at the barrier.",
+    "Guest passes that just work",
+    "Send each guest a one-time QR code before the event. The gate confirms it in seconds — no printed lists, no arguments at the door.",
     QrCode
   ],
   [
-    "Plate capture at the gate",
-    "Guards snap a number plate and the vehicle is logged instantly, with photos and timestamps your security lead can review anytime.",
+    "VIP parking, tracked",
+    "Snap a number plate at the gate and log it instantly, with photos and timestamps — handy for VIP arrivals and government convoys.",
     ScanLine
   ],
   [
-    "Service charge, tracked",
-    "Set charges per unit, record payments, and see who has paid, part-paid or is owing — with reports ready for your next EXCO meeting.",
+    "Paid tickets, sorted",
+    "Free RSVPs or paid tiers via Paystack. Payment confirms automatically and the pass goes out the same second.",
     CreditCard
   ],
   [
-    "Maintenance that gets done",
-    "Log faults, assign work orders with due dates, and spot overdue jobs before residents start calling to complain.",
+    "Reports ready to go",
+    "Who showed up, who didn't, per gate, per hour — exportable the moment your event ends.",
     ClipboardList
   ],
   [
-    "One-tap SOS",
-    "A resident in trouble raises an alarm from their phone. Security sees who it is and which unit, immediately.",
+    "One-tap security alert",
+    "Raise an alarm from any phone at the venue. Your security lead sees exactly who and where, immediately.",
     ShieldAlert
   ],
   [
-    "Patrols you can verify",
-    "QR checkpoints with GPS and time stamps prove night patrols actually happened — no more taking anyone's word for it.",
+    "Venue patrols you can verify",
+    "QR checkpoints with GPS and time stamps prove your security team actually walked the venue — for events where it matters.",
     ShieldCheck
   ],
   [
-    "Announcements that land",
-    "Send notices to owners only, tenants only, or security only. Nothing gets buried in a group chat again.",
+    "Broadcasts that land",
+    "Send updates to all guests, VIPs only, or ushers only — by WhatsApp or email, not a group chat nobody reads.",
     Bell
   ],
   [
-    "Digital estate IDs",
-    "QR-ready IDs for residents, domestic staff and vendors, verifiable at the gate in one scan.",
+    "Digital badges & credentials",
+    "QR badges for staff, ushers and VIPs, verifiable at any gate in one scan.",
     IdCard
   ]
 ];
 
 const steps: Array<[string, string]> = [
   [
-    "We set up your estate",
-    "Your resident list, units and outstanding balances are imported from whatever records you have today — even a spreadsheet."
+    "Create your event",
+    "Add the event, then paste or upload your guest list — name, phone, category. Takes minutes, not days."
   ],
   [
-    "Your people get their logins",
-    "Admins, security guards, and residents each see only what their role needs. Phone number or email — either works."
+    "Your team gets access",
+    "Organizers, ushers and gate staff each see only what their role needs. Phone number or email — either works."
   ],
   [
-    "You run it from your phone",
-    "Gate activity, payments, complaints and reports, all live. Corso is built mobile-first because that is where estate work happens."
+    "You run the gate from your phone",
+    "Check-ins, arrivals and live counts, all on your phone. Corsvent is built mobile-first because that is where event-day work happens."
   ]
 ];
 
 const audiences: Array<[string, string, LucideIcon]> = [
   [
-    "Estate managers & EXCOs",
-    "Stop chasing payments and paperwork across WhatsApp, Excel and notebooks. Everything is in one place, with an audit trail.",
+    "Event organizers",
+    "Stop juggling guest lists across WhatsApp, Excel and printed sheets. Everything is in one place, with an audit trail.",
     Building2
   ],
   [
-    "Security teams",
-    "Faster gates, cleaner logs, verified patrols. Guards need a phone and nothing else.",
+    "Ushers & gate staff",
+    "Faster check-ins, cleaner logs, verified arrivals. Your team needs a phone and nothing else.",
     ShieldCheck
   ],
   [
-    "Residents",
-    "Invite visitors, pay dues, report faults, and get estate news — without knocking on the estate office door.",
+    "Guests",
+    "Get your pass by WhatsApp, walk straight to the gate, and get scanned in — no queue, no printed ticket to lose.",
     Users
   ]
 ];
@@ -100,7 +100,7 @@ export default function LandingPage() {
         <div className="mx-auto flex h-14 w-full max-w-5xl items-center justify-between gap-4 px-5 sm:px-6">
           <Link href="/" className="flex items-center gap-2.5">
             <BrandMark className="h-8 w-8" />
-            <span className="text-[17px] font-semibold tracking-tight text-[#1d1d1f]">Corso</span>
+            <span className="text-[17px] font-semibold tracking-tight text-[#1d1d1f]">Corsvent</span>
           </Link>
           <nav className="hidden items-center gap-8 text-sm text-[#424245] md:flex">
             <a href="#features" className="transition hover:text-black">What it does</a>
@@ -117,13 +117,13 @@ export default function LandingPage() {
       </header>
 
       <section className="px-5 pb-16 pt-20 text-center sm:px-6 sm:pt-28">
-        <p className="text-base font-semibold text-emerald-700">For gated communities and estates</p>
+        <p className="text-base font-semibold text-emerald-700">For events across Nigeria</p>
         <h1 className="mx-auto mt-4 max-w-3xl text-[2.6rem] font-semibold leading-[1.08] tracking-tight text-[#1d1d1f] sm:text-6xl">
-          Run your estate without the chaos.
+          Run your event without the chaos.
         </h1>
         <p className="mx-auto mt-6 max-w-2xl text-xl leading-9 text-[#6e6e73]">
-          Gate security, visitor passes, service charge, maintenance and resident records —
-          in one simple app. Whether you manage twenty homes or two thousand.
+          Guest lists, digital passes, and gate check-in — in one simple app.
+          Whether it&apos;s a wedding for 300 or a conference for three thousand.
         </p>
         <div className="mt-9 flex flex-col items-center justify-center gap-4 sm:flex-row">
           <a
@@ -133,30 +133,30 @@ export default function LandingPage() {
             Book a free demo <ArrowRight className="h-4 w-4" />
           </a>
           <Link
-            href="/demo"
+            href="/login"
             className="inline-flex items-center gap-1.5 text-[15px] font-medium text-emerald-700 transition hover:text-emerald-600"
           >
-            Try the demo estate <ArrowRight className="h-4 w-4" />
+            Sign in <ArrowRight className="h-4 w-4" />
           </Link>
         </div>
-        <p className="mt-5 text-sm text-[#86868b]">No card needed. The demo estate is open — tap in and look around.</p>
+        <p className="mt-5 text-sm text-[#86868b]">No card needed to book a walkthrough.</p>
 
         <div className="mx-auto mt-16 max-w-3xl">
           <div className="rounded-3xl bg-[#f5f5f7] p-4 sm:p-6">
             <div className="rounded-2xl bg-white p-4 text-left shadow-[0_8px_40px_rgba(0,0,0,0.08)] sm:p-5">
               <div className="flex items-center justify-between rounded-xl bg-[#f5f5f7] px-4 py-3">
                 <div>
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-[#86868b]">Main Gate · Today</p>
-                  <p className="mt-0.5 text-sm font-semibold text-[#1d1d1f]">Gate activity is live</p>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-[#86868b]">Main Entrance · Today</p>
+                  <p className="mt-0.5 text-sm font-semibold text-[#1d1d1f]">Check-in is live</p>
                 </div>
-                <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-800">On duty</span>
+                <span className="rounded-full bg-emerald-100 px-2.5 py-1 text-[11px] font-semibold text-emerald-800">Live</span>
               </div>
 
               <div className="mt-3 grid grid-cols-3 gap-3">
                 {[
-                  ["Visitors in", "24"],
-                  ["Vehicles logged", "61"],
-                  ["Open faults", "3"]
+                  ["Checked in", "142"],
+                  ["Total guests", "300"],
+                  ["VIP arrived", "12"]
                 ].map(([label, value]) => (
                   <div key={label} className="rounded-xl bg-[#f5f5f7] p-3.5">
                     <p className="text-[11px] leading-4 text-[#86868b]">{label}</p>
@@ -167,22 +167,22 @@ export default function LandingPage() {
 
               <div className="mt-3 flex items-center justify-between gap-4 rounded-xl bg-amber-50 p-4">
                 <div className="min-w-0">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700">Visitor code</p>
-                  <p className="mt-1 truncate text-[17px] font-semibold text-[#1d1d1f]">Adaeze O. — expected 4pm</p>
-                  <p className="mt-0.5 text-xs text-[#86868b]">One-time pass · Block C</p>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-amber-700">Guest pass</p>
+                  <p className="mt-1 truncate text-[17px] font-semibold text-[#1d1d1f]">Adaeze O. — VIP · Table 4</p>
+                  <p className="mt-0.5 text-xs text-[#86868b]">One-time pass · Main entrance</p>
                 </div>
                 <QrCode className="h-11 w-11 shrink-0 text-amber-600" />
               </div>
 
               <div className="mt-3 rounded-xl bg-[#f5f5f7] p-4">
                 <div className="flex items-center justify-between">
-                  <p className="text-[11px] font-medium uppercase tracking-wide text-[#86868b]">Service charge · This quarter</p>
-                  <span className="text-[11px] font-semibold text-emerald-700">78% collected</span>
+                  <p className="text-[11px] font-medium uppercase tracking-wide text-[#86868b]">Check-in progress · Today</p>
+                  <span className="text-[11px] font-semibold text-emerald-700">47% arrived</span>
                 </div>
                 <div className="mt-2.5 h-2 overflow-hidden rounded-full bg-black/[0.08]">
-                  <div className="h-full w-[78%] rounded-full bg-emerald-500" />
+                  <div className="h-full w-[47%] rounded-full bg-emerald-500" />
                 </div>
-                <p className="mt-2 text-xs text-[#86868b]">Debtor list ready for the next EXCO meeting.</p>
+                <p className="mt-2 text-xs text-[#86868b]">158 guests still to arrive before doors close.</p>
               </div>
             </div>
           </div>
@@ -193,11 +193,11 @@ export default function LandingPage() {
         <div className="mx-auto w-full max-w-5xl px-5 py-20 sm:px-6 sm:py-24">
           <div className="mx-auto max-w-2xl text-center">
             <h2 className="text-3xl font-semibold tracking-tight text-[#1d1d1f] sm:text-[2.5rem] sm:leading-tight">
-              The everyday work of an estate, handled.
+              Everything your event day needs, handled.
             </h2>
             <p className="mt-4 text-lg leading-8 text-[#6e6e73]">
-              Corso covers the jobs that eat your week: the gate, the money, the maintenance,
-              and keeping residents informed.
+              Corsvent covers the moments that make or break an event day: the gate,
+              the guest list, and keeping everyone informed.
             </p>
           </div>
           <div className="mt-12 grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -237,11 +237,11 @@ export default function LandingPage() {
         <div className="mx-auto w-full max-w-5xl px-5 py-20 sm:px-6 sm:py-24">
           <div className="mx-auto max-w-2xl text-center">
             <h2 className="text-3xl font-semibold tracking-tight text-[#1d1d1f] sm:text-[2.5rem] sm:leading-tight">
-              One platform. Every estate.
+              One platform. Every event.
             </h2>
             <p className="mt-4 text-lg leading-8 text-[#6e6e73]">
-              Every estate on Corso gets its own secure space — its own residents, gates, billing and reports.
-              Nothing crosses over. Each role sees only its own world.
+              Every organizer on Corsvent gets their own secure workspace — their own events,
+              guest lists and reports. Nothing crosses over. Each role sees only what it needs.
             </p>
           </div>
           <div className="mt-12 grid gap-4 md:grid-cols-3">
@@ -271,18 +271,18 @@ export default function LandingPage() {
         <div className="grid gap-10 lg:grid-cols-[0.85fr_1.15fr]">
           <div>
             <h2 className="text-3xl font-semibold tracking-tight text-[#1d1d1f] sm:text-[2.5rem] sm:leading-tight">
-              See Corso on your own estate.
+              See Corsvent at your own event.
             </h2>
             <p className="mt-4 text-[15px] leading-7 text-[#6e6e73]">
-              Tell us a little about your community and we&apos;ll walk you through a live demo,
+              Tell us a little about your event and we&apos;ll walk you through a live demo,
               answer your questions, and give you an honest picture of what setup looks like.
             </p>
             <p className="mt-6 text-[15px] leading-7 text-[#6e6e73]">
-              Prefer to look around first?{" "}
-              <Link href="/demo" className="font-medium text-emerald-700 hover:text-emerald-600">
-                Open the demo estate
-              </Link>{" "}
-              — no signup required.
+              Already have an account?{" "}
+              <Link href="/login" className="font-medium text-emerald-700 hover:text-emerald-600">
+                Sign in
+              </Link>
+              .
             </p>
           </div>
           <DemoRequestForm />
@@ -294,17 +294,16 @@ export default function LandingPage() {
           <div className="flex items-center gap-3">
             <BrandMark className="h-7 w-7" />
             <div>
-              <p className="text-sm font-semibold text-[#1d1d1f]">Corso</p>
-              <p className="text-xs text-[#86868b]">Estate management for African communities</p>
+              <p className="text-sm font-semibold text-[#1d1d1f]">Corsvent</p>
+              <p className="text-xs text-[#86868b]">Event management for Nigeria</p>
             </div>
           </div>
           <nav className="flex flex-wrap items-center gap-x-6 gap-y-2 text-sm text-[#6e6e73]">
             <a href="#features" className="hover:text-black">What it does</a>
             <a href="#how" className="hover:text-black">How it works</a>
-            <Link href="/demo" className="hover:text-black">Demo</Link>
             <Link href="/login" className="hover:text-black">Sign in</Link>
           </nav>
-          <p className="text-xs text-[#86868b]">© 2026 Corso. Lagos, Nigeria.</p>
+          <p className="text-xs text-[#86868b]">© 2026 Corsvent. Lagos, Nigeria.</p>
         </div>
       </footer>
     </main>
