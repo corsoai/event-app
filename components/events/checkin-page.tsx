@@ -247,12 +247,18 @@ function QrCodeScanner({ onDetected, onClose }: { onDetected: (value: string) =>
     let stream: MediaStream | null = null;
     let intervalId: number | null = null;
 
-    async function start() {
-      const DetectorCtor = (window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
-      if (!DetectorCtor) {
-        setScannerError("Camera scanning isn't supported in this browser — type the code below instead.");
-        return;
+    function handleDigits(raw: string) {
+      const digits = raw.replace(/\D/g, "").slice(0, 6);
+      if (digits.length === 6 && active) {
+        if (intervalId !== null) window.clearInterval(intervalId);
+        intervalId = null;
+        onDetected(digits);
+        return true;
       }
+      return false;
+    }
+
+    async function start() {
       if (!navigator.mediaDevices?.getUserMedia) {
         setScannerError("Camera access isn't available here — type the code below instead.");
         return;
@@ -276,23 +282,60 @@ function QrCodeScanner({ onDetected, onClose }: { onDetected: (value: string) =>
         // Autoplay hiccups are non-fatal; detection below still retries.
       }
 
-      const detector = new DetectorCtor({ formats: ["qr_code"] });
-      intervalId = window.setInterval(async () => {
-        const video = videoRef.current;
-        if (!video || video.readyState < 2) return;
-        try {
-          const results = await detector.detect(video);
-          const raw = results[0]?.rawValue ?? "";
-          const digits = raw.replace(/\D/g, "").slice(0, 6);
-          if (digits.length === 6 && active) {
-            if (intervalId !== null) window.clearInterval(intervalId);
-            intervalId = null;
-            onDetected(digits);
+      const DetectorCtor = (window as unknown as { BarcodeDetector?: BarcodeDetectorConstructor }).BarcodeDetector;
+      if (DetectorCtor) {
+        // Fast path: native BarcodeDetector (Chrome/Android).
+        const detector = new DetectorCtor({ formats: ["qr_code"] });
+        intervalId = window.setInterval(async () => {
+          const video = videoRef.current;
+          if (!video || video.readyState < 2) return;
+          try {
+            const results = await detector.detect(video);
+            handleDigits(results[0]?.rawValue ?? "");
+          } catch {
+            // Ignore detection errors and keep trying.
           }
+        }, 350);
+        return;
+      }
+
+      // Fallback path (iPhone Safari and other non-Chromium browsers): decode
+      // frames on a canvas with the jsqr package (Stanley-approved dependency).
+      // Dynamic import so the decoder only downloads when actually needed.
+      let decodeQr: ((data: Uint8ClampedArray, width: number, height: number, options?: { inversionAttempts?: "dontInvert" | "onlyInvert" | "attemptBoth" | "invertFirst" }) => { data: string } | null) | null = null;
+      try {
+        const module = await import("jsqr");
+        decodeQr = module.default;
+      } catch {
+        setScannerError("The QR decoder could not load — type the code below instead.");
+        return;
+      }
+
+      const canvas = document.createElement("canvas");
+      const canvasContext = canvas.getContext("2d", { willReadFrequently: true });
+      if (!canvasContext) {
+        setScannerError("Camera scanning isn't supported in this browser — type the code below instead.");
+        return;
+      }
+
+      const MAX_SCAN_SIZE = 480;
+      intervalId = window.setInterval(() => {
+        const video = videoRef.current;
+        if (!video || video.readyState < 2 || !video.videoWidth || !decodeQr) return;
+        try {
+          const scale = Math.min(1, MAX_SCAN_SIZE / Math.max(video.videoWidth, video.videoHeight));
+          const width = Math.max(1, Math.round(video.videoWidth * scale));
+          const height = Math.max(1, Math.round(video.videoHeight * scale));
+          canvas.width = width;
+          canvas.height = height;
+          canvasContext.drawImage(video, 0, 0, width, height);
+          const imageData = canvasContext.getImageData(0, 0, width, height);
+          const result = decodeQr(imageData.data, width, height, { inversionAttempts: "dontInvert" });
+          if (result?.data) handleDigits(result.data);
         } catch {
-          // Ignore detection errors and keep trying.
+          // Ignore decode errors and keep trying.
         }
-      }, 350);
+      }, 450);
     }
 
     void start();

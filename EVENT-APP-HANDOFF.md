@@ -1024,3 +1024,42 @@ Stanley/Overseer before adding ~40KB of vendored decoder code. The pages.tsx dea
 deletion remains a dedicated careful pass (12k-line shared-state file — don't rush it at a
 session tail). Resident/CSO portal decision still needs Stanley. Then VIP Parking, then
 Paystack/RSVP when Stanley has an account.
+
+### Session 12 (2026-07-21) — iOS QR scanning (jsqr) + pages.tsx dead-component deletion
+
+**iOS/Safari QR scanning — Stanley approved the decoder library.** The npm registry is blocked
+in the cloud sandbox, but Stanley's machine and Vercel both have npm access, so instead of
+vendoring a raw file the decoder is a normal dependency: **Stanley must run
+`npm install jsqr@1.4.0` before the typecheck/commit** (it updates package.json +
+package-lock.json; Vercel installs it at build time). `QrCodeScanner` in
+`components/events/checkin-page.tsx` now: opens the camera first, uses native BarcodeDetector
+when available (Chrome/Android fast path, unchanged), otherwise falls back to a canvas loop
+decoding frames with `jsqr` (dynamic `import("jsqr")` so the ~40KB only downloads on browsers
+that need it; frames downscaled to ≤480px, 450ms cadence, `inversionAttempts: "dontInvert"`).
+Camera-permission and decoder-load failures show accurate messages with the type-the-code path
+always available. Note: the cloud sandbox typecheck used a local `declare module "jsqr"` shim
+(NOT shipped) matching jsqr's real bundled types — Stanley's own typecheck against the
+installed package is the authoritative check.
+
+**pages.tsx cleanup pass (the long-deferred careful one).** Mapped every consumer of
+`components/dashboard/pages.tsx` across app/ and components/ first: still-live imports are
+PageHeader + QRCodeImage (events screens), UserManagementPage, SuperAdminDashboard,
+**SettingsPage and ReportsPage (both still routed under /super-admin — deliberately NOT
+deleted)**, EstateDirectoryPage/EstateDetailPage, EstateProfilePage, EmergencyAlertsPage,
+GuardTourPage, the whole resident portal set, and the CSO pages. Deleted the 17 dead exports
+(no importers anywhere): AdminDashboard, SecurityDashboard, ResidentsAdminPage,
+VisitorLogsPage, BillsAdminPage, PaymentsAdminPage, ComplaintsAdminPage,
+AnnouncementsAdminPage, DigitalIdsAdminPage, KnowledgeBaseManagerPage, AdminFacilitiesPage,
+VerifyVisitorPage, ScanPlatePage, ExpectedVisitorsPage, EntryLogsPage, VerifyDigitalIdPage,
+MarketplacePage — 2,229 lines removed (12,376 → 10,147). Deletion cut each `export function`
+through its column-0 closing brace only, so helpers between exports survived; some are now
+orphaned dead code (harmless — a future tidy can chase them). ScanPlatePage's deletion does
+NOT lose the VIP Parking salvage material — it stays in git history (`git show
+d4a0805^:components/dashboard/pages.tsx` region ~10342 or any earlier commit).
+
+**Verification:** typecheck exit 0 after the scanner change and again after the 17 deletions
+(structural corruption from a mis-cut would fail tsc — it didn't); NUL/brace checks + md5
+byte-verification on all committed files. CACHE_NAME → `corsvent-v2026-07-21-ios-scan-1`.
+
+**Backlog now:** resident/cso portal decision (Stanley), VIP Parking module, orphaned-helper
+tidy in pages.tsx, RSVP + Paystack when Stanley has an account, broadcasts/certificates.
