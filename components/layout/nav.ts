@@ -47,7 +47,7 @@ export const csoNav: NavItem[] = [
 
 export const superAdminNav: NavItem[] = [
   { label: "Dashboard", href: "/super-admin", icon: "Gauge" },
-  { label: "Estates", href: "/super-admin/estates", icon: "Building2" },
+  { label: "Organizer Workspaces", href: "/super-admin/estates", icon: "Building2" },
   { label: "Users & Roles", href: "/super-admin/users", icon: "Users" },
   { label: "Reports", href: "/super-admin/reports", icon: "BarChart3" },
   { label: "Settings", href: "/super-admin/settings", icon: "Settings" }

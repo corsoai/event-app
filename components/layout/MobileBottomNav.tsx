@@ -217,7 +217,7 @@ function mobileItemsForRole(role: MobileRole, outstandingBalance: number, openIn
   if (role === "super_admin") {
     return [
       { label: "Dash", href: "/super-admin", icon: LayoutDashboard },
-      { label: "Estates", href: "/super-admin/estates", icon: Building2 },
+      { label: "Workspaces", href: "/super-admin/estates", icon: Building2 },
       { label: "Users", href: "/super-admin/users", icon: Users },
       { label: "Reports", href: "/super-admin/reports", icon: BarChart3 },
       { label: "Settings", href: "/super-admin/settings", icon: Settings }

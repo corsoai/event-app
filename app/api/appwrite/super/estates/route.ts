@@ -95,6 +95,64 @@ export async function POST(request: NextRequest) {
   }
 }
 
+export async function PATCH(request: NextRequest) {
+  const body = await request.json().catch(() => null) as Record<string, unknown> | null;
+  if (!body || !body.estateId) {
+    return NextResponse.json({ error: "Invalid workspace update request." }, { status: 400 });
+  }
+
+  try {
+    await resolveSessionContext(request, { allowedRoles });
+    await ensureAppwriteSchemaReady();
+
+    const estateId = String(body.estateId);
+    const existing = await listAppwriteTableRows<AppwriteEstateRow>("estates");
+    const current = existing.find((row) => row.$id === estateId);
+    if (!current) {
+      return NextResponse.json({ error: "Organizer workspace was not found." }, { status: 404 });
+    }
+
+    const name = String(body.name ?? current.name ?? "").trim();
+    const address = String(body.address ?? current.address ?? "").trim();
+    const contactEmail = String(body.contactEmail ?? current.contactEmail ?? "").trim().toLowerCase();
+    const contactPhone = String(body.contactPhone ?? current.contactPhone ?? "").trim();
+    const gateName = String(body.gateName ?? current.gateName ?? "Main Gate").trim() || "Main Gate";
+
+    if (!name || !address) {
+      return NextResponse.json({ error: "Workspace name and address are required." }, { status: 400 });
+    }
+
+    if (existing.some((row) => row.$id !== estateId && (row.name ?? "").trim().toLowerCase() === name.toLowerCase())) {
+      return NextResponse.json({ error: `An organizer workspace named "${name}" already exists.` }, { status: 409 });
+    }
+
+    const now = new Date().toISOString();
+    await appwriteUpsertRow("estates", estateId, {
+      name,
+      address,
+      contactEmail,
+      contactPhone,
+      gateName,
+      createdAt: current.createdAt ?? now,
+      updatedAt: now
+    });
+
+    return NextResponse.json({
+      estate: {
+        id: estateId,
+        name,
+        address,
+        contactEmail,
+        contactPhone,
+        gateName,
+        createdAt: current.createdAt ?? now
+      }
+    });
+  } catch (error) {
+    return errorResponse(error, "Unable to update organizer workspace.");
+  }
+}
+
 function estateRowToView(row: AppwriteEstateRow) {
   return {
     id: row.$id ?? "",

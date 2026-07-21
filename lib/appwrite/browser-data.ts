@@ -212,6 +212,29 @@ export async function createAppwriteSuperEstate(input: {
   return payload.estate;
 }
 
+export async function updateAppwriteSuperEstate(estateId: string, input: {
+  name: string;
+  address: string;
+  contactEmail: string;
+  contactPhone: string;
+  gateName: string;
+}): Promise<SuperEstateView> {
+  const response = await fetch("/api/appwrite/super/estates", {
+    method: "PATCH",
+    headers: {
+      "Content-Type": "application/json"
+    },
+    body: JSON.stringify({ estateId, ...input })
+  });
+  const payload = await response.json().catch(() => ({})) as { estate?: SuperEstateView; error?: string };
+
+  if (!response.ok || !payload.estate) {
+    throw new Error(payload.error ?? "Organizer workspace could not be updated.");
+  }
+
+  return payload.estate;
+}
+
 export async function readAppwriteAccessRequestForCurrentUser(identifier: string) {
   const response = await fetch(`/api/access-requests/status?identifier=${encodeURIComponent(identifier)}`, {
     cache: "no-store"

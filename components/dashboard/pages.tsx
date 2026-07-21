@@ -121,6 +121,7 @@ import {
   updateAppwriteVisitorStatus as saveAppwriteVisitorStatus,
   readAppwriteSuperEstates,
   createAppwriteSuperEstate,
+  updateAppwriteSuperEstate,
   readDisabledEstateModules,
   saveDisabledEstateModules,
   type SuperEstateView,
@@ -5119,15 +5120,15 @@ export function EstateDirectoryPage({ compact = false }: { compact?: boolean }) 
 
   return (
     <>
-      {!compact ? <PageHeader title="Estates" description="Create and manage gated estates on the Corso platform. Click an estate name to open its full profile." /> : null}
+      {!compact ? <PageHeader title="Organizer Workspaces" description="Create and manage organizer workspaces on the Corsvent platform. Click a workspace name to open its full profile." /> : null}
       {!compact ? <EstateComposer onCreateEstate={createEstate} /> : null}
       {estatesError ? <p className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{estatesError}</p> : null}
       <DataTable
-        title="Estate directory"
-        description="Live estates on the Corso platform."
-        headers={["Estate name", "Location"]}
+        title="Workspace directory"
+        description="Live organizer workspaces on the Corsvent platform."
+        headers={["Workspace name", "Location"]}
         rows={loadingEstates
-          ? [["Loading estates...", ""]]
+          ? [["Loading workspaces...", ""]]
           : liveEstates.map((estate) => [
               <Link key={estate.id} href={`/super-admin/estates/${encodeURIComponent(estate.id)}`} className="font-medium text-white hover:text-smart">
                 {estate.name}
@@ -5145,7 +5146,10 @@ export function EstateDetailPage({ estateId }: { estateId: string }) {
   const [editingResident, setEditingResident] = useState<Resident | null>(null);
   const [savingResident, setSavingResident] = useState(false);
   const [residentMessage, setResidentMessage] = useState("");
-  const { liveEstates, loadingEstates } = useLiveEstates();
+  const { liveEstates, loadingEstates, reloadEstates } = useLiveEstates();
+  const [editingWorkspace, setEditingWorkspace] = useState(false);
+  const [savingWorkspace, setSavingWorkspace] = useState(false);
+  const [workspaceMessage, setWorkspaceMessage] = useState("");
   const estate = liveEstates.find((item) => item.id === estateId) ?? state.estates.find((item) => item.id === estateId);
 
   async function saveEstateResident(resident: Resident, input: ResidentEditInput) {
@@ -5163,12 +5167,37 @@ export function EstateDetailPage({ estateId }: { estateId: string }) {
     }
   }
 
+  async function saveWorkspaceDetails(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!estate) return;
+    const form = new FormData(event.currentTarget);
+    setSavingWorkspace(true);
+    setWorkspaceMessage("");
+
+    try {
+      await updateAppwriteSuperEstate(estate.id, {
+        name: String(form.get("name") ?? "").trim(),
+        address: String(form.get("address") ?? "").trim(),
+        contactEmail: String(form.get("contactEmail") ?? "").trim(),
+        contactPhone: String(form.get("contactPhone") ?? "").trim(),
+        gateName: String(form.get("gateName") ?? "").trim()
+      });
+      await reloadEstates();
+      setEditingWorkspace(false);
+      setWorkspaceMessage("Workspace details updated.");
+    } catch (error) {
+      setWorkspaceMessage(error instanceof Error ? error.message : "Workspace details could not be updated.");
+    } finally {
+      setSavingWorkspace(false);
+    }
+  }
+
   if (!estate && loadingEstates) {
     return (
       <>
-        <PageHeader title="Loading estate..." description="Fetching the estate profile." />
+        <PageHeader title="Loading workspace..." description="Fetching the organizer workspace profile." />
         <Card>
-          <CardHeader title="One moment" description="Loading live estate records." />
+          <CardHeader title="One moment" description="Loading live workspace records." />
         </Card>
       </>
     );
@@ -5177,13 +5206,13 @@ export function EstateDetailPage({ estateId }: { estateId: string }) {
   if (!estate) {
     return (
       <>
-        <PageHeader title="Estate not found" description="This estate may have been removed or is not available in the current workspace.">
+        <PageHeader title="Workspace not found" description="This organizer workspace may have been removed or is not available.">
           <Link href="/super-admin/estates">
-            <Button variant="secondary"><ArrowLeft className="h-4 w-4" />Estate directory</Button>
+            <Button variant="secondary"><ArrowLeft className="h-4 w-4" />Workspace directory</Button>
           </Link>
         </PageHeader>
         <Card>
-          <CardHeader title="No estate record" description="Return to the estate directory and select an active estate." />
+          <CardHeader title="No workspace record" description="Return to the workspace directory and select an active organizer workspace." />
         </Card>
       </>
     );
@@ -5200,14 +5229,14 @@ export function EstateDetailPage({ estateId }: { estateId: string }) {
     <>
       <PageHeader title={estate.name} description={estate.address}>
         <Link href="/super-admin/estates">
-          <Button variant="secondary"><ArrowLeft className="h-4 w-4" />Estate directory</Button>
+          <Button variant="secondary"><ArrowLeft className="h-4 w-4" />Workspace directory</Button>
         </Link>
       </PageHeader>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         <StatCard label="Residents" value={String(estateResidents.length)} helper="Registered records" icon={<Users className="h-5 w-5" />} />
         <StatCard label="Visitors" value={loadingVisitors ? "..." : String(estateVisitors.length)} helper="Invitation records" icon={<DoorOpen className="h-5 w-5" />} />
-        <StatCard label="Bills paid" value={`${paidBills}/${estateBills.length}`} helper="Estate bill status" icon={<ReceiptText className="h-5 w-5" />} />
+        <StatCard label="Bills paid" value={`${paidBills}/${estateBills.length}`} helper="Workspace bill status" icon={<ReceiptText className="h-5 w-5" />} />
         <StatCard label="Open complaints" value={String(estateComplaints.filter((item) => item.status !== "resolved").length)} helper="Needs attention" icon={<ClipboardList className="h-5 w-5" />} />
       </div>
 
@@ -5226,34 +5255,60 @@ export function EstateDetailPage({ estateId }: { estateId: string }) {
 
       <div className="mt-6 grid gap-6 xl:grid-cols-2">
         <Card>
-          <CardHeader title="Estate information" description="Administrative and gate details for this estate." />
-          <dl className="grid gap-4 text-sm sm:grid-cols-2">
-            <div>
-              <dt className="text-slate-500">Estate name</dt>
-              <dd className="mt-1 font-medium text-white">{estate.name}</dd>
-            </div>
-            <div>
-              <dt className="text-slate-500">Location</dt>
-              <dd className="mt-1 font-medium text-white">{estate.address}</dd>
-            </div>
-            <div>
-              <dt className="text-slate-500">Security gate</dt>
-              <dd className="mt-1 font-medium text-white">{estate.gateName}</dd>
-            </div>
-            <div>
-              <dt className="text-slate-500">Contact phone</dt>
-              <dd className="mt-1 font-medium text-white">{estate.contactPhone}</dd>
-            </div>
-            <div className="sm:col-span-2">
-              <dt className="text-slate-500">Contact email</dt>
-              <dd className="mt-1 font-medium text-white">{estate.contactEmail}</dd>
-            </div>
-          </dl>
+          <CardHeader
+            title="Workspace information"
+            description="Administrative and gate details for this organizer workspace."
+            action={!editingWorkspace ? (
+              <Button type="button" variant="secondary" onClick={() => setEditingWorkspace(true)}>
+                <Pencil className="h-3.5 w-3.5" />
+                Edit
+              </Button>
+            ) : null}
+          />
+          {workspaceMessage ? <p className="mb-4 rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{workspaceMessage}</p> : null}
+          {editingWorkspace ? (
+            <form className="grid gap-4" onSubmit={saveWorkspaceDetails}>
+              <div className="grid gap-4 sm:grid-cols-2">
+                <Field label="Workspace name"><Input name="name" defaultValue={estate.name} required /></Field>
+                <Field label="Security gate name"><Input name="gateName" defaultValue={estate.gateName} required /></Field>
+                <Field label="Contact email"><Input name="contactEmail" type="email" defaultValue={estate.contactEmail} /></Field>
+                <Field label="Contact phone"><Input name="contactPhone" defaultValue={estate.contactPhone} /></Field>
+              </div>
+              <Field label="Address"><Textarea name="address" defaultValue={estate.address} required /></Field>
+              <div className="flex flex-wrap gap-2">
+                <Button type="submit" disabled={savingWorkspace}>{savingWorkspace ? "Saving..." : "Save changes"}</Button>
+                <Button type="button" variant="secondary" onClick={() => setEditingWorkspace(false)} disabled={savingWorkspace}>Cancel</Button>
+              </div>
+            </form>
+          ) : (
+            <dl className="grid gap-4 text-sm sm:grid-cols-2">
+              <div>
+                <dt className="text-slate-500">Workspace name</dt>
+                <dd className="mt-1 font-medium text-white">{estate.name}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Location</dt>
+                <dd className="mt-1 font-medium text-white">{estate.address}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Security gate</dt>
+                <dd className="mt-1 font-medium text-white">{estate.gateName}</dd>
+              </div>
+              <div>
+                <dt className="text-slate-500">Contact phone</dt>
+                <dd className="mt-1 font-medium text-white">{estate.contactPhone}</dd>
+              </div>
+              <div className="sm:col-span-2">
+                <dt className="text-slate-500">Contact email</dt>
+                <dd className="mt-1 font-medium text-white">{estate.contactEmail}</dd>
+              </div>
+            </dl>
+          )}
         </Card>
 
         <DataTable
           title="Resident directory"
-          description="Super Admin can correct resident details inside this estate."
+          description="Super Admin can correct resident details inside this workspace."
           headers={["Resident", "Property / Unit", "Type", "Status", "Action"]}
           rows={estateResidents.map((resident) => {
             const unit = getResidentUnit(state, resident);
@@ -5641,7 +5696,7 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
         onRefresh={() => void refreshRequestsAndUsers()}
       />
       <Card className="mb-6">
-        <CardHeader title="Create user" description="Estate admins can create CSO, security, resident, and vendor users for their assigned estate, then share the login details privately." />
+        <CardHeader title="Create user" description="Organizer admins can create CSO, security, resident, and vendor users for their assigned workspace, then share the login details privately." />
         <form className="grid gap-4" onSubmit={submitUser}>
           <div className="grid gap-4 md:grid-cols-2">
             <Field label="Full name"><Input name="fullName" placeholder="Full name" required /></Field>
@@ -5657,7 +5712,7 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
               </Select>
             </Field>
             {role !== "super_admin" ? (
-              <Field label="Estate">
+              <Field label="Organizer workspace">
                 <Select name="estateId" required>
                   {estateOptions.map((estate) => (
                     <option key={estate.id} value={estate.id}>
@@ -5726,7 +5781,7 @@ export function UserManagementPage({ scope }: { scope: "admin" | "super-admin" }
                 </Select>
               </Field>
               {editRole !== "super_admin" ? (
-                <Field label="Estate">
+                <Field label="Organizer workspace">
                   <Select name="estateId" defaultValue={editingUser.estateId ?? estateOptions[0]?.id} required>
                     {estateOptions.map((estate) => (
                       <option key={estate.id} value={estate.id}>
@@ -11348,10 +11403,10 @@ function EstateComposer({ onCreateEstate }: { onCreateEstate: (input: Omit<Estat
         gateName: String(form.get("gateName") ?? "Main Gate")
       });
 
-      setMessage(`${estate.name} has been created. You can now assign admins, residents, billing, and access rules to it.`);
+      setMessage(`${estate.name} has been created. You can now assign organizer admins, events, and access rules to it.`);
       formElement.reset();
     } catch (error) {
-      setMessage(error instanceof Error ? error.message : "Estate could not be created.");
+      setMessage(error instanceof Error ? error.message : "Organizer workspace could not be created.");
     } finally {
       setSavingEstate(false);
     }
@@ -11359,17 +11414,17 @@ function EstateComposer({ onCreateEstate }: { onCreateEstate: (input: Omit<Estat
 
   return (
     <Card id="create-estate" className="mb-6 scroll-mt-24">
-      <CardHeader title="Create estate" description="Set up a new estate record. Super Admin controls all estates; Estate Admins are assigned per estate." />
+      <CardHeader title="Create organizer workspace" description="Set up a new workspace record. Super Admin controls all workspaces; Organizer admins are assigned per workspace." />
       <form className="grid gap-4" onSubmit={submitEstate}>
         <div className="grid gap-4 md:grid-cols-2">
-          <Field label="Estate name"><Input name="name" placeholder="Example: LBS View Estate Phase 2" required /></Field>
+          <Field label="Workspace name"><Input name="name" placeholder="Example: Grand Events Ltd" required /></Field>
           <Field label="Security gate name"><Input name="gateName" placeholder="Main Gate A" required /></Field>
-          <Field label="Contact email"><Input name="contactEmail" type="email" placeholder="admin@estate.com" required /></Field>
+          <Field label="Contact email"><Input name="contactEmail" type="email" placeholder="admin@example.com" required /></Field>
           <Field label="Contact phone"><Input name="contactPhone" placeholder="+234 801 000 0000" required /></Field>
         </div>
-        <Field label="Address"><Textarea name="address" placeholder="Estate address" required /></Field>
+        <Field label="Address"><Textarea name="address" placeholder="Workspace address" required /></Field>
         {message ? <p className="rounded-lg border border-smart/30 bg-smart/10 px-3 py-2 text-sm text-smart">{message}</p> : null}
-        <Button className="w-fit" disabled={savingEstate}><Building2 className="h-4 w-4" />{savingEstate ? "Creating..." : "Create estate"}</Button>
+        <Button className="w-fit" disabled={savingEstate}><Building2 className="h-4 w-4" />{savingEstate ? "Creating..." : "Create workspace"}</Button>
       </form>
     </Card>
   );

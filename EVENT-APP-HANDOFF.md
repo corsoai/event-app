@@ -588,3 +588,75 @@ git push origin main
    hard refresh (or the close-reopen-twice PWA cache ritual) before treating it as a new bug.
 3. Once an organizer account exists, resume the original Phase 1 walkthrough: create a test event,
    add guests, check one in as security, confirm the live counter.
+
+### Session 5 (2026-07-21) — "LBS View Estate" traced to real live data; added an in-app fix
+
+Stanley asked why "LBS View Estate" still showed in the Users & Roles estate dropdown even
+though the "Organizer" role label was now correct (confirming Session 4's push had landed). I
+initially suspected a stale-cache/local-fallback issue again, but ruled that out properly this
+time: grepped the whole codebase for the literal string "LBS View Estate" and found zero matches
+anywhere — meaning no code path could produce that text from local/demo data. Also double-checked
+two spots that looked suspicious mid-investigation (a fetch URL and a JSX snippet that appeared to
+contain stray backslashes via the Grep tool's output) directly against the raw file bytes with
+`sed`/`cat -A` — both were clean, forward-slash-correct code; the backslashes were a display
+artifact in how the search tool rendered results, not real file content. Worth remembering for
+future sessions: **always verify a suspected bug against raw file bytes before reporting it** —
+this one would have been a false alarm.
+
+**Real conclusion:** "LBS View Estate" is genuinine live data — the estate row in the actual
+`eventng_db` database still has that name. Session 1's note that "Overseer renamed it via the
+Appwrite console API" either didn't persist or was undone; there's no way to confirm which from
+code alone. The bigger problem underneath: **the app had no in-app way to rename an organizer
+workspace at all** — `EstateDetailPage` only ever rendered the name/address/contact/gate fields
+read-only. That's why this needed Appwrite console access in the first place, and why it would
+have kept needing it. Fixed properly instead of just renaming the one row again:
+
+- Added `PATCH` to `app/api/appwrite/super/estates/route.ts` (super-admin only, reuses the same
+  `appwriteUpsertRow` upsert pattern as create) and a matching `updateAppwriteSuperEstate` client
+  wrapper in `lib/appwrite/browser-data.ts`.
+- Added a real "Edit" button + inline form to `EstateDetailPage` (Super Admin → Organizer
+  Workspaces → click a workspace) — Stanley can now rename a workspace, or fix its address/contact/
+  gate details, entirely in-app. No console access needed for this again.
+
+**Also swept the remaining "Estate" copy that was actively confusing this exact workflow** (all
+display text only, no logic touched, same relabel-not-rename approach as the rest of this
+project):
+- Super Admin nav: "Estates" → "Organizer Workspaces" (desktop), "Workspaces" (mobile bottom nav,
+  shorter for the tab label).
+- `EstateDirectoryPage`: title, description, table headers, and loading text → "Organizer
+  Workspaces" / "workspace" throughout.
+- `EstateComposer` (the create-workspace form): card title, description, field labels, and the
+  placeholder example (dropped "LBS View Estate Phase 2" as an example name — replaced with
+  "Grand Events Ltd").
+- `EstateDetailPage`: page title/description, breadcrumb button, stat card helper text, and the
+  info card headings all now say "workspace" instead of "estate."
+- `UserManagementPage` (Users & Roles): the create-user helper text ("Estate admins can create...")
+  and both "Estate" field labels (create form + edit form) → "Organizer workspace", matching the
+  pattern already established in `auth-card.tsx`.
+
+**Verification:** typecheck exit 0 after the backend addition and again after the full copy sweep;
+NUL-byte scan and brace/paren balance check (against `git show HEAD:<file>`) on every touched
+file — all clean, nothing corrupted. Also re-confirmed the file list against `git status`.
+
+**Push list for this session:**
+
+```
+node node_modules/typescript/bin/tsc -p tsconfig.typecheck.json --noEmit
+```
+
+If that prints nothing and exits clean, continue with:
+
+```
+git add app/api/appwrite/super/estates/route.ts lib/appwrite/browser-data.ts components/dashboard/pages.tsx components/layout/nav.ts components/layout/MobileBottomNav.tsx public/sw.js EVENT-APP-HANDOFF.md
+git commit -m "Add organizer workspace edit capability; relabel remaining Estate copy to Organizer"
+git push origin main
+```
+
+**Next session should:**
+1. Confirm this deploys green, then have Stanley open Super Admin → Organizer Workspaces → the
+   existing workspace → Edit, and rename "LBS View Estate" to "Demo Organizer Workspace" (or
+   whatever he wants) himself, in-app, confirming the new edit feature works end-to-end.
+2. Resume the original Phase 1 walkthrough once an organizer account exists and the workspace name
+   is fixed: create a test event, add guests, check one in as security, confirm the live counter.
+3. There's still a broader "Corso"/"estate" copy sweep deferred from Session 1 covering
+   `pages.tsx` reports/system pages — lower priority than confirming Phase 1 works end-to-end.
