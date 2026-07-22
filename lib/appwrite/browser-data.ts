@@ -849,6 +849,22 @@ export async function checkInAppwriteGuestByCode(eventId: string, code: string, 
   return payload.guest;
 }
 
+export async function updateAppwriteAdminEventDetails(
+  eventId: string,
+  input: { name: string; venue: string; address: string; startAt: string; gates?: string }
+): Promise<EventRecord> {
+  const response = await fetch("/api/appwrite/admin/events", {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ eventId, ...input })
+  });
+  const payload = await response.json().catch(() => ({})) as { event?: EventRecord; error?: string };
+  if (!response.ok || !payload.event) {
+    throw new Error(payload.error ?? `Event could not be updated (HTTP ${response.status}).`);
+  }
+  return payload.event;
+}
+
 export async function readAppwriteVipPlates(eventId: string): Promise<VipPlate[]> {
   const response = await fetchWithTimeout(
     `/api/appwrite/events/vip-arrival?eventId=${encodeURIComponent(eventId)}`,

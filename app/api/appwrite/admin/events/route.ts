@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import type { EventRecord } from "@/lib/types";
 import { resolveSessionContext, SessionContextError } from "@/lib/appwrite/session-context";
-import { createAppwriteEvent, getAppwriteEvent, listAppwriteEvents, updateAppwriteEventStatus } from "@/lib/appwrite/events";
+import { createAppwriteEvent, getAppwriteEvent, listAppwriteEvents, updateAppwriteEventDetails, updateAppwriteEventStatus } from "@/lib/appwrite/events";
 
 const organizerRoles = ["estate_admin", "super_admin"] as const;
 
@@ -51,11 +51,22 @@ export async function PATCH(request: NextRequest) {
 
   try {
     const context = await resolveSessionContext(request, { allowedRoles: organizerRoles });
-    const event = await updateAppwriteEventStatus(
-      context,
-      String(body.eventId ?? ""),
-      String(body.status ?? "") as EventRecord["status"]
-    );
+    // Detail edits (name/venue/date/gates) and status changes share this route:
+    // a body with a name is a detail edit; otherwise it's a status change.
+    const event = body.name !== undefined
+      ? await updateAppwriteEventDetails(context, String(body.eventId ?? ""), {
+          name: String(body.name ?? ""),
+          venue: String(body.venue ?? ""),
+          address: String(body.address ?? ""),
+          startAt: String(body.startAt ?? ""),
+          endAt: body.endAt ? String(body.endAt) : undefined,
+          gates: body.gates !== undefined ? String(body.gates) : undefined
+        })
+      : await updateAppwriteEventStatus(
+          context,
+          String(body.eventId ?? ""),
+          String(body.status ?? "") as EventRecord["status"]
+        );
     return NextResponse.json({ event });
   } catch (error) {
     return eventErrorResponse(error);

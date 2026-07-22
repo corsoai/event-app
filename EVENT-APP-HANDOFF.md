@@ -1122,3 +1122,26 @@ an imported one.
 phone-only, so value is limited until WhatsApp Business API; discuss before building) and
 certificates of attendance (needs a design decision: email HTML vs PDF). Everything else
 waits on Stanley (resident/cso decision, Paystack account).
+
+### Session 15 (2026-07-21) — event editing + guest search (top two gaps from the scope doc)
+
+Stanley asked to fix the two highest-risk gaps flagged in docs/CORSVENT-SCOPE.md:
+
+**Event editing.** New `updateAppwriteEventDetails` in lib/appwrite/events.ts (organizer-only,
+validates name + date, preserves status/createdBy/createdAt). The existing PATCH on
+`/api/appwrite/admin/events` now branches: a body containing `name` is a detail edit,
+otherwise it's the old status change — no new route, both wrappers coexist
+(`updateAppwriteAdminEventDetails` added to browser-data). Event detail page gains an
+Edit button in the header toggling an inline pre-filled form (name/venue/address/date/time/
+gates) — "guest passes stay valid" since codes/QRs are independent of event fields.
+`splitEventStart` pre-fills the date/time inputs from the stored startAt.
+
+**Guest search.** Two places: (1) event detail guest list — search box (shown when >5 guests)
+filtering by name, phone digits, or code; (2) check-in screen — "Lost code? Find the guest by
+name" panel: type ≥2 letters, see up to 8 matches with status badges, and a Check in button on
+not-yet-arrived guests that submits their code through the exact same submitCode() path as
+scanning (so it hits the same audit log, duplicate handling, and offline queue).
+
+**Verification:** typecheck exit 0; NUL/brace checks; md5 byte-verification. CACHE_NAME →
+`corsvent-v2026-07-21-edit-search-1`. Untested live like Sessions 9-14 (testing still
+deferred by Stanley — the catch-up test hour keeps growing).

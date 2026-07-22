@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { CheckCircle2, ClipboardList, Copy, Link2, MapPin, RefreshCw, UserPlus, Users, UploadCloud, X } from "lucide-react";
+import { CheckCircle2, ClipboardList, Copy, Link2, MapPin, Pencil, RefreshCw, Search, UserPlus, Users, UploadCloud, X } from "lucide-react";
 import { PageHeader, QRCodeImage } from "@/components/dashboard/pages";
 import { VipParkingCard } from "@/components/events/vip-parking-card";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -16,6 +16,7 @@ import {
   readAppwriteAdminEvent,
   readAppwriteEventCheckins,
   readAppwriteEventGuests,
+  updateAppwriteAdminEventDetails,
   updateAppwriteAdminEventStatus,
   type GuestCreateInput
 } from "@/lib/appwrite/browser-data";
@@ -28,6 +29,8 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
   const [error, setError] = useState("");
   const [selectedGuest, setSelectedGuest] = useState<Guest | null>(null);
   const [updatingStatus, setUpdatingStatus] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [guestQuery, setGuestQuery] = useState("");
 
   async function refresh(silent = false) {
     if (!silent) {
@@ -59,6 +62,15 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
 
   const checkedInCount = useMemo(() => guests.filter((guest) => guest.status === "checked-in").length, [guests]);
   const vipCount = useMemo(() => guests.filter((guest) => guest.category === "vip").length, [guests]);
+  const visibleGuests = useMemo(() => {
+    const query = guestQuery.trim().toLowerCase();
+    if (!query) return guests;
+    return guests.filter((guest) =>
+      guest.fullName.toLowerCase().includes(query) ||
+      (guest.phone ?? "").replace(/\D/g, "").includes(query.replace(/\D/g, "") || "\u0000") ||
+      guest.code.includes(query)
+    );
+  }, [guests, guestQuery]);
 
   async function setStatus(status: EventRecord["status"]) {
     if (!event) return;
@@ -97,6 +109,10 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
       <PageHeader title={event.name} description={[event.venue, event.address].filter(Boolean).join(" · ") || "No venue set yet."}>
         <div className="flex flex-wrap items-center gap-2">
           <StatusBadge status={event.status} />
+          <Button type="button" variant="secondary" onClick={() => setEditing((current) => !current)}>
+            <Pencil className="h-4 w-4" />
+            {editing ? "Close" : "Edit"}
+          </Button>
           <Button type="button" variant="secondary" onClick={() => void refresh()} disabled={loading}>
             <RefreshCw className="h-4 w-4" />
             {loading ? "Loading" : "Refresh"}
@@ -116,6 +132,16 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
 
       {error ? <p className="mb-4 rounded-lg border border-danger/30 bg-danger/10 px-3 py-2 text-sm text-danger">{error}</p> : null}
 
+      {editing ? (
+        <EditEventForm
+          event={event}
+          onSaved={(updated) => {
+            setEvent(updated);
+            setEditing(false);
+          }}
+        />
+      ) : null}
+
       <div className="grid grid-cols-2 gap-3 sm:gap-4 lg:grid-cols-4">
         <StatCard label="Total guests" value={String(guests.length)} helper="On the list" icon={<Users className="h-5 w-5" />} />
         <StatCard label="Checked in" value={String(checkedInCount)} helper={guests.length ? `${Math.round((checkedInCount / guests.length) * 100)}% arrived` : "No guests yet"} icon={<CheckCircle2 className="h-5 w-5" />} />
@@ -126,8 +152,21 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
       <div className="mt-6 grid gap-6 xl:grid-cols-[1fr_0.85fr]">
         <Card>
           <CardHeader title="Guest list" description={`${guests.length} guest${guests.length === 1 ? "" : "s"} invited.`} />
+          {guests.length > 5 ? (
+            <div className="relative mb-3">
+              <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+              <Input
+                value={guestQuery}
+                onChange={(inputEvent) => setGuestQuery(inputEvent.target.value)}
+                placeholder="Search by name, phone, or code..."
+                className="pl-9"
+              />
+            </div>
+          ) : null}
           {guests.length === 0 ? (
             <div className="p-4 text-center text-sm text-slate-300">No guests added yet. Use the form to add your first guest.</div>
+          ) : visibleGuests.length === 0 ? (
+            <div className="p-4 text-center text-sm text-slate-300">No guests match &quot;{guestQuery}&quot;.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full min-w-[480px] text-left text-sm">
@@ -140,7 +179,7 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-line">
-                  {guests.map((guest) => (
+                  {visibleGuests.map((guest) => (
                     <tr key={guest.id}>
                       <td className="py-2.5 pr-3">
                         <p className="font-medium text-white">{guest.fullName}</p>
@@ -197,6 +236,72 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
       ) : null}
     </>
   );
+}
+
+function EditEventForm({ event, onSaved }: { event: EventRecord; onSaved: (updated: EventRecord) => void }) {
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState("");
+  const { dateValue, timeValue } = splitEventStart(event.startAt);
+
+  async function submit(formEvent: FormEvent<HTMLFormElement>) {
+    formEvent.preventDefault();
+    // React nulls currentTarget after the first await — capture it now.
+    const formElement = formEvent.currentTarget;
+    const form = new FormData(formElement);
+    const startDate = String(form.get("startDate") ?? "");
+    const startTime = String(form.get("startTime") ?? "10:00");
+
+    setSaving(true);
+    setMessage("");
+    try {
+      const updated = await updateAppwriteAdminEventDetails(event.id, {
+        name: String(form.get("name") ?? ""),
+        venue: String(form.get("venue") ?? ""),
+        address: String(form.get("address") ?? ""),
+        startAt: startDate ? `${startDate}T${startTime}` : event.startAt,
+        gates: String(form.get("gates") ?? "")
+      });
+      onSaved(updated);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "Event could not be updated.");
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <Card className="mb-6">
+      <CardHeader title="Edit event" description="Fix the name, venue, date, or gates — guest passes stay valid." />
+      <form className="grid gap-4" onSubmit={submit}>
+        <Field label="Event name"><Input name="name" defaultValue={event.name} required /></Field>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Venue"><Input name="venue" defaultValue={event.venue} /></Field>
+          <Field label="Address"><Input name="address" defaultValue={event.address} /></Field>
+        </div>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <Field label="Event date"><Input name="startDate" type="date" defaultValue={dateValue} required /></Field>
+          <Field label="Start time"><Input name="startTime" type="time" defaultValue={timeValue} /></Field>
+        </div>
+        <Field label="Gates (optional)"><Input name="gates" defaultValue={event.gates ?? ""} /></Field>
+        <Button type="submit" disabled={saving}>
+          {saving ? "Saving changes..." : "Save changes"}
+        </Button>
+        {message ? <p className="text-sm text-danger">{message}</p> : null}
+      </form>
+    </Card>
+  );
+}
+
+function splitEventStart(startAt: string) {
+  const fallback = { dateValue: "", timeValue: "10:00" };
+  if (!startAt) return fallback;
+  const parsed = new Date(startAt);
+  if (Number.isNaN(parsed.getTime())) return fallback;
+  const pad = (value: number) => String(value).padStart(2, "0");
+  return {
+    dateValue: `${parsed.getFullYear()}-${pad(parsed.getMonth() + 1)}-${pad(parsed.getDate())}`,
+    timeValue: `${pad(parsed.getHours())}:${pad(parsed.getMinutes())}`
+  };
 }
 
 function AddGuestForm({ eventId, onAdded }: { eventId: string; onAdded: () => void }) {

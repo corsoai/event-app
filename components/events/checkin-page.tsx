@@ -1,9 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { Camera, CheckCircle2, QrCode, RefreshCw, Users, X } from "lucide-react";
+import { Camera, CheckCircle2, QrCode, RefreshCw, Search, Users, X } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/pages";
 import { Card, CardHeader } from "@/components/ui/card";
+import { StatusBadge } from "@/components/ui/status-badge";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
 import { StatCard } from "@/components/ui/stat-card";
@@ -77,6 +78,7 @@ function EventCheckIn({ eventId }: { eventId: string }) {
   const [loadingGuests, setLoadingGuests] = useState(true);
   const [scannerOpen, setScannerOpen] = useState(false);
   const [pendingCount, setPendingCount] = useState(0);
+  const [guestQuery, setGuestQuery] = useState("");
 
   async function refreshGuests(silent = false) {
     if (!silent) setLoadingGuests(true);
@@ -115,6 +117,10 @@ function EventCheckIn({ eventId }: { eventId: string }) {
   }, []);
 
   const checkedInCount = guests.filter((guest) => guest.status === "checked-in").length;
+  const trimmedQuery = guestQuery.trim().toLowerCase();
+  const matchedGuests = trimmedQuery.length >= 2
+    ? guests.filter((guest) => guest.fullName.toLowerCase().includes(trimmedQuery)).slice(0, 8)
+    : [];
 
   async function submitCode(rawCode: string) {
     const targetCode = rawCode.replace(/\D/g, "").slice(0, 6);
@@ -208,6 +214,50 @@ function EventCheckIn({ eventId }: { eventId: string }) {
             {pendingCount} offline scan{pendingCount === 1 ? "" : "s"} waiting to sync — they upload automatically when the network returns.
           </p>
         ) : null}
+
+        <div className="mt-6 border-t border-line pt-4">
+          <p className="mb-2 text-sm font-medium text-white">Lost code? Find the guest by name</p>
+          <div className="relative">
+            <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input
+              value={guestQuery}
+              onChange={(event) => setGuestQuery(event.target.value)}
+              placeholder="Type at least 2 letters of the name..."
+              className="pl-9"
+            />
+          </div>
+          {trimmedQuery.length >= 2 ? (
+            matchedGuests.length ? (
+              <div className="mt-3 grid gap-2">
+                {matchedGuests.map((guest) => (
+                  <div key={guest.id} className="flex items-center justify-between gap-3 rounded-lg border border-line bg-white/[0.03] px-3 py-2.5">
+                    <div className="min-w-0">
+                      <p className="truncate text-sm font-medium text-white">{guest.fullName}</p>
+                      <p className="mt-0.5 text-xs capitalize text-slate-400">{guest.category} guest</p>
+                    </div>
+                    <div className="flex shrink-0 items-center gap-2">
+                      <StatusBadge status={guest.status} />
+                      {guest.status === "invited" ? (
+                        <Button
+                          type="button"
+                          onClick={() => {
+                            setGuestQuery("");
+                            void submitCode(guest.code);
+                          }}
+                          disabled={checking}
+                        >
+                          Check in
+                        </Button>
+                      ) : null}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="mt-3 text-sm text-slate-400">No guest name matches &quot;{guestQuery.trim()}&quot;.</p>
+            )
+          ) : null}
+        </div>
       </Card>
 
       <div className="grid gap-4">

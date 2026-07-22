@@ -383,6 +383,39 @@ function mapCheckinRow(row: AppwriteCheckinRow): CheckinRecord {
   };
 }
 
+export async function updateAppwriteEventDetails(
+  context: SessionInput,
+  eventId: string,
+  input: EventCreateInput
+): Promise<EventRecord> {
+  requireOrganizer(context);
+  const event = await getAppwriteEvent(context, eventId);
+
+  const name = input.name.trim();
+  if (!name) {
+    throw new Error("Event name is required.");
+  }
+  if (!input.startAt) {
+    throw new Error("Event date is required.");
+  }
+
+  const now = new Date().toISOString();
+  const row = await appwriteUpsertRow<AppwriteEventRow>("events", eventId, {
+    estateId: event.estateId,
+    name,
+    venue: input.venue.trim(),
+    address: input.address.trim(),
+    startAt: input.startAt,
+    endAt: input.endAt ?? event.endAt,
+    gates: input.gates?.trim() ?? event.gates,
+    status: event.status,
+    createdBy: event.createdBy,
+    createdAt: event.createdAt,
+    updatedAt: now
+  });
+  return mapEventRow(row);
+}
+
 const PUBLIC_RSVP_GUEST_CAP = 2000;
 
 export type PublicEventInfo = {
