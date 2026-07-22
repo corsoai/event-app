@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type FormEvent } from "react";
-import { CheckCircle2, ClipboardList, MapPin, RefreshCw, UserPlus, Users, UploadCloud, X } from "lucide-react";
+import { CheckCircle2, ClipboardList, Copy, Link2, MapPin, RefreshCw, UserPlus, Users, UploadCloud, X } from "lucide-react";
 import { PageHeader, QRCodeImage } from "@/components/dashboard/pages";
 import { VipParkingCard } from "@/components/events/vip-parking-card";
 import { Card, CardHeader } from "@/components/ui/card";
@@ -167,6 +167,8 @@ export function EventDetailPage({ eventId }: { eventId: string }) {
         </div>
       </div>
 
+      <RsvpLinkCard eventId={eventId} eventName={event.name} />
+
       <VipParkingCard eventId={eventId} />
 
       <Card className="mt-6">
@@ -321,6 +323,50 @@ function BulkImportGuests({ eventId, onImported }: { eventId: string; onImported
         </Button>
         {message ? <p className="text-sm text-slate-300">{message}</p> : null}
       </form>
+    </Card>
+  );
+}
+
+function RsvpLinkCard({ eventId, eventName }: { eventId: string; eventName: string }) {
+  const [copied, setCopied] = useState(false);
+  const [rsvpUrl, setRsvpUrl] = useState("");
+
+  useEffect(() => {
+    setRsvpUrl(`${window.location.origin}/e/${eventId}`);
+  }, [eventId]);
+
+  async function copyLink() {
+    try {
+      await navigator.clipboard.writeText(rsvpUrl);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 2500);
+    } catch {
+      // Clipboard unavailable — the visible URL can be copied by hand.
+    }
+  }
+
+  const shareMessage = `You're invited to ${eventName}! RSVP here to get your free entry pass: ${rsvpUrl}`;
+
+  return (
+    <Card className="mt-6">
+      <CardHeader title="Public RSVP link" description="Share this link — guests register themselves and get a pass instantly." />
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+        <p className="min-w-0 flex-1 truncate rounded-lg border border-line bg-white/[0.03] px-3 py-2.5 font-mono text-sm text-slate-300">
+          {rsvpUrl || "..."}
+        </p>
+        <div className="flex shrink-0 gap-2">
+          <Button type="button" variant="secondary" onClick={() => void copyLink()} disabled={!rsvpUrl}>
+            <Copy className="h-4 w-4" />
+            {copied ? "Copied!" : "Copy"}
+          </Button>
+          <a href={`https://wa.me/?text=${encodeURIComponent(shareMessage)}`} target="_blank" rel="noreferrer">
+            <Button type="button" variant="secondary" disabled={!rsvpUrl}>
+              <Link2 className="h-4 w-4" />
+              WhatsApp
+            </Button>
+          </a>
+        </div>
+      </div>
     </Card>
   );
 }

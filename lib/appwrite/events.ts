@@ -383,6 +383,100 @@ function mapCheckinRow(row: AppwriteCheckinRow): CheckinRecord {
   };
 }
 
+const PUBLIC_RSVP_GUEST_CAP = 2000;
+
+export type PublicEventInfo = {
+  id: string;
+  name: string;
+  venue: string;
+  address: string;
+  startAt: string;
+  status: EventRecord["status"];
+};
+
+/**
+ * Public (unauthenticated) event info for the RSVP page. Returns ONLY
+ * public-safe fields — never guest data, estate ids, or creator ids.
+ */
+export async function getPublicAppwriteEvent(eventId: string): Promise<PublicEventInfo> {
+  await ensureEventsSchema();
+  const rows = await listAppwriteTableRows<AppwriteEventRow>("events", { includeAllEstates: true });
+  const row = rows.find((item) => (item.$id ?? "") === eventId);
+  if (!row) {
+    throw new Error("This event could not be found.");
+  }
+
+  return {
+    id: row.$id ?? "",
+    name: row.name ?? "",
+    venue: row.venue ?? "",
+    address: row.address ?? "",
+    startAt: row.startAt ?? "",
+    status: row.status ?? "draft"
+  };
+}
+
+/**
+ * Public self-service RSVP: collects name + phone, issues a pass. No session
+ * (by design — this is the shareable link). Guards: event must not have
+ * ended, hard cap on total guests, and a phone that already RSVP'd gets its
+ * EXISTING pass back instead of a duplicate row.
+ */
+export async function publicRsvpAppwriteGuest(
+  eventId: string,
+  input: { fullName: string; phone: string }
+): Promise<Guest> {
+  await ensureEventsSchema();
+
+  const eventRows = await listAppwriteTableRows<AppwriteEventRow>("events", { includeAllEstates: true });
+  const eventRow = eventRows.find((item) => (item.$id ?? "") === eventId);
+  if (!eventRow) {
+    throw new Error("This event could not be found.");
+  }
+  if ((eventRow.status ?? "draft") === "ended") {
+    throw new Error("RSVP for this event has closed.");
+  }
+
+  const fullName = input.fullName.trim();
+  if (fullName.length < 2 || fullName.length > 160) {
+    throw new Error("Enter your full name.");
+  }
+
+  const phoneDigits = input.phone.replace(/\D/g, "");
+  if (phoneDigits.length < 7 || phoneDigits.length > 15) {
+    throw new Error("Enter a valid phone number.");
+  }
+
+  const guests = await listAppwriteTableRows<AppwriteGuestRow>("guests", { includeAllEstates: true });
+  const eventGuests = guests.filter((guest) => guest.eventId === eventId);
+
+  const existing = eventGuests.find((guest) => (guest.phone ?? "").replace(/\D/g, "") === phoneDigits);
+  if (existing) {
+    return mapGuestRow(existing);
+  }
+
+  if (eventGuests.length >= PUBLIC_RSVP_GUEST_CAP) {
+    throw new Error("This event's guest list is full.");
+  }
+
+  const now = new Date().toISOString();
+  const code = await makeUniqueGuestCode(eventId);
+  const row = await appwriteInsertRow<AppwriteGuestRow>("guests", safeAppwriteId("gst", `${eventId}:${code}`), {
+    estateId: eventRow.estateId ?? "",
+    eventId,
+    fullName,
+    phone: phoneDigits,
+    email: "",
+    category: "regular",
+    code,
+    status: "invited",
+    createdAt: now,
+    updatedAt: now
+  });
+
+  return mapGuestRow(row);
+}
+
 async function makeUniqueGuestCode(eventId: string, preferredCode?: string) {
   const guests = await listAppwriteTableRows<AppwriteGuestRow>("guests");
   const cleanedPreferredCode = String(preferredCode ?? "").replace(/\D/g, "").slice(0, 6);

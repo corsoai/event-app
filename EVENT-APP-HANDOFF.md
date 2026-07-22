@@ -1092,3 +1092,33 @@ files. CACHE_NAME → `corsvent-v2026-07-21-vip-parking-1`.
 **Backlog now:** resident/cso portal decision (Stanley), orphaned-helper tidy in pages.tsx,
 RSVP + Paystack when Stanley has an account, broadcasts/certificates. All other approved
 builds are DONE.
+
+### Session 14 (2026-07-21) — free public RSVP (Phase 2's no-Paystack half)
+
+Stanley asked to keep building with testing deferred (behind schedule). Built the free RSVP
+flow — the half of Phase 2 that needs no Paystack account:
+
+- **Public page `/e/[eventId]`** (`components/events/public-rsvp-page.tsx`): standalone
+  light-themed mobile-first page (outside the app shell, ForceLightTheme like the auth pages).
+  Shows event name/date/venue, collects full name + phone, and on success displays the pass
+  (QR + 6-digit code) with a "Save to WhatsApp" share and a screenshot prompt. Ended events
+  show "RSVP has closed."
+- **Public API `/api/public/events/[eventId]`** — GET returns ONLY public-safe fields (name/
+  venue/address/startAt/status — never guest data or estate ids); POST issues the pass.
+  Unauthenticated by design (middleware only guards role areas — verified). Guards in
+  `publicRsvpAppwriteGuest` (lib/appwrite/events.ts): event must not be ended, name 2-160
+  chars, phone 7-15 digits, hard cap 2000 guests/event, and **same phone re-submitting gets
+  its existing pass back** (idempotent — no duplicate rows, and doubles as "find my pass").
+  POST response exposes only fullName/code/category.
+- **Organizer side:** "Public RSVP link" card on the event detail page — copy button +
+  WhatsApp share of the invite link.
+
+**Verification:** typecheck exit 0; NUL/brace checks; md5 byte-verification. CACHE_NAME →
+`corsvent-v2026-07-21-rsvp-1`. NOT yet tested live (Stanley deferred testing) — when testing,
+note the RSVP link only works on the deployed site, and an RSVP'd guest checks in exactly like
+an imported one.
+
+**Remaining buildables:** guest broadcasts (email via Resend — most RSVP guests are
+phone-only, so value is limited until WhatsApp Business API; discuss before building) and
+certificates of attendance (needs a design decision: email HTML vs PDF). Everything else
+waits on Stanley (resident/cso decision, Paystack account).
