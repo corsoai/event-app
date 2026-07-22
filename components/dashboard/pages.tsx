@@ -3984,24 +3984,17 @@ export function SettingsPage() {
 }
 
 export function SuperAdminDashboard() {
-  const { state } = useLocalEstateStore();
-  const { visitorViews, loadingVisitors } = useLiveVisitorViews(readAppwriteAdminVisitors);
-  const { summary, loadingSummary } = useAdminAccountingSummaryOnly();
   const { liveEstates, loadingEstates } = useLiveEstates();
-  const platformResidents = summary?.residentsCount ?? state.residents.length;
 
   return (
     <>
-      <PageHeader title="Super Admin" description="Control the Corso estate platform, onboard estates, and monitor aggregate activity." >
+      <PageHeader title="Super Admin" description="Manage the Corsvent platform, onboard organizer workspaces, and keep an eye on activity across every event.">
         <Link href="/super-admin/estates#create-estate">
-          <Button><Building2 className="h-4 w-4" />Create estate</Button>
+          <Button><Building2 className="h-4 w-4" />Create workspace</Button>
         </Link>
       </PageHeader>
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard label="Managed estates" value={loadingEstates ? "..." : String(liveEstates.length)} helper="Platform communities" icon={<Building2 className="h-5 w-5" />} />
-        <StatCard label="Platform residents" value={loadingSummary ? "..." : String(platformResidents)} helper="Live resident records" icon={<Users className="h-5 w-5" />} />
-        <StatCard label="Visitor events" value={loadingVisitors ? "..." : String(visitorViews.length)} helper="Across estates today" icon={<DoorOpen className="h-5 w-5" />} />
-        <StatCard label="Open tickets" value={String(state.complaints.filter((item) => item.status !== "resolved").length)} helper="Needs estate admin action" icon={<ClipboardList className="h-5 w-5" />} />
+        <StatCard label="Organizer workspaces" value={loadingEstates ? "..." : String(liveEstates.length)} helper="Event companies on the platform" icon={<Building2 className="h-5 w-5" />} />
       </div>
       <div className="mt-6">
         <EstateDirectoryPage compact />
