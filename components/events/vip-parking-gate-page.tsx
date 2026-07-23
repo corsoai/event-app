@@ -1,8 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Car, CheckCircle2, RefreshCw } from "lucide-react";
-import { PageHeader } from "@/components/dashboard/pages";
+import { Camera, Car, CheckCircle2, RefreshCw } from "lucide-react";
+import { PageHeader, PlateScannerPanel } from "@/components/dashboard/pages";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Field, Input, Select } from "@/components/ui/input";
@@ -75,6 +75,7 @@ function VipGatePanel({ eventId }: { eventId: string }) {
   const [message, setMessage] = useState("");
   const [tone, setTone] = useState<"ok" | "error">("ok");
   const [logging, setLogging] = useState(false);
+  const [scannerOpen, setScannerOpen] = useState(false);
 
   async function refresh(silent = false) {
     if (!silent) setLoading(true);
@@ -121,6 +122,19 @@ function VipGatePanel({ eventId }: { eventId: string }) {
     }
   }
 
+  function handleScanResult(plate: string) {
+    const cleaned = plate.toUpperCase().replace(/[^A-Z0-9]/g, "").slice(0, 16);
+    setScannerOpen(false);
+    if (!cleaned) {
+      setMessage("Could not read the plate - try again or type it in.");
+      setTone("error");
+      return;
+    }
+    setPlateInput(cleaned);
+    setMessage(`Plate read: ${cleaned}. Confirm the plate, then tap Log arrival.`);
+    setTone("ok");
+  }
+
   return (
     <div className="grid gap-6 lg:grid-cols-[1fr_0.7fr]">
       <Card>
@@ -140,6 +154,10 @@ function VipGatePanel({ eventId }: { eventId: string }) {
             />
           </Field>
         </div>
+        <Button type="button" variant="secondary" className="mt-4 w-full" onClick={() => setScannerOpen(true)} disabled={logging}>
+          <Camera className="h-4 w-4" />
+          Scan plate with camera
+        </Button>
         <Button type="button" className="mt-4 w-full" onClick={() => void submitPlate()} disabled={logging || !plateInput}>
           <Car className="h-4 w-4" />
           {logging ? "Logging..." : "Log arrival"}
@@ -149,6 +167,11 @@ function VipGatePanel({ eventId }: { eventId: string }) {
             {message}
           </p>
         ) : null}
+        <PlateScannerPanel
+          active={scannerOpen}
+          onResult={handleScanResult}
+          onClose={() => setScannerOpen(false)}
+        />
       </Card>
 
       <div className="grid gap-4">

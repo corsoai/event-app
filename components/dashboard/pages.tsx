@@ -8412,7 +8412,7 @@ function mapVehicleClass(vehicleType: string) {
   return "";
 }
 
-function PlateScannerPanel({
+export function PlateScannerPanel({
   active,
   onResult,
   onClose
