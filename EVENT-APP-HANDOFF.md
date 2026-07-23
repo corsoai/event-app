@@ -1145,3 +1145,65 @@ scanning (so it hits the same audit log, duplicate handling, and offline queue).
 **Verification:** typecheck exit 0; NUL/brace checks; md5 byte-verification. CACHE_NAME →
 `corsvent-v2026-07-21-edit-search-1`. Untested live like Sessions 9-14 (testing still
 deferred by Stanley — the catch-up test hour keeps growing).
+
+
+### Session 16 (2026-07-22) — shipped Session 15, Super Admin cleanup, guest invite download, VIP plate scanning
+
+New lead engineer (Opus 4.8) took over. Working via cloud Cowork with the EVENTAPP folder mounted;
+Stanley runs all git/typecheck/npm and types all secrets.
+
+**Preflight findings.** Confirmed jsqr is installed/committed and Vercel green. Discovered Session
+15's work (event editing + guest search) was described as "committed & pushed" but was actually
+UNCOMMITTED in the working tree. Byte-verified the 6 files and shipped it — commit `3767f18`
+"Ship Session 15". So Sessions 9-15 are now genuinely live.
+
+**Super Admin dashboard estate-copy cleanup** (commit `951eaa2`). The `/super-admin` dashboard still
+showed estate wording (Create estate, Managed estates, Platform residents, Visitor events, Open
+tickets) backed by dead resident/visitor/complaint data. Rewrote `SuperAdminDashboard` in
+pages.tsx to a single honest "Organizer workspaces" stat + the workspace directory; dropped the
+three dead tiles and their hooks. Note: a proper version with real cross-platform event metrics is
+a small backlog build (see scope doc section 8).
+
+**Guest invite — event details + downloadable pass image** (commit `c2b309a`). `GuestPassModal`
+(event-detail-page.tsx) now shows event name/date/venue above the QR, and a new **Download invite
+(image)** button renders a full invitation card to a canvas and downloads it as PNG (Corsvent
+header, event name/date/venue, QR, big 6-digit code, "Admit: <name>"). Uses the already-installed
+`qrcode` lib (no new deps). WhatsApp share text now also includes the date. CACHE_NAME -> invite-1.
+
+**VIP Parking plate scanning** (3 files; pending Stanley's push at time of writing). Reused the
+intact Corso plate scanner rather than rebuilding: added `export` to `PlateScannerPanel` in
+pages.tsx and wired it into `vip-parking-gate-page.tsx` (a "Scan plate with camera" button ->
+PlateScannerPanel -> onResult fills the plate field -> bouncer confirms -> Log arrival). The
+scanner uses cloud ANPR (Plate Recognizer) when configured, else on-device OCR via tesseract.js
+(already installed, `tesseract.js@^7`). The cloud route `app/api/appwrite/security/plate-recognize/
+route.ts` STILL EXISTS (was never deleted — an earlier "missing" read was from the stale cloud
+mirror) and returns 503 -> OCR fallback unless `PLATE_RECOGNIZER_TOKEN` env is set (free Plate
+Recognizer account; Stanley adds it in Vercel himself). CACHE_NAME -> vipscan-1. Change set:
+components/dashboard/pages.tsx, components/events/vip-parking-gate-page.tsx, public/sw.js (route.ts
+restored to HEAD, excluded).
+
+**Environment/workflow notes learned this session (important):**
+- The cloud `/mnt/user-data/uploads/` mirror only contains files explicitly staged this session —
+  do NOT trust `ls`/reads there as the device's real tree. Use `device_bash` against the mounted
+  repo for authoritative state (it has the full checkout + git history).
+- `device_bash` CANNOT unlink files on the mount, so `git checkout -- <file>` fails ("Operation
+  not permitted"). Edit device files with in-place Python writes (`open(path,'wb').write(...)`) —
+  the proven method; do byte-verify (NUL + brace balance) after. To restore a file to HEAD, write
+  the exact `git show HEAD:<file>` bytes in place.
+- pages.tsx has a harmless pre-existing brace off-by-one (a brace inside a string); it builds
+  green. Verify edits by preserving the delta, not by expecting perfect balance.
+- Files this engineer wrote landed as LF; the rest of the repo is CRLF. `git diff HEAD` (content)
+  is the truth; device-side porcelain shows phantom ` M` for LF/CRLF — trust content diff.
+
+**Testing status.** Still NOT a full end-to-end click-through — Stanley is testing piecemeal and
+directing feature work. A complete catch-up test checklist (invite, event edit, bulk/CSV guests,
+guest search, public RSVP idempotency, settings toggles, VIP plate scan, gate check-in + QR +
+duplicate + offline queue, reports/CSV; Light+Dark, ~380px) was given in chat and still stands.
+
+**Backlog / pending decisions** (see scope doc section 8 for detail): real cross-platform metrics
+on Super Admin; fuse the Organizer workspace-detail screen (still estate tiles) to real event data;
+per-event mini landing page (upgrade `/e/<eventId>`); confirm a reset-password action in Users &
+Roles; then Stanley's larger vision (registration/abstract collection, networking, analytics,
+hybrid + smart badges, marketing automation, floor plans, exhibitor management) as phased projects.
+Broadcasts (email via Resend) + certificates decision still open. Paystack stays OUT until Stanley
+has an account. Resident/CSO portal decision still pending.

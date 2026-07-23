@@ -125,3 +125,43 @@ certificates, then the richer public page. Everything else follows demand.
 
 *Companion docs: `EVENT-APP-HANDOFF.md` (session-by-session build history and architecture
 rules) and `CLAUDE.md` (working rules). This scope doc should be refreshed when phases close.*
+
+
+---
+
+## 8. Session 16 additions — expanded vision & near-term "fusion" fixes
+
+*Added 2026-07-22 with Stanley. Captures his product vision plus concrete unfinished surfaces spotted while testing.*
+
+### Stanley's expanded product vision (mostly NOT built yet — long, multi-phase)
+Corsvent today is a focused MVP: guest list = gate list (QR passes, gate check-in, per-scan log,
+offline queue, reports), free public RSVP, VIP parking (now with plate scanning), and a
+downloadable guest invite. Stanley wants it to grow into a full enterprise event platform. Target
+capabilities, none of which should be presented as "done":
+- **Registration + abstract collection** (academic/conference submission & review).
+- **Networking** (attendee matchmaking, in-app connections/meetings).
+- **Event analytics** beyond attendance (per-gate, arrivals-over-time, cross-event season view).
+- **Hybrid/virtual support** + **smart badges** (printed/NFC badges, badge design, on-site printing).
+- **Integrated marketing automation** (campaigns, sequences, reminders — Resend is wired for email).
+- **Floor-plan management** (venue layout, booth/seat maps).
+- **Exhibitor management** (booths, exhibitor portals, lead capture).
+These are each substantial builds; prioritize deliberately, do not start silently.
+
+### Near-term "fusion" fixes (small, high-visibility — leftover estate surfaces)
+1. **Super Admin dashboard** — cleaned this session to a single honest "Organizer workspaces"
+   stat. Proper version: show real cross-platform event metrics (total events, guests, checked-in)
+   via a new super-admin aggregate API. Small build.
+2. **Organizer workspace detail** (`EstateDetailPage`, /super-admin/estates/<id>) — STILL shows
+   estate tiles (Residents / Visitors / Bills paid / Open complaints) and a "Resident directory"
+   table. Fuse to that workspace's real event data: events count, total guests, checked-in, and an
+   "Events in this workspace" list replacing the resident table. Small build.
+3. **Per-event mini landing page** — upgrade the bare public RSVP page (`/e/<eventId>`) into a real
+   event microsite: cover image, description, date/venue, map link, organizer branding, then the
+   RSVP form. Growth item; strong for sharing.
+4. **Users & Roles: reset-password** — confirm/ensure a working "reset password" action for gate/
+   organizer accounts (surfaced when Stanley needed to recover the "bouncer" gate login; passwords
+   are hashed and unrecoverable, so a reset button is the only path).
+
+### Suggested order
+Finish the catch-up test pass first. Then fixes #1 and #2 (most visible unfinished surfaces), then
+#4 (quick, real gap), then #3 (microsite). The big-vision items follow as phased projects.
