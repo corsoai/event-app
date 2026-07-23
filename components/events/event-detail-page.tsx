@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from "react";
 import { CheckCircle2, ClipboardList, Copy, Link2, MapPin, Pencil, RefreshCw, Search, UserPlus, Users, UploadCloud, X } from "lucide-react";
 import { PageHeader, QRCodeImage } from "@/components/dashboard/pages";
+import QRCode from "qrcode";
 import { VipParkingCard } from "@/components/events/vip-parking-card";
 import { Card, CardHeader } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -501,11 +502,15 @@ function parseGuestPasteText(text: string): GuestCreateInput[] {
 }
 
 function GuestPassModal({ guest, event, onClose }: { guest: Guest; event: EventRecord; onClose: () => void }) {
+  const [downloading, setDownloading] = useState(false);
+  const [error, setError] = useState("");
+
   const shareMessage = [
     `Hi ${guest.fullName}`,
     `Your pass for ${event.name} is ready.`,
-    `Your check-in code: ${guest.code}`,
+    `Date: ${formatEventDate(event.startAt)}`,
     event.venue ? `Venue: ${event.venue}` : "",
+    `Your check-in code: ${guest.code}`,
     `Show this code or the QR at the gate.`,
     "Powered by Corsvent"
   ].filter(Boolean).join("\n");
@@ -514,9 +519,21 @@ function GuestPassModal({ guest, event, onClose }: { guest: Guest; event: EventR
     ? `https://wa.me/${normalizeGuestPhone(guest.phone)}?text=${encodeURIComponent(shareMessage)}`
     : `https://wa.me/?text=${encodeURIComponent(shareMessage)}`;
 
+  async function handleDownload() {
+    setError("");
+    setDownloading(true);
+    try {
+      await downloadGuestInvite(guest, event);
+    } catch {
+      setError("Could not generate the invite image. Please try again.");
+    } finally {
+      setDownloading(false);
+    }
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-end justify-center bg-black/60 p-0 sm:items-center sm:p-4" onClick={onClose}>
-      <div className="w-full max-w-sm rounded-t-2xl border border-line bg-panel p-5 shadow-glow sm:rounded-2xl" onClick={(event) => event.stopPropagation()}>
+      <div className="w-full max-w-sm rounded-t-2xl border border-line bg-panel p-5 shadow-glow sm:rounded-2xl" onClick={(e) => e.stopPropagation()}>
         <div className="mb-4 flex items-start justify-between">
           <div>
             <p className="text-base font-semibold text-white">{guest.fullName}</p>
@@ -527,11 +544,19 @@ function GuestPassModal({ guest, event, onClose }: { guest: Guest; event: EventR
           </button>
         </div>
         <div className="rounded-lg border border-smart/30 bg-smart/10 p-4 text-center">
-          <QRCodeImage value={guest.code} />
+          <p className="text-sm font-semibold text-white">{event.name}</p>
+          <p className="mt-0.5 text-xs text-slate-300">{formatEventDate(event.startAt)}{event.venue ? ` · ${event.venue}` : ""}</p>
+          <div className="mt-3">
+            <QRCodeImage value={guest.code} />
+          </div>
           <p className="mt-4 font-mono text-xl font-semibold text-white">{guest.code}</p>
           <p className="mt-2 text-sm text-slate-300">Show this code or QR at the gate.</p>
         </div>
+        {error ? <p className="mt-3 text-center text-xs text-danger">{error}</p> : null}
         <div className="mt-4 grid gap-2">
+          <Button type="button" onClick={handleDownload} disabled={downloading} className="w-full">
+            {downloading ? "Preparing invite..." : "Download invite (image)"}
+          </Button>
           <a href={whatsappUrl} target="_blank" rel="noreferrer">
             <Button type="button" variant="secondary" className="w-full">Share by WhatsApp</Button>
           </a>
@@ -539,6 +564,167 @@ function GuestPassModal({ guest, event, onClose }: { guest: Guest; event: EventR
       </div>
     </div>
   );
+}
+
+function loadInviteImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve(img);
+    img.onerror = () => reject(new Error("image load failed"));
+    img.src = src;
+  });
+}
+
+function wrapInviteText(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, maxWidth: number, lineHeight: number): number {
+  const words = String(text).split(/\s+/).filter(Boolean);
+  let line = "";
+  for (const word of words) {
+    const test = line ? `${line} ${word}` : word;
+    if (ctx.measureText(test).width > maxWidth && line) {
+      ctx.fillText(line, x, y);
+      line = word;
+      y += lineHeight;
+    } else {
+      line = test;
+    }
+  }
+  if (line) {
+    ctx.fillText(line, x, y);
+    y += lineHeight;
+  }
+  return y;
+}
+
+function formatInviteDate(value: string): string {
+  if (!value) return "Date to be announced";
+  try {
+    const d = new Date(value);
+    const datePart = new Intl.DateTimeFormat("en-NG", { weekday: "long", day: "numeric", month: "long", year: "numeric" }).format(d);
+    if (/T\d{2}:\d{2}/.test(value)) {
+      const timePart = new Intl.DateTimeFormat("en-NG", { hour: "numeric", minute: "2-digit", hour12: true }).format(d);
+      return `${datePart} · ${timePart}`;
+    }
+    return datePart;
+  } catch {
+    return value;
+  }
+}
+
+async function buildGuestInviteDataUrl(guest: Guest, event: EventRecord): Promise<string> {
+  const scale = 2;
+  const W = 720;
+  const H = 1120;
+  const canvas = document.createElement("canvas");
+  canvas.width = W * scale;
+  canvas.height = H * scale;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) throw new Error("Canvas not supported");
+  ctx.scale(scale, scale);
+  ctx.textBaseline = "alphabetic";
+
+  ctx.fillStyle = "#ffffff";
+  ctx.fillRect(0, 0, W, H);
+
+  // header band
+  ctx.fillStyle = "#4d7c0f";
+  ctx.fillRect(0, 0, W, 132);
+  ctx.fillStyle = "#ffffff";
+  ctx.textAlign = "left";
+  ctx.font = "700 34px Arial, Helvetica, sans-serif";
+  ctx.fillText("CORSVENT", 48, 62);
+  ctx.fillStyle = "rgba(255,255,255,0.85)";
+  ctx.font = "600 18px Arial, Helvetica, sans-serif";
+  ctx.fillText("EVENT PASS", 48, 96);
+
+  const cat = (guest.category || "").toUpperCase();
+  if (cat) {
+    ctx.font = "700 16px Arial, Helvetica, sans-serif";
+    const tw = ctx.measureText(cat).width;
+    const chipW = tw + 32;
+    const chipX = W - 48 - chipW;
+    ctx.fillStyle = "rgba(255,255,255,0.18)";
+    ctx.fillRect(chipX, 44, chipW, 34);
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(cat, chipX + 16, 67);
+  }
+
+  // event name
+  ctx.fillStyle = "#0f172a";
+  ctx.font = "700 40px Arial, Helvetica, sans-serif";
+  let y = 200;
+  y = wrapInviteText(ctx, event.name || "Event", 48, y, W - 96, 46);
+
+  // date + venue
+  ctx.fillStyle = "#334155";
+  ctx.font = "400 22px Arial, Helvetica, sans-serif";
+  y += 8;
+  y = wrapInviteText(ctx, formatInviteDate(event.startAt), 48, y, W - 96, 30);
+  const venue = [event.venue, event.address].filter(Boolean).join(" · ");
+  if (venue) {
+    y += 2;
+    y = wrapInviteText(ctx, venue, 48, y, W - 96, 30);
+  }
+
+  // divider
+  y += 22;
+  ctx.strokeStyle = "#e2e8f0";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(48, y);
+  ctx.lineTo(W - 48, y);
+  ctx.stroke();
+  y += 34;
+
+  // QR
+  const qrUrl = await QRCode.toDataURL(guest.code, {
+    errorCorrectionLevel: "M",
+    margin: 1,
+    width: 600,
+    color: { dark: "#000000", light: "#FFFFFF" }
+  });
+  const qrImg = await loadInviteImage(qrUrl);
+  const qrSize = 300;
+  const qrX = (W - qrSize) / 2;
+  ctx.drawImage(qrImg, qrX, y, qrSize, qrSize);
+  y += qrSize + 34;
+
+  // code
+  ctx.textAlign = "center";
+  ctx.fillStyle = "#64748b";
+  ctx.font = "600 16px Arial, Helvetica, sans-serif";
+  ctx.fillText("CHECK-IN CODE", W / 2, y);
+  y += 48;
+  ctx.fillStyle = "#0f172a";
+  ctx.font = "700 52px 'Courier New', monospace";
+  ctx.fillText(guest.code, W / 2, y);
+  y += 44;
+
+  // guest admit line
+  ctx.fillStyle = "#334155";
+  ctx.font = "500 22px Arial, Helvetica, sans-serif";
+  ctx.fillText(`Admit: ${guest.fullName || "Guest"}`, W / 2, y);
+
+  // footer
+  ctx.fillStyle = "#94a3b8";
+  ctx.font = "400 16px Arial, Helvetica, sans-serif";
+  ctx.fillText("Show this QR or code at the gate", W / 2, H - 72);
+  ctx.fillStyle = "#4d7c0f";
+  ctx.font = "600 16px Arial, Helvetica, sans-serif";
+  ctx.fillText("Powered by Corsvent", W / 2, H - 46);
+
+  ctx.textAlign = "left";
+  return canvas.toDataURL("image/png");
+}
+
+async function downloadGuestInvite(guest: Guest, event: EventRecord): Promise<void> {
+  const dataUrl = await buildGuestInviteDataUrl(guest, event);
+  const link = document.createElement("a");
+  link.href = dataUrl;
+  const safeName = (guest.fullName || "guest").replace(/[^a-z0-9]+/gi, "-").replace(/^-+|-+$/g, "").toLowerCase() || "guest";
+  link.download = `corsvent-invite-${safeName}.png`;
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
 }
 
 function normalizeGuestPhone(phone: string) {

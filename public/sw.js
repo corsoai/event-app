@@ -1,4 +1,4 @@
-const CACHE_NAME = "corsvent-v2026-07-22-superadmin-1";
+const CACHE_NAME = "corsvent-v2026-07-22-invite-1";
 const OFFLINE_URL = "/offline.html";
 const APP_SHELL = [
   OFFLINE_URL,
